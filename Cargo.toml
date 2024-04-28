@@ -1,0 +1,14 @@
+[package]
+name = "validator-circuits"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.82"
+blake3 = "1.5.1"
+plonky2 = { git = "https://github.com/0xPolygonZero/plonky2.git" }
+rand = "0.8.5"
+serde = "1.0"
+
+[dev-dependencies]
+serde_json = "1.0.1"
