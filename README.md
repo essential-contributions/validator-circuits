@@ -6,6 +6,15 @@ Circuits for validators and validation including...
 
 These circuits and proofs are intended to maintain a small rollup that can be updated efficiently and easily proove validator commitment reveals for block slots (also referred to as "signature"). They are optimized by using the Poseidon hash which is easy to verify in zk arithmetization.
 
+### TODOs
+
+- [ ] support for proving validator inactivity
+- [ ] improve batch handling
+  - [ ] support for less than max batches
+  - [ ] move batch and aggregation process behind the scenes
+- [ ] review security
+- [ ] the update circuit
+
 ## Examples
 
 The following examples can be tweaked through some basic parameters found in `lib.rs`:
