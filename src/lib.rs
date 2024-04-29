@@ -15,5 +15,5 @@ pub type Config = PoseidonGoldilocksConfig;
 pub const VALIDATORS_TREE_DEPTH: usize = 17; //17 for 128k
 pub const COMMITMENT_TREE_DEPTH: usize = 28; //28 for 102 years
 
-pub const BATCH_SIZE: usize = 2048;//2048;
-pub const AGGREGATOR_SIZE: usize = 64;//64;
+pub const BATCH_SIZE: usize = 1024;//2048;
+pub const AGGREGATOR_SIZE: usize = 16;//64;
