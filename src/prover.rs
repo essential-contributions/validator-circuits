@@ -4,7 +4,7 @@ use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 use serde::{Deserialize, Serialize};
 use anyhow::*;
 
-use crate::{BatchCircuitData, BatchCircuitValidatorData, BatchProof, Commitment, ValidatorCircuits, REVEAL_BATCH_MAX_SIZE, VALIDATORS_TREE_DEPTH};
+use crate::{AggregateProof, AggregatorCircuitData, BatchCircuitData, BatchCircuitValidatorData, BatchProof, Commitment, ValidatorCircuits, REVEAL_BATCH_SIZE, VALIDATORS_TREE_DEPTH};
 use crate::Field;
 use crate::Hash;
 
@@ -52,8 +52,30 @@ impl ValidatorSet {
         &self.validators[index]
     }
 
-    pub fn prove_full(&self, batches: Vec<BatchProof>) {
-        todo!();
+    pub fn prove_full(&self, batch_proofs: Vec<BatchProof>) -> Result<AggregateProof> {
+        if batch_proofs.len() == 0 {
+            return Err(anyhow!("At least one batch must be provided"));
+        }
+
+        //verify all are for the same slot
+        let block_slot = batch_proofs[0].block_slot();
+        for reveal in batch_proofs.iter() {
+            if reveal.block_slot() != block_slot {
+                return Err(anyhow!("All batch proofs do not have the same block_slot"));
+            }
+        }
+
+        //TODO: convert to data for circuit and sort
+        //TODO: sort and add the zero validator for padding
+
+        //prove
+        let batch_proof = self.circuits.generate_aggregate_proof(&AggregatorCircuitData {
+            block_slot,
+            validators_root: self.root().clone(),
+            batch_proofs,
+        })?;
+
+        Ok(batch_proof)
     }
 
     pub fn prove_batch(&self, reveals: Vec<CommitmentReveal>) -> Result<BatchProof> {
@@ -88,12 +110,12 @@ impl ValidatorSet {
         validators.sort_by(|a, b| {
             a.index.cmp(&b.index)
         });
-        if validators.len() < REVEAL_BATCH_MAX_SIZE {
+        if validators.len() < REVEAL_BATCH_SIZE {
             let commitment_root = Commitment::zero_root();
             let validator_proof = self.proof(0);
             let reveal = Commitment::zero_reveal();
             let reveal_proof = Commitment::zero_proof();
-            while validators.len() < REVEAL_BATCH_MAX_SIZE {
+            while validators.len() < REVEAL_BATCH_SIZE {
                 validators.insert(0, BatchCircuitValidatorData {
                     index: 0,
                     stake: 0,
@@ -107,7 +129,7 @@ impl ValidatorSet {
         }
 
         //prove
-        let batch_proof = self.circuits.batch_circuit.generate_proof(&BatchCircuitData {
+        let batch_proof = self.circuits.generate_batch_proof(&BatchCircuitData {
             block_slot,
             validators_root: self.root().clone(),
             validators,
@@ -120,15 +142,18 @@ impl ValidatorSet {
         todo!();
     }
 
-    pub fn verify_full(&self, batches: Vec<BatchProof>) {
-        todo!();
+    pub fn verify_full(&self, proof: &AggregateProof) -> Result<()> {
+        if &proof.validators_root() != self.root() {
+            return Err(anyhow!("Incorrect validators root"));
+        }
+        self.circuits.verify_aggregate_proof(proof)
     }
 
     pub fn verify_batch(&self, proof: &BatchProof) -> Result<()> {
         if &proof.validators_root() != self.root() {
             return Err(anyhow!("Incorrect validators root"));
         }
-        self.circuits.batch_circuit.verify_proof(proof)
+        self.circuits.verify_batch_proof(proof)
     }
 
     pub fn verify_update(&self) {

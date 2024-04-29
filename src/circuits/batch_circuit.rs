@@ -12,7 +12,9 @@ use anyhow::Result;
 use crate::{Config, Field, BATCH_SIZE, COMMITMENT_TREE_DEPTH, D, VALIDATORS_TREE_DEPTH};
 use crate::Hash;
 
-pub const REVEAL_BATCH_MAX_SIZE: usize = BATCH_SIZE;
+//TODO: review the validator index incrementing constraint (may have to switch to a full batch of zero validators)
+
+pub const REVEAL_BATCH_SIZE: usize = BATCH_SIZE;
 
 pub struct BatchCircuit {
     circuit_data: CircuitData<Field, Config, D>,
@@ -39,7 +41,7 @@ impl BatchCircuit {
         //build the circuit
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
-        let targets = validation_circuit(&mut builder);
+        let targets = batch_circuit(&mut builder);
         let circuit_data = builder.build::<Config>();
 
         Self { circuit_data, targets }
@@ -54,6 +56,10 @@ impl BatchCircuit {
     pub fn verify_proof(&self, proof: &BatchProof) -> Result<()> {
         self.circuit_data.verify(proof.proof.clone())
     }
+
+    pub fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
+        return &self.circuit_data;
+    }
 }
 
 pub struct BatchProof {
@@ -61,6 +67,10 @@ pub struct BatchProof {
 }
 
 impl BatchProof {
+    pub fn validators_root(&self) -> [Field; 4] {
+        [self.proof.public_inputs[0], self.proof.public_inputs[1], self.proof.public_inputs[2], self.proof.public_inputs[3]]
+    }
+
     pub fn total_stake(&self) -> u64 {
         self.proof.public_inputs[4].to_canonical_u64()
     }
@@ -69,12 +79,16 @@ impl BatchProof {
         self.proof.public_inputs[5].to_canonical_u64() as usize
     }
 
-    pub fn validators_root(&self) -> [Field; 4] {
-        [self.proof.public_inputs[0], self.proof.public_inputs[1], self.proof.public_inputs[2], self.proof.public_inputs[3]]
+    pub fn validator_range(&self) -> (u64, u64) {
+        (self.proof.public_inputs[6].to_canonical_u64(), self.proof.public_inputs[7].to_canonical_u64())
+    }
+
+    pub fn raw_proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
+        &self.proof
     }
 }
 
-fn validation_circuit(builder: &mut CircuitBuilder<Field, D>) -> BatchCircuitTargets {
+fn batch_circuit(builder: &mut CircuitBuilder<Field, D>) -> BatchCircuitTargets {
     let mut validator_targets: Vec<BatchCircuitValidatorTargets> = Vec::new();
 
     //Global targets
@@ -86,8 +100,8 @@ fn validation_circuit(builder: &mut CircuitBuilder<Field, D>) -> BatchCircuitTar
     let mut previous_validator_index = builder.zero();
     let one = builder.one();
 
-    for _ in 0..REVEAL_BATCH_MAX_SIZE {
-        // Secrets tree
+    for _ in 0..REVEAL_BATCH_SIZE {
+        // Commitment tree
         let commitment_root = builder.add_virtual_hash();
         let block_slot_bits = builder.split_le(block_slot, COMMITMENT_TREE_DEPTH);
         let reveal = builder.add_virtual_targets(4);
@@ -144,6 +158,8 @@ fn validation_circuit(builder: &mut CircuitBuilder<Field, D>) -> BatchCircuitTar
     builder.register_public_inputs(&validators_root.elements);
     builder.register_public_input(total_stake);
     builder.register_public_input(block_slot);
+    builder.register_public_input(validator_targets.first().unwrap().index);
+    builder.register_public_input(validator_targets.last().unwrap().index);
 
     BatchCircuitTargets {
         block_slot,
@@ -172,6 +188,7 @@ fn generate_partial_witness(targets: &BatchCircuitTargets, data: &BatchCircuitDa
     let mut pw = PartialWitness::new();
     pw.set_target(targets.block_slot, Plonky2_Field::from_canonical_u64(data.block_slot as u64));
     pw.set_hash_target(targets.validators_root, HashOut::<Field> { elements: data.validators_root });
+
     for (t, v) in targets.validators.iter().zip(data.validators.iter()) {
         pw.set_target(t.index, Plonky2_Field::from_canonical_u64(v.index as u64));
         pw.set_target(t.stake, Plonky2_Field::from_canonical_u64(v.stake));
@@ -181,6 +198,7 @@ fn generate_partial_witness(targets: &BatchCircuitTargets, data: &BatchCircuitDa
         set_merkle_targets(&mut pw, t.reveal_proof.clone(), v.reveal_proof.clone());
         set_merkle_targets(&mut pw, t.validator_proof.clone(), v.validator_proof.clone());
     }
+
     pw
 }
 
