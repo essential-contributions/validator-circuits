@@ -1,24 +1,12 @@
-use plonky2::field::goldilocks_field::GoldilocksField;
-use plonky2::field::packed::PackedField;
 use plonky2::field::types::Field as Plonky2_Field;
-use plonky2::hash::hash_types::{HashOut, HashOutTarget};
-use plonky2::hash::merkle_proofs::{MerkleProof, MerkleProofTarget};
-use plonky2::iop::target::Target;
-use plonky2::iop::witness::{PartialWitness, WitnessWrite};
-use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::circuit_data::CircuitConfig;
-use plonky2::plonk::config::{GenericConfig, Hasher as Plonky2_Hasher, PoseidonGoldilocksConfig};
-use plonky2::hash::merkle_tree::MerkleTree;
-use plonky2::hash::poseidon::PoseidonHash;
-use plonky2::plonk::proof::Proof;
-use rand::Rng;
+use plonky2::hash::hash_types::HashOut;
+use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 use serde::{Deserialize, Serialize};
 use anyhow::*;
 
-use crate::{BatchCircuitData, BatchCircuitValidatorData, BatchProof, Commitment, ValidatorCircuits, D, REVEAL_BATCH_MAX_SIZE, VALIDATORS_TREE_DEPTH};
+use crate::{BatchCircuitData, BatchCircuitValidatorData, BatchProof, Commitment, ValidatorCircuits, REVEAL_BATCH_MAX_SIZE, VALIDATORS_TREE_DEPTH};
 use crate::Field;
 use crate::Hash;
-use crate::Config;
 
 //TODO: implement multi-threading for tree construction
 

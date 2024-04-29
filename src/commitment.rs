@@ -6,10 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Field, Hash, COMMITMENT_TREE_DEPTH};
 
-
-//TODO: add leaf hashing to digest
 //TODO: implement multi-threading
-
 
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -36,7 +33,7 @@ impl Commitment {
         //fill in leave digests first
         let leave_digests_start = leaves.len() - 1;
         for i in 0..leaves.len() {
-            nodes[leave_digests_start + i] = leaves[i]; //field_hash(&leaves[i]);
+            nodes[leave_digests_start + i] = field_hash(&leaves[i]);
         }
 
         //fill in the rest of the tree
@@ -92,7 +89,7 @@ impl Commitment {
     }
 
     pub fn zero_root() -> [Field; 4] {
-        let mut node = Self::zero_reveal(); //field_hash(&Self::zero_reveal());
+        let mut node = field_hash(&Self::zero_reveal());
         for _ in 0..COMMITMENT_TREE_DEPTH {
             node = field_hash_two(node, node);
         }
@@ -100,7 +97,7 @@ impl Commitment {
     }
 
     pub fn zero_proof() -> Vec<[Field; 4]> {
-        let mut node = Self::zero_reveal(); //field_hash(&Self::zero_reveal());
+        let mut node = field_hash(&Self::zero_reveal());
         let mut proof: Vec<[Field; 4]> = vec![];
         for _ in 0..COMMITMENT_TREE_DEPTH {
             proof.push(node);

@@ -91,11 +91,12 @@ fn validation_circuit(builder: &mut CircuitBuilder<Field, D>) -> BatchCircuitTar
         let commitment_root = builder.add_virtual_hash();
         let block_slot_bits = builder.split_le(block_slot, COMMITMENT_TREE_DEPTH);
         let reveal = builder.add_virtual_targets(4);
+        let reveal_hash = builder.hash_n_to_m_no_pad::<Hash>(reveal.clone(), 4);
         let reveal_proof = MerkleProofTarget {
             siblings: builder.add_virtual_hashes(COMMITMENT_TREE_DEPTH),
         };
         builder.verify_merkle_proof::<Hash>(
-            reveal.clone(), 
+            reveal_hash, 
             &block_slot_bits, 
             commitment_root,
             &reveal_proof,

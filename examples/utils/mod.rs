@@ -1,19 +1,8 @@
-use plonky2::field::goldilocks_field::GoldilocksField;
-use plonky2::field::packed::PackedField;
 use plonky2::field::types::Field as Plonky2_Field;
-use plonky2::hash::hash_types::{HashOut, HashOutTarget};
-use plonky2::hash::merkle_proofs::{MerkleProof, MerkleProofTarget};
-use plonky2::iop::target::Target;
-use plonky2::iop::witness::{PartialWitness, WitnessWrite};
-use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::circuit_data::CircuitConfig;
-use plonky2::plonk::config::{GenericConfig, Hasher as Plonky2_Hasher, PoseidonGoldilocksConfig};
-use plonky2::hash::merkle_tree::MerkleTree;
-use plonky2::hash::poseidon::PoseidonHash;
-use plonky2::plonk::proof::Proof;
-use std::time::Instant;
+use plonky2::hash::hash_types::HashOut;
+use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 
-use validator_circuits::{build_circuits, CommitmentReveal, Field, Validator, ValidatorCircuits, ValidatorSet, COMMITMENT_TREE_DEPTH, VALIDATORS_TREE_DEPTH};
+use validator_circuits::{CommitmentReveal, Field, Validator, ValidatorCircuits, ValidatorSet, COMMITMENT_TREE_DEPTH, VALIDATORS_TREE_DEPTH};
 use validator_circuits::Hash;
 
 
@@ -29,7 +18,7 @@ pub fn generate_validator_set(circuits: ValidatorCircuits) -> ValidatorSet {
 
 pub fn commitment_root(validator_index: usize) -> [Field; 4] {
     let secret = generate_secret_from_index(validator_index);
-    let mut node = secret; //field_hash(&FAST_COMMIT_SECRET);
+    let mut node = field_hash(&secret);
     for _ in 0..COMMITMENT_TREE_DEPTH {
         node = field_hash_two(node, node);
     }
@@ -38,7 +27,7 @@ pub fn commitment_root(validator_index: usize) -> [Field; 4] {
 
 pub fn commitment_reveal(validator_index: usize, block_slot: usize) -> CommitmentReveal {
     let secret = generate_secret_from_index(validator_index);
-    let mut node = secret; //field_hash(&FAST_COMMIT_SECRET);
+    let mut node = field_hash(&secret);
     let mut proof: Vec<[Field; 4]> = vec![];
     for _ in 0..COMMITMENT_TREE_DEPTH {
         proof.push(node);
