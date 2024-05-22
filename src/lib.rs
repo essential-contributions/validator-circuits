@@ -12,8 +12,24 @@ pub type Field = GoldilocksField;
 pub type Hash = PoseidonHash;
 pub type Config = PoseidonGoldilocksConfig;
 
-pub const VALIDATORS_TREE_DEPTH: usize = 17; //17 for 128k
-pub const COMMITMENT_TREE_DEPTH: usize = 28; //28 for 102 years
+pub const VALIDATORS_TREE_HEIGHT: usize = 20; //1048576
+pub const VALIDATOR_COMMITMENT_TREE_HEIGHT: usize = 28; //102 years
+pub const AGGREGATION_PASS1_SIZE: usize = 1024;
+pub const AGGREGATION_PASS2_SIZE: usize = 32;
+pub const AGGREGATION_PASS3_SIZE: usize = 32;
 
-pub const BATCH_SIZE: usize = 1024;//2048;
-pub const AGGREGATOR_SIZE: usize = 16;//64;
+pub const AGGREGATION_PASS1_SUB_TREE_HEIGHT: usize = sqrt_usize(AGGREGATION_PASS1_SIZE);
+pub const AGGREGATION_PASS2_SUB_TREE_HEIGHT: usize = sqrt_usize(AGGREGATION_PASS2_SIZE);
+pub const AGGREGATION_PASS3_SUB_TREE_HEIGHT: usize = sqrt_usize(AGGREGATION_PASS3_SIZE);
+
+const fn sqrt_usize(x: usize) -> usize {
+    if x == 0 {
+        return 0;
+    }
+
+    let mut guess = 1;
+    while (2 as u64).pow(guess) < (x as u64) && guess < (x / 2) as u32 {
+        guess += 1;
+    }
+    guess as usize
+}

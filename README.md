@@ -4,37 +4,21 @@ Circuits for validators and validation including...
 - A commitment reveal circuit (up to some amount) plus a proof aggregator to increase throughput
 - An update circuit to prove how an staker update changes the state root
 
-These circuits and proofs are intended to maintain a small rollup that can be updated efficiently and easily proove validator commitment reveals for block slots (also referred to as "signature"). They are optimized by using the Poseidon hash which is easy to verify in zk arithmetization.
+These circuits and proofs are intended to maintain a small rollup that can be updated efficiently and easily prove validator commitment reveals for block slots (also referred to as "signature"). They are optimized by using the Poseidon hash which is easy to verify in zk arithmetization.
 
 ### TODOs
 
 - [ ] support for proving validator inactivity
-- [ ] improve batch handling
-  - [ ] support for less than max batches
-  - [ ] move batch and aggregation process behind the scenes
 - [ ] review security
 - [ ] the update circuit
 
 ## Examples
 
-The following examples can be tweaked through some basic parameters found in `lib.rs`:
-- `BATCH_SIZE` - the max amount of validator commitment reveals that can be batched together
-- `AGGREGATOR_SIZE` - the max amount of batches that can be aggregated together
+### Prove Attestations
 
-The total amount validator "signatres" that can be proven together is equal to `BATCH_SIZE * AGGREGATOR_SIZE`
-
-### Prove Full
-
-Proves the maximum amount of "signatures" first through individual batch proofs and then a single aggregate proof
+Proves a minimal amount of "signatures" through the 3 stage attestation aggregation proofs
 ```
-cargo run --example prove_full --release
-```
-
-### Prove Batch
-
-Proves just a single batch of `BATCH_SIZE` "signatures"
-```
-cargo run --example prove_batch --release
+cargo run --example prove_attestations --release
 ```
 
 ### Generate Commitment
@@ -48,16 +32,14 @@ cargo run --example generate_commitment --release
 
 ```
 CPU:          Intel Core i7-8700 3.2GHz
-Batch Size:   2048
-Agg Size:     64
-Validators:   131,072
 
 results
 Generate Commitment:  998.340866136s (16.639m)
-Generate Circuits:    123.152302862s
-Prove Single Batch:   16.658054934s
-Prove Aggregate:      80.263568s
+Generate Circuits:    122.938929116s
+Prove Attestation Aggregation1:    3.919908366s
+Prove Attestation Aggregation2:   43.232141139s
+Prove Attestation Aggregation3:   38.024451707s
 
-Total Prove Time:     1130.078654297s (18.83464m)
+Theoretical 1M Prove Time:     5435.43913494s (90.59065m)
 ```
 

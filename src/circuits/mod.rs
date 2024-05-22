@@ -1,46 +1,52 @@
-mod aggregator_circuit;
-mod batch_circuit;
-mod update_circuit;
+mod attestations_aggregator1_circuit;
+mod attestations_aggregator2_circuit;
+mod attestations_aggregator3_circuit;
 
-use anyhow::Result;
+use anyhow::*;
 
-pub use aggregator_circuit::*;
-pub use batch_circuit::*;
+pub use attestations_aggregator1_circuit::*;
+pub use attestations_aggregator2_circuit::*;
+pub use attestations_aggregator3_circuit::*;
 
 //TODO: create function to get already compiled circuits
 
-pub const REVEAL_BATCH_SIZE: usize = batch_circuit::REVEAL_BATCH_SIZE;
-pub const AGGREGATOR_BATCH_SIZE: usize = aggregator_circuit::AGGREGATOR_BATCH_SIZE;
-
 pub struct ValidatorCircuits {
-    batch_circuit: BatchCircuit,
-    aggregator_circuit: AggregatorCircuit,
+    attestations_aggregator1: AttestationsAggregator1Circuit,
+    attestations_aggregator2: AttestationsAggregator2Circuit,
+    attestations_aggregator3: AttestationsAggregator3Circuit,
 }
 
 impl ValidatorCircuits {
     pub fn build() -> Self {
-        let batch_circuit = BatchCircuit::new();
-        let aggregator_circuit = AggregatorCircuit::new(&batch_circuit);
+        let attestations_aggregator1 = AttestationsAggregator1Circuit::new();
+        let attestations_aggregator2 = AttestationsAggregator2Circuit::new(&attestations_aggregator1);
+        let attestations_aggregator3 = AttestationsAggregator3Circuit::new(&attestations_aggregator2);
 
         ValidatorCircuits {
-            batch_circuit,
-            aggregator_circuit,
+            attestations_aggregator1,
+            attestations_aggregator2,
+            attestations_aggregator3,
         }
     }
 
-    pub fn generate_batch_proof(&self, data: &BatchCircuitData) -> Result<BatchProof> {
-        self.batch_circuit.generate_proof(data)
+    pub fn generate_attestations_aggregator1_proof(&self, data: &AttestationsAggregator1Data) -> Result<AttestationsAggregator1Proof> {
+        self.attestations_aggregator1.generate_proof(data)
+    }
+    pub fn verify_attestations_aggregator1_proof(&self, proof: &AttestationsAggregator1Proof) -> Result<()> {
+        self.attestations_aggregator1.verify_proof(proof)
     }
 
-    pub fn verify_batch_proof(&self, proof: &BatchProof) -> Result<()> {
-        self.batch_circuit.verify_proof(proof)
+    pub fn generate_attestations_aggregator2_proof(&self, data: &AttestationsAggregator2Data) -> Result<AttestationsAggregator2Proof> {
+        self.attestations_aggregator2.generate_proof(data, &self.attestations_aggregator1)
+    }
+    pub fn verify_attestations_aggregator2_proof(&self, proof: &AttestationsAggregator2Proof) -> Result<()> {
+        self.attestations_aggregator2.verify_proof(proof)
     }
 
-    pub fn generate_aggregate_proof(&self, data: &AggregatorCircuitData) -> Result<AggregateProof> {
-        self.aggregator_circuit.generate_proof(data, &self.batch_circuit)
+    pub fn generate_attestations_aggregator3_proof(&self, data: &AttestationsAggregator3Data) -> Result<AttestationsAggregator3Proof> {
+        self.attestations_aggregator3.generate_proof(data, &self.attestations_aggregator2)
     }
-
-    pub fn verify_aggregate_proof(&self, proof: &AggregateProof) -> Result<()> {
-        self.aggregator_circuit.verify_proof(proof)
+    pub fn verify_attestations_aggregator3_proof(&self, proof: &AttestationsAggregator3Proof) -> Result<()> {
+        self.attestations_aggregator3.verify_proof(proof)
     }
 }

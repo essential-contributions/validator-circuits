@@ -4,7 +4,7 @@ use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::{Field, Hash, COMMITMENT_TREE_DEPTH};
+use crate::{Field, Hash, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 
 //TODO: implement multi-threading
 
@@ -18,7 +18,7 @@ pub struct Commitment {
 
 impl Commitment {
     pub fn from_seed(seed: [u8; 32]) -> Self {
-        let depth = COMMITMENT_TREE_DEPTH as u32;
+        let depth = VALIDATOR_COMMITMENT_TREE_HEIGHT as u32;
 
         //generate leaves based on the seed and blake3 hash
         let mut leaf = seed;
@@ -86,28 +86,6 @@ impl Commitment {
             node_index = node_index + 1;
         }
         nodes
-    }
-
-    pub fn zero_root() -> [Field; 4] {
-        let mut node = field_hash(&Self::zero_reveal());
-        for _ in 0..COMMITMENT_TREE_DEPTH {
-            node = field_hash_two(node, node);
-        }
-        node
-    }
-
-    pub fn zero_proof() -> Vec<[Field; 4]> {
-        let mut node = field_hash(&Self::zero_reveal());
-        let mut proof: Vec<[Field; 4]> = vec![];
-        for _ in 0..COMMITMENT_TREE_DEPTH {
-            proof.push(node);
-            node = field_hash_two(node, node);
-        }
-        proof
-    }
-
-    pub fn zero_reveal() -> [Field; 4] {
-        [Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]
     }
 }
 

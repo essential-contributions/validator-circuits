@@ -4,11 +4,13 @@ use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 use serde::{Deserialize, Serialize};
 use anyhow::*;
 
-use crate::{AggregateProof, AggregatorCircuitData, BatchCircuitData, BatchCircuitValidatorData, BatchProof, Commitment, ValidatorCircuits, REVEAL_BATCH_SIZE, VALIDATORS_TREE_DEPTH};
+use crate::{AttestationsAggregator1Data, AttestationsAggregator1RevealData, AttestationsAggregator1ValidatorData, AttestationsAggregator2Agg1Data, AttestationsAggregator2Data, AttestationsAggregator3Agg2Data, AttestationsAggregator3Data, AttestationsAggregator3Proof, ValidatorCircuits, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, ATTESTATION_AGGREGATION_PASS1_SIZE, ATTESTATION_AGGREGATION_PASS2_SIZE, ATTESTATION_AGGREGATION_PASS3_SIZE, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
 use crate::Hash;
 
-//TODO: implement multi-threading for tree construction
+//TODO: implement multi-threading for tree construction and proof generation
+
+const AGG1_BINS_LEN: usize = ATTESTATION_AGGREGATION_PASS2_SIZE * ATTESTATION_AGGREGATION_PASS3_SIZE;
 
 pub struct Validator {
     pub commitment_root: [Field; 4],
@@ -19,22 +21,15 @@ pub struct ValidatorSet {
     circuits: ValidatorCircuits,
     validators: Vec<Validator>,
     nodes: Vec<[Field; 4]>,
-    depth: u32,
+    height: u32,
 }
 
 impl ValidatorSet {
-    pub fn new(circuits: ValidatorCircuits, mut validators: Vec<Validator>) -> Self {
-        let depth = VALIDATORS_TREE_DEPTH as u32;
-
-        //the 0 validator is always empty
-        validators[0] = Validator {
-            commitment_root: Commitment::zero_root(),
-            stake: 0,
-        };
-
-        let num_nodes = (1 << (depth + 1)) - 1;
+    pub fn new(circuits: ValidatorCircuits, validators: Vec<Validator>) -> Self {
+        let height = VALIDATORS_TREE_HEIGHT as u32;
+        let num_nodes = (1 << (height + 1)) - 1;
         let nodes: Vec<[Field; 4]> = vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
-        let mut validator_set = Self { circuits, validators, nodes, depth };
+        let mut validator_set = Self { circuits, validators, nodes, height };
         validator_set.fill_nodes();
 
         validator_set
@@ -44,43 +39,26 @@ impl ValidatorSet {
         &self.nodes[0]
     }
 
-    pub fn depth(&self) -> u32 {
-        self.depth
+    pub fn sub_root(&self, height: usize, index: usize) -> &[Field; 4] {
+        let start = (2u32.pow(self.height - (height as u32)) - 1) as usize;
+        &self.nodes[start + index]
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
     }
 
     pub fn validator(&self, index: usize) -> &Validator {
         &self.validators[index]
     }
 
-    pub fn prove_full(&self, batch_proofs: Vec<BatchProof>) -> Result<AggregateProof> {
-        if batch_proofs.len() == 0 {
-            return Err(anyhow!("At least one batch must be provided"));
-        }
-
-        //verify all are for the same slot
-        let block_slot = batch_proofs[0].block_slot();
-        for reveal in batch_proofs.iter() {
-            if reveal.block_slot() != block_slot {
-                return Err(anyhow!("All batch proofs do not have the same block_slot"));
-            }
-        }
-
-        //TODO: convert to data for circuit and sort
-        //TODO: sort and add the zero validator for padding
-
-        //prove
-        let batch_proof = self.circuits.generate_aggregate_proof(&AggregatorCircuitData {
-            block_slot,
-            validators_root: self.root().clone(),
-            batch_proofs,
-        })?;
-
-        Ok(batch_proof)
-    }
-
-    pub fn prove_batch(&self, reveals: Vec<CommitmentReveal>) -> Result<BatchProof> {
+    pub fn prove_attestations(&self, reveals: Vec<CommitmentReveal>) -> Result<AttestationsAggregator3Proof> {
+        let max_attestations = ATTESTATION_AGGREGATION_PASS1_SIZE * ATTESTATION_AGGREGATION_PASS2_SIZE * ATTESTATION_AGGREGATION_PASS3_SIZE;
         if reveals.len() == 0 {
-            return Err(anyhow!("At least one reveal must be provided for the batch"));
+            return Err(anyhow!("At least one reveal must be provided for the attestations proof"));
+        }
+        if reveals.len() > max_attestations {
+            return Err(anyhow!("Only {} reveals can be proven per attestations proof", max_attestations));
         }
 
         //verify all are for the same slot
@@ -91,78 +69,149 @@ impl ValidatorSet {
             }
         }
 
-        //convert to data for circuit and sort
-        let mut validators: Vec<BatchCircuitValidatorData> = vec![];
-        for reveal in &reveals {
-            let validator = self.validator(reveal.validator_index);
-            validators.push(BatchCircuitValidatorData {
-                index: reveal.validator_index,
-                stake: validator.stake,
-                commitment_root: validator.commitment_root,
-                validator_proof: self.proof(reveal.validator_index),
-                block_slot,
-                reveal: reveal.reveal,
-                reveal_proof: reveal.proof.clone(),
-            });
+        //sort each reveal into bins that must be proven
+        let mut agg1_bins: Vec<Vec<CommitmentReveal>> = Vec::new();
+        for _ in 0..AGG1_BINS_LEN {
+            agg1_bins.push(Vec::new());
+        }
+        for reveal in reveals.iter() {
+            agg1_bins[reveal.validator_index / AGGREGATION_PASS1_SIZE].push(reveal.clone());
         }
 
-        //sort and add the zero validator for padding
-        validators.sort_by(|a, b| {
-            a.index.cmp(&b.index)
-        });
-        if validators.len() < REVEAL_BATCH_SIZE {
-            let commitment_root = Commitment::zero_root();
-            let validator_proof = self.proof(0);
-            let reveal = Commitment::zero_reveal();
-            let reveal_proof = Commitment::zero_proof();
-            while validators.len() < REVEAL_BATCH_SIZE {
-                validators.insert(0, BatchCircuitValidatorData {
-                    index: 0,
-                    stake: 0,
-                    commitment_root,
-                    validator_proof: validator_proof.clone(),
+        //generate proofs for each bin
+        //TODO: parallelize
+        let mut agg1_datas: Vec<AttestationsAggregator2Agg1Data> = Vec::new();
+        for (index, bin) in agg1_bins.iter().enumerate() {
+            if bin.len() > 0 {
+                //create complete validator list
+                let starting_index = index * AGGREGATION_PASS1_SIZE;
+                let mut validators: Vec<AttestationsAggregator1ValidatorData> = (0..AGGREGATION_PASS1_SIZE).map(|i| {
+                    let validator = self.validator(starting_index + i);
+                    AttestationsAggregator1ValidatorData {
+                        stake: validator.stake,
+                        commitment_root: validator.commitment_root,
+                        reveal: None,
+                    }
+                }).collect();
+
+                //add reveal data to the complete list
+                for reveal in reveals.iter() {
+                    validators[reveal.validator_index - starting_index].reveal = Some(AttestationsAggregator1RevealData {
+                        reveal: reveal.reveal,
+                        reveal_proof: reveal.proof.clone(),
+                    });
+                }
+
+                //generate proof
+                let proof = self.circuits.generate_attestations_aggregator1_proof(&AttestationsAggregator1Data {
                     block_slot,
-                    reveal,
-                    reveal_proof: reveal_proof.clone(),
+                    validators,
+                })?;
+                agg1_datas.push(AttestationsAggregator2Agg1Data {
+                    validators_sub_root: self.sub_root(AGGREGATION_PASS1_SUB_TREE_HEIGHT, index).clone(),
+                    agg1_proof: Some(proof),
+                });
+
+            } else {
+                agg1_datas.push(AttestationsAggregator2Agg1Data {
+                    validators_sub_root: self.sub_root(AGGREGATION_PASS1_SUB_TREE_HEIGHT, index).clone(),
+                    agg1_proof: None,
                 });
             }
         }
-
-        //prove
-        let batch_proof = self.circuits.generate_batch_proof(&BatchCircuitData {
+        
+        //generate second pass aggregate proofs
+        let mut agg2_datas: Vec<AttestationsAggregator3Agg2Data> = Vec::new();
+        for (index, agg1_data) in agg1_datas.chunks(ATTESTATION_AGGREGATION_PASS2_SIZE).enumerate() {
+            let mut has_proofs = false;
+            for data in agg1_data {
+                if data.agg1_proof.is_some() {
+                    has_proofs = true;
+                    break;
+                }
+            }
+            if has_proofs {                
+                //generate proof
+                let proof = self.circuits.generate_attestations_aggregator2_proof(&AttestationsAggregator2Data {
+                    block_slot,
+                    agg1_data: agg1_data.to_vec(),
+                })?;
+                agg2_datas.push(AttestationsAggregator3Agg2Data {
+                    validators_sub_root: proof.validators_sub_root(),
+                    agg2_proof: Some(proof),
+                });
+            } else {
+                agg2_datas.push(AttestationsAggregator3Agg2Data {
+                    validators_sub_root: self.sub_root(AGGREGATION_PASS1_SUB_TREE_HEIGHT + AGGREGATION_PASS2_SUB_TREE_HEIGHT, index).clone(),
+                    agg2_proof: None,
+                });
+            }
+        }
+        
+        //generate third pass aggregate proof
+        let proof = self.circuits.generate_attestations_aggregator3_proof(&AttestationsAggregator3Data {
             block_slot,
-            validators_root: self.root().clone(),
-            validators,
+            agg2_data: agg2_datas,
         })?;
 
-        Ok(batch_proof)
+        Ok(proof)
     }
 
     pub fn prove_update(&self) {
         todo!();
     }
 
-    pub fn verify_full(&self, proof: &AggregateProof) -> Result<()> {
-        if &proof.validators_root() != self.root() {
-            return Err(anyhow!("Incorrect validators root"));
+    pub fn verify_attestations(&self, reveals: Vec<CommitmentReveal>) -> Result<bool> {
+        if reveals.len() == 0 {
+            return Err(anyhow!("At least one reveal must be provided for the batch"));
         }
-        self.circuits.verify_aggregate_proof(proof)
-    }
-
-    pub fn verify_batch(&self, proof: &BatchProof) -> Result<()> {
-        if &proof.validators_root() != self.root() {
-            return Err(anyhow!("Incorrect validators root"));
+        if reveals.len() > ATTESTATION_AGGREGATION_PASS1_SIZE {
+            return Err(anyhow!("Only {} reveals can be proven per batch", ATTESTATION_AGGREGATION_PASS1_SIZE));
         }
-        self.circuits.verify_batch_proof(proof)
-    }
 
-    pub fn verify_update(&self) {
+        //verify all are for the same slot
+        let block_slot = reveals[0].block_slot;
+        for reveal in reveals.iter() {
+            if reveal.block_slot != block_slot {
+                return Err(anyhow!("All reveals do not have the same block_slot"));
+            }
+        }
+
+        //TODO: check each commitment in parallel
         todo!();
+    }
+
+    pub fn verify_attestations_proof(&self, proof: &AttestationsAggregator3Proof) -> Result<()> {
+        if &proof.validators_root() != self.root() {
+            return Err(anyhow!("Incorrect validators root"));
+        }
+        self.circuits.verify_attestations_aggregator3_proof(proof)
     }
 
     pub fn set_validator(&mut self, validator: Validator, index: usize) {
         self.validators[index] = validator;
         self.fill_nodes();
+    }
+
+    pub fn validator_merkle_proof(&self, index: usize) -> Vec<[Field; 4]> {
+        let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; self.height as usize];
+        let mut node_index: usize = 0;
+        let mut idx = index;
+        for i in (0..self.height).rev() {
+            let start = (2u32.pow(i + 1) - 1) as usize;
+            if (idx & 1) == 0 {
+                 nodes[node_index] = self.nodes[start + idx + 1];
+            } else {
+                nodes[node_index] = self.nodes[start + idx - 1];
+            }
+            idx = idx / 2;
+            node_index = node_index + 1;
+        }
+        nodes
+    }
+
+    pub fn circuits(&self) -> &ValidatorCircuits {
+        &self.circuits
     }
 
     fn fill_nodes(&mut self) {
@@ -175,30 +224,13 @@ impl ValidatorSet {
         }
     
         //fill in the rest of the tree
-        for i in (0..self.depth).rev() {
+        for i in (0..self.height).rev() {
             let start = ((1 << i) - 1) as usize;
             let end = (start * 2) + 1;
             for j in start..end {
                 self.nodes[j] = field_hash_two(self.nodes[(j * 2) + 1], self.nodes[(j * 2) + 2]);
             }
         }
-    }
-
-    fn proof(&self, index: usize) -> Vec<[Field; 4]> {
-        let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; self.depth as usize];
-        let mut node_index: usize = 0;
-        let mut idx = index;
-        for i in (0..self.depth).rev() {
-            let start = (2u32.pow(i + 1) - 1) as usize;
-            if (idx & 1) == 0 {
-                 nodes[node_index] = self.nodes[start + idx + 1];
-            } else {
-                nodes[node_index] = self.nodes[start + idx - 1];
-            }
-            idx = idx / 2;
-            node_index = node_index + 1;
-        }
-        nodes
     }
 }
 
