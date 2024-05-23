@@ -7,10 +7,13 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData};
 use plonky2::plonk::config::{GenericConfig, Hasher as Plonky2_Hasher};
 use plonky2::plonk::proof::ProofWithPublicInputs;
-use anyhow::*;
+use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use anyhow::{anyhow, Result};
 
 use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 use crate::Hash;
+
+use super::serialization::{deserialize_circuit, serialize_circuit};
 
 const PARTICIPANTS_PER_FIELD: usize = 62;
 const NUM_PARTICIPATION_FIELDS: usize = div_ceil(AGGREGATION_PASS1_SIZE, PARTICIPANTS_PER_FIELD);
@@ -61,6 +64,23 @@ impl AttestationsAggregator1Circuit {
 
     pub fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let mut buffer = serialize_circuit(&self.circuit_data)?;
+        if write_targets(&mut buffer, &self.targets).is_err() {
+            return Err(anyhow!("Failed to serialize circuit targets"));
+        }
+        Ok(buffer)
+    }
+
+    pub fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
+        let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
+        let targets = read_targets(&mut buffer);
+        if targets.is_err() {
+            return Err(anyhow!("Failed to deserialize circuit targets"));
+        }
+        Ok(Self { circuit_data, targets: targets.unwrap() })
     }
 }
 
@@ -268,6 +288,47 @@ fn set_merkle_targets(pw: &mut PartialWitness<Field>, target: MerkleProofTarget,
         let hash: HashOut<Field> = HashOut::<Field> { elements: *v };
         pw.set_hash_target(*t, hash);
     }
+}
+
+#[inline]
+fn write_targets(buffer: &mut Vec<u8>, targets: &AttsAgg1Targets) -> IoResult<()> {
+    buffer.write_target(targets.block_slot)?;
+    buffer.write_usize(targets.validators.len())?;
+    for v in &targets.validators {
+        buffer.write_target(v.stake)?;
+        buffer.write_target_hash(&v.commitment_root)?;
+        buffer.write_target_vec(&v.reveal)?;
+        buffer.write_target_merkle_proof(&v.reveal_proof)?;
+    }
+    buffer.write_target_vec(&targets.participation_bit_field)?;
+
+    Ok(())
+}
+
+#[inline]
+fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg1Targets> {
+    let block_slot = buffer.read_target()?;
+    let mut validators: Vec<AttsAgg1ValidatorTargets> = Vec::new();
+    let validators_length = buffer.read_usize()?;
+    for _ in 0..validators_length {
+        let stake = buffer.read_target()?;
+        let commitment_root = buffer.read_target_hash()?;
+        let reveal = buffer.read_target_vec()?;
+        let reveal_proof = buffer.read_target_merkle_proof()?;
+        validators.push(AttsAgg1ValidatorTargets {
+            stake,
+            commitment_root,
+            reveal,
+            reveal_proof,
+        });
+    }
+    let participation_bit_field = buffer.read_target_vec()?;
+
+    Ok(AttsAgg1Targets {
+        block_slot,
+        validators,
+        participation_bit_field,
+    })
 }
 
 struct EmptyCommitment {

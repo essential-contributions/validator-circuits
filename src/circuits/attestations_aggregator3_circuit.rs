@@ -6,10 +6,13 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierCircuitTarget};
 use plonky2::plonk::config::{GenericConfig, Hasher as Plonky2_Hasher};
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
-use anyhow::*;
+use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use anyhow::{anyhow, Result};
 
 use crate::{empty_agg2_participation_sub_root, AttestationsAggregator2Circuit, AttestationsAggregator2Proof, Config, Field, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_NUM_PARTICIPANTS, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_TOTAL_STAKE, PIS_AGG2_VALIDATORS_SUB_ROOT};
 use crate::Hash;
+
+use super::serialization::{deserialize_circuit, serialize_circuit};
 
 pub const VALIDATORS_TREE_AGG3_SUB_HEIGHT: usize = AGGREGATION_PASS3_SUB_TREE_HEIGHT;
 pub const ATTESTATION_AGGREGATION_PASS3_SIZE: usize = AGGREGATION_PASS3_SIZE;
@@ -56,6 +59,23 @@ impl AttestationsAggregator3Circuit {
 
     pub fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let mut buffer = serialize_circuit(&self.circuit_data)?;
+        if write_targets(&mut buffer, &self.targets).is_err() {
+            return Err(anyhow!("Failed to serialize circuit targets"));
+        }
+        Ok(buffer)
+    }
+
+    pub fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
+        let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
+        let targets = read_targets(&mut buffer);
+        if targets.is_err() {
+            return Err(anyhow!("Failed to deserialize circuit targets"));
+        }
+        Ok(Self { circuit_data, targets: targets.unwrap() })
     }
 }
 
@@ -250,6 +270,44 @@ fn generate_partial_witness(targets: &AttsAgg3Targets, data: &AttestationsAggreg
     }
 
     Ok(pw)
+}
+
+#[inline]
+fn write_targets(buffer: &mut Vec<u8>, targets: &AttsAgg3Targets) -> IoResult<()> {
+    buffer.write_target(targets.block_slot)?;
+    buffer.write_target_verifier_circuit(&targets.atts_agg2_verifier)?;
+    buffer.write_usize(targets.atts_agg2_data.len())?;
+    for d in &targets.atts_agg2_data {
+        buffer.write_target_hash(&d.validators_sub_root)?;
+        buffer.write_target_bool(d.has_participation)?;
+        buffer.write_target_proof_with_public_inputs(&d.proof)?;
+    }
+
+    Ok(())
+}
+
+#[inline]
+fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg3Targets> {
+    let block_slot = buffer.read_target()?;
+    let atts_agg2_verifier = buffer.read_target_verifier_circuit()?;
+    let mut atts_agg2_data: Vec<AttsAgg3Agg2Targets> = Vec::new();
+    let atts_agg1_data_length = buffer.read_usize()?;
+    for _ in 0..atts_agg1_data_length {
+        let validators_sub_root = buffer.read_target_hash()?;
+        let has_participation = buffer.read_target_bool()?;
+        let proof = buffer.read_target_proof_with_public_inputs()?;
+        atts_agg2_data.push(AttsAgg3Agg2Targets {
+            validators_sub_root,
+            has_participation,
+            proof,
+        });
+    }
+
+    Ok(AttsAgg3Targets {
+        block_slot,
+        atts_agg2_verifier,
+        atts_agg2_data,
+    })
 }
 
 fn build_empty_participation_sub_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
