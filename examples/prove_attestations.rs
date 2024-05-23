@@ -2,6 +2,7 @@ mod utils;
 use crate::utils::commitment_reveal;
 use crate::utils::generate_validator_set;
 
+use validator_circuits::calculate_participation_root;
 use validator_circuits::AttestationsAggregator1Data;
 use validator_circuits::AttestationsAggregator1Proof;
 use validator_circuits::AttestationsAggregator1RevealData;
@@ -12,6 +13,7 @@ use validator_circuits::AttestationsAggregator2Proof;
 use validator_circuits::AttestationsAggregator3Agg2Data;
 use validator_circuits::AttestationsAggregator3Data;
 use validator_circuits::AttestationsAggregator3Proof;
+use validator_circuits::Field;
 use validator_circuits::ValidatorCircuits;
 use validator_circuits::ValidatorSet;
 use validator_circuits::AGGREGATION_PASS1_SUB_TREE_HEIGHT;
@@ -19,6 +21,7 @@ use validator_circuits::AGGREGATION_PASS2_SUB_TREE_HEIGHT;
 use validator_circuits::ATTESTATION_AGGREGATION_PASS1_SIZE;
 use validator_circuits::ATTESTATION_AGGREGATION_PASS2_SIZE;
 use validator_circuits::ATTESTATION_AGGREGATION_PASS3_SIZE;
+use validator_circuits::MAX_PARTICIPANTS;
 use std::time::Instant;
 use anyhow::*;
 
@@ -40,28 +43,25 @@ fn main() {
 
     //generatep roofs
     let block_slot = 100;
-    let agg1_proof = attestations_aggregator1_proof(&validators, block_slot).unwrap();
+    let num_attestations = 1000;
+    let agg1_proof = attestations_aggregator1_proof(&validators, block_slot, num_attestations).unwrap();
     let agg2_proof = attestations_aggregator2_proof(&validators, &agg1_proof).unwrap();
     let agg3_proof = attestations_aggregator3_proof(&validators, &agg2_proof).unwrap();
 
-    //let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT + AGGREGATION_PASS2_SUB_TREE_HEIGHT;
-    //println!("expected sub root: {:?}", validators.sub_root(height, 0));
-    println!("expected root: {:?}", validators.root());
-
     //done
     println!(
-        "Proved a total validation stake of {} from {} validators for slot {} with validator sub root [{:?}] and participation sub root [{:?}]!", 
+        "Proved a total validation stake of {} from {} validators for slot {} with validator root [{:?}] and participation root [{:?}]!", 
         agg3_proof.total_stake(), 
         agg3_proof.num_participants(), 
         agg3_proof.block_slot(), 
         agg3_proof.validators_root(),
         agg3_proof.participation_root(),
     );
+    println!("expected validator root: {:?}", validators.root());
+    println!("expected participation root: {:?}", participation_root(num_attestations));
 }
 
-fn attestations_aggregator1_proof(validators: &ValidatorSet, block_slot: usize) -> Result<AttestationsAggregator1Proof> {
-    let num_attestations = 1000;
-
+fn attestations_aggregator1_proof(validators: &ValidatorSet, block_slot: usize, num_attestations: usize) -> Result<AttestationsAggregator1Proof> {
     //create data for proving
     let validators_data: Vec<AttestationsAggregator1ValidatorData> = (0..ATTESTATION_AGGREGATION_PASS1_SIZE).map(|i| {
         let validator = validators.validator(i);
@@ -137,7 +137,6 @@ fn attestations_aggregator2_proof(validators: &ValidatorSet, agg1_proof: &Attest
     }
 }
 
-
 fn attestations_aggregator3_proof(validators: &ValidatorSet, agg2_proof: &AttestationsAggregator2Proof) -> Result<AttestationsAggregator3Proof> {
     let num_aggragations = 1;
 
@@ -173,4 +172,18 @@ fn attestations_aggregator3_proof(validators: &ValidatorSet, agg2_proof: &Attest
     } else {
         Err(anyhow!("Proof failed verification"))
     }
+}
+
+fn participation_root(to: usize) -> [Field; 4] {
+    let mut bytes: Vec<u8> = vec![0u8; MAX_PARTICIPANTS / 8];
+
+    let full_bytes = to / 8;
+    for i in 0..full_bytes {
+        bytes[i] = 0xff;
+    }
+
+    let remainder = to - (full_bytes * 8);
+    bytes[full_bytes] = 0xff << (8 - remainder);
+
+    calculate_participation_root(&bytes)
 }

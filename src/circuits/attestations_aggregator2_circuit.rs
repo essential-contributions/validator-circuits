@@ -248,11 +248,7 @@ fn generate_partial_witness(targets: &AttsAgg2Targets, data: &AttestationsAggreg
     //create partial witness
     let mut pw = PartialWitness::new();
     pw.set_target(targets.block_slot, Plonky2_Field::from_canonical_u64(data.block_slot as u64));
-
-    //TODO: the following can be replaced by: 
-    //pw.set_verifier_data_target(&targets.atts_agg1_verifier, &atts_agg1_circuit_data.verifier_only);
-    pw.set_cap_target(&targets.atts_agg1_verifier.constants_sigmas_cap, &atts_agg1_circuit_data.verifier_only.constants_sigmas_cap);
-    pw.set_hash_target(targets.atts_agg1_verifier.circuit_digest.clone(), atts_agg1_circuit_data.verifier_only.circuit_digest);
+    pw.set_verifier_data_target(&targets.atts_agg1_verifier, &atts_agg1_circuit_data.verifier_only);
 
     for (t, v) in targets.atts_agg1_data.iter().zip(data.agg1_data.clone()) {
         let validators_sub_root: HashOut<Field> = HashOut::<Field> { elements: v.validators_sub_root };
@@ -311,7 +307,7 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg2Targets> {
 }
 
 fn build_empty_participation_sub_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
-    let root = empty_agg2_participation_sub_root();
+    let root = empty_agg1_participation_sub_root();
     HashOutTarget {
         elements: root.map(|f| { builder.constant(f) }),
     }
