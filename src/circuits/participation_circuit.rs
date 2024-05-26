@@ -87,10 +87,12 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationCirc
     for i in 0..NUM_PARTICIPATION_FIELDS {
         let num_bits = PARTICIPANTS_PER_FIELD.min(AGGREGATION_PASS1_SIZE - (i * PARTICIPANTS_PER_FIELD));
         let part = builder.add_virtual_target();
-        let mut part_bits = builder.split_le(part, num_bits);
+        let part_bits = builder.split_le(part, num_bits);
         
         participation_bit_field.push(part);
-        participation_bits.append(&mut part_bits);
+        for b in part_bits.iter().rev() {
+            participation_bits.push(*b);
+        }
     }
 
     //Break the validator sub index within the participation field into bits
@@ -103,13 +105,10 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationCirc
     for (index, participant_bit) in participation_bits.iter().enumerate() {
         let mut participant_bit_with_index_mask = participant_bit.clone();
         for b in 0..AGGREGATION_PASS1_SUB_TREE_HEIGHT {
-            let pow = 2usize.pow(b as u32);
-            let pow2 = 2usize.pow(b as u32 + 1);
-            let bit = (AGGREGATION_PASS1_SUB_TREE_HEIGHT - b) - 1;
-            if (index % pow2) / pow >= 1 {
-                participant_bit_with_index_mask = builder.and(participant_bit_with_index_mask, validator_field_index_bits[bit]);
+            if ((1 << b) & index) > 0 {
+                participant_bit_with_index_mask = builder.and(participant_bit_with_index_mask, validator_field_index_bits[b]);
             } else {
-                participant_bit_with_index_mask = builder.and(participant_bit_with_index_mask, validator_field_index_bits_inv[bit]);
+                participant_bit_with_index_mask = builder.and(participant_bit_with_index_mask, validator_field_index_bits_inv[b]);
             }
         }
         participated = builder.add(participated, participant_bit_with_index_mask.target);
@@ -161,7 +160,7 @@ fn generate_partial_witness(targets: &ParticipationCircuitTargets, data: &Partic
     let participation_root_index = data.validator_index / AGGREGATION_PASS1_SIZE;
     let participation_root_merkle_data = participation_merkle_data(&data.participation_bit_field, data.validator_index);
     let validator_field_index = data.validator_index % AGGREGATION_PASS1_SIZE;
-    let participation_bit_field = participation_fields(&data.participation_bit_field, participation_root_index * AGGREGATION_PASS1_SIZE);
+    let participation_bit_field = participation_fields(&data.participation_bit_field, participation_root_index);
 
     let mut pw = PartialWitness::new();
     pw.set_target(targets.validator_field_index, Plonky2_Field::from_canonical_usize(validator_field_index));

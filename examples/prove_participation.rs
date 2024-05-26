@@ -15,9 +15,10 @@ fn main() {
     println!("");
 
     //data
-    let validator_index = 0;
-    let mut participation_bit_field = participation_bit_field(1000);
-    //participation_bit_field[0] = 0xFF;
+    let validator_index = 53;
+    let mut participation_bit_field = participation_bit_field(0);
+    participation_bit_field[6] = 0x04;
+
 
     //prove
     println!("Generating Proof...");
@@ -45,9 +46,10 @@ fn participation_bit_field(to: usize) -> Vec<u8> {
     for i in 0..full_bytes {
         bytes[i] = 0xff;
     }
-
-    let remainder = to - (full_bytes * 8);
-    bytes[full_bytes] = 0xff << (8 - remainder);
+    if to % 8 > 0 {
+        let remainder = to - (full_bytes * 8);
+        bytes[full_bytes] = 0xff << (8 - remainder);
+    }
 
     bytes
 }

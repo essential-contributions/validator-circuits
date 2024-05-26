@@ -181,9 +181,10 @@ fn participation_root(to: usize) -> [Field; 4] {
     for i in 0..full_bytes {
         bytes[i] = 0xff;
     }
-
-    let remainder = to - (full_bytes * 8);
-    bytes[full_bytes] = 0xff << (8 - remainder);
+    if to % 8 > 0 {
+        let remainder = to - (full_bytes * 8);
+        bytes[full_bytes] = 0xff << (8 - remainder);
+    }
 
     calculate_participation_root(&bytes)
 }
