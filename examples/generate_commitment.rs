@@ -1,5 +1,9 @@
 use validator_circuits::Commitment;
 use std::time::Instant;
+use jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn main() {
     println!("Generating Commitment...");

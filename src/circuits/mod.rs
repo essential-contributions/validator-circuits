@@ -2,6 +2,7 @@ mod attestations_aggregator1_circuit;
 mod attestations_aggregator2_circuit;
 mod attestations_aggregator3_circuit;
 mod participation_circuit;
+mod validators_update_circuit;
 mod serialization;
 
 use std::{fs::{create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
@@ -11,6 +12,7 @@ pub use attestations_aggregator1_circuit::*;
 pub use attestations_aggregator2_circuit::*;
 pub use attestations_aggregator3_circuit::*;
 pub use participation_circuit::*;
+pub use validators_update_circuit::*;
 
 const CIRCUIT_OUTPUT_FOLDER: &str = "circuits";
 const ATTESTATIONS_AGGREGATOR1_CIRCUIT_FILE: &str = "AttestationsAggregator1Circuit.bin";

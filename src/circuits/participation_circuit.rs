@@ -9,13 +9,12 @@ use plonky2::plonk::config::{GenericConfig, Hasher as Plonky2_Hasher};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use anyhow::{anyhow, Result};
 
-use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D};
+use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D, MAX_VALIDATORS};
 use crate::Hash;
 
 const PARTICIPANTS_PER_FIELD: usize = 62;
 const NUM_PARTICIPATION_FIELDS: usize = div_ceil(AGGREGATION_PASS1_SIZE, PARTICIPANTS_PER_FIELD);
 
-pub const MAX_PARTICIPANTS: usize = AGGREGATION_PASS1_SIZE * AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE;
 pub const PARTICIPATION_TREE_HEIGHT: usize = AGGREGATION_PASS2_SUB_TREE_HEIGHT + AGGREGATION_PASS3_SUB_TREE_HEIGHT;
 pub const PARTICIPATION_TREE_SIZE: usize = AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE;
 pub const PIS_PARTICIPATION_ROOT: [usize; 4] = [0, 1, 2, 3];
@@ -153,8 +152,8 @@ pub struct ParticipationCircuitData {
 }
 
 fn generate_partial_witness(targets: &ParticipationCircuitTargets, data: &ParticipationCircuitData) -> Result<PartialWitness<Field>> {
-    if data.validator_index >= MAX_PARTICIPANTS {
-        return Err(anyhow!("Invalid validator index (max: {})", MAX_PARTICIPANTS));
+    if data.validator_index >= MAX_VALIDATORS {
+        return Err(anyhow!("Invalid validator index (max: {})", MAX_VALIDATORS));
     }
 
     let participation_root_index = data.validator_index / AGGREGATION_PASS1_SIZE;

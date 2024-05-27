@@ -2,9 +2,12 @@ mod utils;
 
 use validator_circuits::ParticipationCircuit;
 use validator_circuits::ParticipationCircuitData;
-use validator_circuits::MAX_PARTICIPANTS;
+use validator_circuits::MAX_VALIDATORS;
 use std::time::Instant;
+use jemallocator::Jemalloc;
 
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn main() {
     //generate the circuits
@@ -18,7 +21,6 @@ fn main() {
     let validator_index = 53;
     let mut participation_bit_field = participation_bit_field(0);
     participation_bit_field[6] = 0x04;
-
 
     //prove
     println!("Generating Proof...");
@@ -40,7 +42,7 @@ fn main() {
 }
 
 fn participation_bit_field(to: usize) -> Vec<u8> {
-    let mut bytes: Vec<u8> = vec![0u8; MAX_PARTICIPANTS / 8];
+    let mut bytes: Vec<u8> = vec![0u8; MAX_VALIDATORS / 8];
 
     let full_bytes = to / 8;
     for i in 0..full_bytes {

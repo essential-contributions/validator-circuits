@@ -21,10 +21,13 @@ use validator_circuits::AGGREGATION_PASS2_SUB_TREE_HEIGHT;
 use validator_circuits::ATTESTATION_AGGREGATION_PASS1_SIZE;
 use validator_circuits::ATTESTATION_AGGREGATION_PASS2_SIZE;
 use validator_circuits::ATTESTATION_AGGREGATION_PASS3_SIZE;
-use validator_circuits::MAX_PARTICIPANTS;
+use validator_circuits::MAX_VALIDATORS;
 use std::time::Instant;
 use anyhow::*;
+use jemallocator::Jemalloc;
 
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn main() {
     //generate the circuits
@@ -175,7 +178,7 @@ fn attestations_aggregator3_proof(validators: &ValidatorSet, agg2_proof: &Attest
 }
 
 fn participation_root(to: usize) -> [Field; 4] {
-    let mut bytes: Vec<u8> = vec![0u8; MAX_PARTICIPANTS / 8];
+    let mut bytes: Vec<u8> = vec![0u8; MAX_VALIDATORS / 8];
 
     let full_bytes = to / 8;
     for i in 0..full_bytes {
