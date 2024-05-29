@@ -13,6 +13,7 @@ use crate::{empty_agg2_participation_sub_root, AttestationsAggregator2Circuit, A
 use crate::Hash;
 
 use super::serialization::{deserialize_circuit, serialize_circuit};
+use super::{Circuit, ContinuationCircuit, Proof, Serializeable};
 
 pub const VALIDATORS_TREE_AGG3_SUB_HEIGHT: usize = AGGREGATION_PASS3_SUB_TREE_HEIGHT;
 pub const ATTESTATION_AGGREGATION_PASS3_SIZE: usize = AGGREGATION_PASS3_SIZE;
@@ -36,9 +37,12 @@ struct AttsAgg3Agg2Targets {
     has_participation: BoolTarget,
     proof: ProofWithPublicInputsTarget<D>
 }
+impl Circuit for AttestationsAggregator3Circuit {
+    type Data = AttestationsAggregator3Data;
+    type Proof = AttestationsAggregator3Proof;
 
-impl AttestationsAggregator3Circuit {
-    pub fn new(atts_agg2_circuit: &AttestationsAggregator2Circuit) -> Self {
+    fn new() -> Self {
+        let atts_agg2_circuit = AttestationsAggregator2Circuit::new();
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder, atts_agg2_circuit.circuit_data());
@@ -47,21 +51,41 @@ impl AttestationsAggregator3Circuit {
         Self { circuit_data, targets }
     }
     
-    pub fn generate_proof(&self, data: &AttestationsAggregator3Data, atts_agg2_circuit: &AttestationsAggregator2Circuit) -> Result<AttestationsAggregator3Proof> {
+    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
+        let atts_agg2_circuit = AttestationsAggregator2Circuit::new();
         let pw = generate_partial_witness(&self.targets, data, atts_agg2_circuit.circuit_data())?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationsAggregator3Proof { proof })
     }
 
-    pub fn verify_proof(&self, proof: &AttestationsAggregator3Proof) -> Result<()> {
+    fn verify_proof(&self, proof: &AttestationsAggregator3Proof) -> Result<()> {
         self.circuit_data.verify(proof.proof.clone())
     }
-
-    pub fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
+    
+    fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
     }
+}
+impl ContinuationCircuit for AttestationsAggregator3Circuit {
+    type PrevCircuit = AttestationsAggregator2Circuit;
 
-    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+    fn new_continuation(prev_circuit: &Self::PrevCircuit) -> Self {
+        let config = CircuitConfig::standard_recursion_config();
+        let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
+        let targets = generate_circuit(&mut builder, prev_circuit.circuit_data());
+        let circuit_data = builder.build::<Config>();
+
+        Self { circuit_data, targets }
+    }
+    
+    fn generate_proof_continuation(&self, data: &Self::Data, prev_circuit: &Self::PrevCircuit) -> Result<Self::Proof> {
+        let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
+        let proof = self.circuit_data.prove(pw)?;
+        Ok(AttestationsAggregator3Proof { proof })
+    }
+}
+impl Serializeable for AttestationsAggregator3Circuit {
+    fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = serialize_circuit(&self.circuit_data)?;
         if write_targets(&mut buffer, &self.targets).is_err() {
             return Err(anyhow!("Failed to serialize circuit targets"));
@@ -69,7 +93,7 @@ impl AttestationsAggregator3Circuit {
         Ok(buffer)
     }
 
-    pub fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
+    fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
         let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
         let targets = read_targets(&mut buffer);
         if targets.is_err() {
@@ -83,7 +107,6 @@ impl AttestationsAggregator3Circuit {
 pub struct AttestationsAggregator3Proof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
-
 impl AttestationsAggregator3Proof {
     pub fn validators_root(&self) -> [Field; 4] {
         [self.proof.public_inputs[PIS_AGG3_VALIDATORS_ROOT[0]], 
@@ -110,8 +133,9 @@ impl AttestationsAggregator3Proof {
     pub fn total_stake(&self) -> u64 {
         self.proof.public_inputs[PIS_AGG3_TOTAL_STAKE].to_canonical_u64()
     }
-
-    pub fn raw_proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
+}
+impl Proof for AttestationsAggregator3Proof {
+    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }
 }
@@ -260,11 +284,11 @@ fn generate_partial_witness(targets: &AttsAgg3Targets, data: &AttestationsAggreg
         match v.agg2_proof {
             Some(proof) => {
                 pw.set_bool_target(t.has_participation, true);
-                pw.set_proof_with_pis_target(&t.proof, proof.raw_proof());
+                pw.set_proof_with_pis_target(&t.proof, proof.proof());
             },
             None => {
                 pw.set_bool_target(t.has_participation, false);
-                pw.set_proof_with_pis_target(&t.proof, dummy_proof.raw_proof());
+                pw.set_proof_with_pis_target(&t.proof, dummy_proof.proof());
             },
         }
     }

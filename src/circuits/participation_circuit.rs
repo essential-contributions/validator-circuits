@@ -8,9 +8,13 @@ use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData};
 use plonky2::plonk::config::{GenericConfig, Hasher as Plonky2_Hasher};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use anyhow::{anyhow, Result};
+use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
 use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D, MAX_VALIDATORS};
 use crate::Hash;
+
+use super::serialization::{deserialize_circuit, serialize_circuit};
+use super::{Circuit, Proof, Serializeable};
 
 const PARTICIPANTS_PER_FIELD: usize = 62;
 const NUM_PARTICIPATION_FIELDS: usize = div_ceil(AGGREGATION_PASS1_SIZE, PARTICIPANTS_PER_FIELD);
@@ -32,9 +36,11 @@ struct ParticipationCircuitTargets {
     participation_root_index: Target,
     participation_root_merkle_proof: MerkleProofTarget,
 }
-
-impl ParticipationCircuit {
-    pub fn new() -> Self {
+impl Circuit for ParticipationCircuit {
+    type Data = ParticipationCircuitData;
+    type Proof = ParticipationProof;
+    
+    fn new() -> Self {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder);
@@ -43,14 +49,36 @@ impl ParticipationCircuit {
         Self { circuit_data, targets }
     }
     
-    pub fn generate_proof(&self, data: &ParticipationCircuitData) -> Result<ParticipationProof> {
+    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
         let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ParticipationProof { proof })
     }
 
-    pub fn verify_proof(&self, proof: &ParticipationProof) -> Result<()> {
+    fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
         self.circuit_data.verify(proof.proof.clone())
+    }
+
+    fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
+        return &self.circuit_data;
+    }
+}
+impl Serializeable for ParticipationCircuit {
+    fn to_bytes(&self) -> Result<Vec<u8>> {
+        let mut buffer = serialize_circuit(&self.circuit_data)?;
+        if write_targets(&mut buffer, &self.targets).is_err() {
+            return Err(anyhow!("Failed to serialize circuit targets"));
+        }
+        Ok(buffer)
+    }
+
+    fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
+        let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
+        let targets = read_targets(&mut buffer);
+        if targets.is_err() {
+            return Err(anyhow!("Failed to deserialize circuit targets"));
+        }
+        Ok(Self { circuit_data, targets: targets.unwrap() })
     }
 }
 
@@ -58,7 +86,6 @@ impl ParticipationCircuit {
 pub struct ParticipationProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
-
 impl ParticipationProof {
     pub fn participation_root(&self) -> [Field; 4] {
         [self.proof.public_inputs[PIS_PARTICIPATION_ROOT[0]], 
@@ -73,6 +100,11 @@ impl ParticipationProof {
 
     pub fn participated(&self) -> bool {
         self.proof.public_inputs[PIS_PARTICIPATION_PARTICIPATED].to_canonical_u64() == 1
+    }
+}
+impl Proof for ParticipationProof {
+    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
+        &self.proof
     }
 }
 
@@ -182,6 +214,43 @@ fn set_merkle_targets(pw: &mut PartialWitness<Field>, target: MerkleProofTarget,
         let hash: HashOut<Field> = HashOut::<Field> { elements: *v };
         pw.set_hash_target(*t, hash);
     }
+}
+/*
+ParticipationCircuitTargets {
+    validator_field_index: Target,
+    participation_bit_field: Vec<Target>,
+    participation_root: HashOutTarget,
+    participation_root_index: Target,
+    participation_root_merkle_proof: MerkleProofTarget,
+}
+     */
+
+#[inline]
+fn write_targets(buffer: &mut Vec<u8>, targets: &ParticipationCircuitTargets) -> IoResult<()> {
+    buffer.write_target(targets.validator_field_index)?;
+    buffer.write_target_vec(&targets.participation_bit_field)?;
+    buffer.write_target_hash(&targets.participation_root)?;
+    buffer.write_target(targets.participation_root_index)?;
+    buffer.write_target_merkle_proof(&targets.participation_root_merkle_proof)?;
+
+    Ok(())
+}
+
+#[inline]
+fn read_targets(buffer: &mut Buffer) -> IoResult<ParticipationCircuitTargets> {
+    let validator_field_index = buffer.read_target()?;
+    let participation_bit_field = buffer.read_target_vec()?;
+    let participation_root = buffer.read_target_hash()?;
+    let participation_root_index = buffer.read_target()?;
+    let participation_root_merkle_proof = buffer.read_target_merkle_proof()?;
+
+    Ok(ParticipationCircuitTargets {
+        validator_field_index,
+        participation_bit_field,
+        participation_root,
+        participation_root_index,
+        participation_root_merkle_proof,
+    })
 }
 
 pub fn calculate_participation_root(participation_bit_field: &Vec<u8>) -> [Field; 4] {

@@ -5,6 +5,7 @@ mod participation_circuit;
 mod validators_update_circuit;
 mod serialization;
 
+use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
 use std::{fs::{create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
 use anyhow::Result;
 
@@ -14,10 +15,43 @@ pub use attestations_aggregator3_circuit::*;
 pub use participation_circuit::*;
 pub use validators_update_circuit::*;
 
+use crate::{Config, Field, D};
+
 const CIRCUIT_OUTPUT_FOLDER: &str = "circuits";
-const ATTESTATIONS_AGGREGATOR1_CIRCUIT_FILE: &str = "AttestationsAggregator1Circuit.bin";
-const ATTESTATIONS_AGGREGATOR2_CIRCUIT_FILE: &str = "AttestationsAggregator2Circuit.bin";
-const ATTESTATIONS_AGGREGATOR3_CIRCUIT_FILE: &str = "AttestationsAggregator3Circuit.bin";
+const CIRCUIT_DIRNAME: &str = "circuit.bin";
+const ATTESTATIONS_AGGREGATOR1_CIRCUIT_DIR: &str = "attestations_aggregator1";
+const ATTESTATIONS_AGGREGATOR2_CIRCUIT_DIR: &str = "attestations_aggregator2";
+const ATTESTATIONS_AGGREGATOR3_CIRCUIT_DIR: &str = "attestations_aggregator3";
+const PARTICIPATION_CIRCUIT_DIR: &str = "participation";
+const VALIDATORS_UPDATE_CIRCUIT_DIR: &str = "validators_update";
+
+pub trait Circuit {
+    type Data;
+    type Proof: Proof;
+
+    fn new() -> Self;
+    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof>;
+    fn verify_proof(&self, proof: &Self::Proof) -> Result<()>;
+    fn circuit_data(&self) -> &CircuitData<Field, Config, D>;
+}
+
+pub trait ContinuationCircuit: Circuit {
+    type PrevCircuit: Circuit;
+
+    fn new_continuation(prev_circuit: &Self::PrevCircuit) -> Self;
+    fn generate_proof_continuation(&self, data: &Self::Data, prev_circuit: &Self::PrevCircuit) -> Result<Self::Proof>;
+}
+
+pub trait Proof {
+    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D>;
+}
+
+pub trait Serializeable {
+    fn to_bytes(&self) -> Result<Vec<u8>>;
+    fn from_bytes(bytes: &Vec<u8>) -> Result<Self> 
+    where 
+        Self: Sized;
+}
 
 pub struct ValidatorCircuits {
     attestations_aggregator1: AttestationsAggregator1Circuit,
@@ -27,12 +61,12 @@ pub struct ValidatorCircuits {
 
 impl ValidatorCircuits {
     pub fn build() -> Self {
-        let attestations_aggregator1 = attestations_aggregator1_circuit();
-        let attestations_aggregator2 = attestations_aggregator2_circuit(&attestations_aggregator1);
-        let attestations_aggregator3 = attestations_aggregator3_circuit(&attestations_aggregator2);
+        let attestations_aggregator1 = load_or_create_circuit::<AttestationsAggregator1Circuit>(ATTESTATIONS_AGGREGATOR1_CIRCUIT_DIR);
+        let attestations_aggregator2 = load_or_create_continuation_circuit::<AttestationsAggregator2Circuit, _>(ATTESTATIONS_AGGREGATOR2_CIRCUIT_DIR, &attestations_aggregator1);
+        let attestations_aggregator3 = load_or_create_continuation_circuit::<AttestationsAggregator3Circuit, _>(ATTESTATIONS_AGGREGATOR3_CIRCUIT_DIR, &attestations_aggregator2);
         //let attestations_aggregator1 = AttestationsAggregator1Circuit::new();
-        //let attestations_aggregator2 = AttestationsAggregator2Circuit::new(&attestations_aggregator1);
-        //let attestations_aggregator3 = AttestationsAggregator3Circuit::new(&attestations_aggregator2);
+        //let attestations_aggregator2 = AttestationsAggregator2Circuit::new_continutation(&attestations_aggregator1);
+        //let attestations_aggregator3 = AttestationsAggregator3Circuit::new_continutation(&attestations_aggregator2);
 
         ValidatorCircuits {
             attestations_aggregator1,
@@ -49,59 +83,60 @@ impl ValidatorCircuits {
     }
 
     pub fn generate_attestations_aggregator2_proof(&self, data: &AttestationsAggregator2Data) -> Result<AttestationsAggregator2Proof> {
-        self.attestations_aggregator2.generate_proof(data, &self.attestations_aggregator1)
+        self.attestations_aggregator2.generate_proof_continuation(data, &self.attestations_aggregator1)
     }
     pub fn verify_attestations_aggregator2_proof(&self, proof: &AttestationsAggregator2Proof) -> Result<()> {
         self.attestations_aggregator2.verify_proof(proof)
     }
 
     pub fn generate_attestations_aggregator3_proof(&self, data: &AttestationsAggregator3Data) -> Result<AttestationsAggregator3Proof> {
-        self.attestations_aggregator3.generate_proof(data, &self.attestations_aggregator2)
+        self.attestations_aggregator3.generate_proof_continuation(data, &self.attestations_aggregator2)
     }
     pub fn verify_attestations_aggregator3_proof(&self, proof: &AttestationsAggregator3Proof) -> Result<()> {
         self.attestations_aggregator3.verify_proof(proof)
     }
 }
 
-fn attestations_aggregator1_circuit() -> AttestationsAggregator1Circuit {
-    let bytes = read_from_file(ATTESTATIONS_AGGREGATOR1_CIRCUIT_FILE);
+pub fn load_or_create_validators_update_circuit() -> ValidatorsUpdateCircuit {
+    load_or_create_circuit::<ValidatorsUpdateCircuit>(VALIDATORS_UPDATE_CIRCUIT_DIR)
+}
+
+pub fn load_or_create_participation_circuit() -> ParticipationCircuit {
+    load_or_create_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR)
+}
+
+pub fn load_or_create_circuit<C>(dir: &str) -> C 
+where
+    C: Circuit + Serializeable,
+{
+    let bytes = read_from_dir(dir);
     if bytes.is_ok() {
-        let circuit = AttestationsAggregator1Circuit::from_bytes(&bytes.unwrap());
+        let circuit = C::from_bytes(&bytes.unwrap());
         if circuit.is_ok() {
-            println!("read circuit from {}", ATTESTATIONS_AGGREGATOR1_CIRCUIT_FILE);
+            println!("read circuit from {}", dir);
             return circuit.unwrap();
         }
     }
-    let circuit = AttestationsAggregator1Circuit::new();
-    write_circuit(circuit.to_bytes(), ATTESTATIONS_AGGREGATOR1_CIRCUIT_FILE);
+    let circuit = C::new();
+    write_circuit(circuit.to_bytes(), dir);
     circuit
 }
 
-fn attestations_aggregator2_circuit(atts_agg1_circuit: &AttestationsAggregator1Circuit) -> AttestationsAggregator2Circuit {
-    let bytes = read_from_file(ATTESTATIONS_AGGREGATOR2_CIRCUIT_FILE);
+pub fn load_or_create_continuation_circuit<CC, C>(dir: &str, prev_circuit: &C) -> CC 
+where
+    C: Circuit,
+    CC: ContinuationCircuit<PrevCircuit = C> + Serializeable,
+{
+    let bytes = read_from_dir(dir);
     if bytes.is_ok() {
-        let circuit = AttestationsAggregator2Circuit::from_bytes(&bytes.unwrap());
+        let circuit = CC::from_bytes(&bytes.unwrap());
         if circuit.is_ok() {
-            println!("read circuit from {}", ATTESTATIONS_AGGREGATOR2_CIRCUIT_FILE);
+            println!("read circuit from {}", dir);
             return circuit.unwrap();
         }
     }
-    let circuit = AttestationsAggregator2Circuit::new(atts_agg1_circuit);
-    write_circuit(circuit.to_bytes(), ATTESTATIONS_AGGREGATOR2_CIRCUIT_FILE);
-    circuit
-}
-
-fn attestations_aggregator3_circuit(atts_agg2_circuit: &AttestationsAggregator2Circuit) -> AttestationsAggregator3Circuit {
-    let bytes = read_from_file(ATTESTATIONS_AGGREGATOR3_CIRCUIT_FILE);
-    if bytes.is_ok() {
-        let circuit = AttestationsAggregator3Circuit::from_bytes(&bytes.unwrap());
-        if circuit.is_ok() {
-            println!("read circuit from {}", ATTESTATIONS_AGGREGATOR3_CIRCUIT_FILE);
-            return circuit.unwrap();
-        }
-    }
-    let circuit = AttestationsAggregator3Circuit::new(atts_agg2_circuit);
-    write_circuit(circuit.to_bytes(), ATTESTATIONS_AGGREGATOR3_CIRCUIT_FILE);
+    let circuit = CC::new_continuation(prev_circuit);
+    write_circuit(circuit.to_bytes(), dir);
     circuit
 }
 
@@ -109,7 +144,7 @@ fn attestations_aggregator3_circuit(atts_agg2_circuit: &AttestationsAggregator2C
 fn write_circuit(circuit_bytes: Result<Vec<u8>>, filename: &str) {
     match circuit_bytes {
         Ok(bytes) => {
-            if write_to_file(&bytes, filename).is_err() {
+            if write_to_dir(&bytes, filename).is_err() {
                 println!("Failed to write file: {}", filename);
             }
         },
@@ -118,9 +153,10 @@ fn write_circuit(circuit_bytes: Result<Vec<u8>>, filename: &str) {
 }
 
 #[inline]
-fn write_to_file(bytes: &Vec<u8>, filename: &str) -> io::Result<()> {
+fn write_to_dir(bytes: &Vec<u8>, dir: &str) -> io::Result<()> {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
-    path.push(filename);
+    path.push(dir);
+    path.push(CIRCUIT_DIRNAME);
 
     if let Some(parent) = path.parent() {
         create_dir_all(parent)?;
@@ -134,12 +170,13 @@ fn write_to_file(bytes: &Vec<u8>, filename: &str) -> io::Result<()> {
 }
 
 #[inline]
-fn read_from_file(filename: &str) -> io::Result<Vec<u8>> {
+fn read_from_dir(dir: &str) -> io::Result<Vec<u8>> {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
-    path.push(filename);
+    path.push(dir);
+    path.push(CIRCUIT_DIRNAME);
 
     let file = File::open(&path)?;
-    let mut reader = BufReader::with_capacity(131072, file);
+    let mut reader = BufReader::with_capacity(134217728, file);
     let mut buffer: Vec<u8> = Vec::new();
     reader.read_to_end(&mut buffer)?;
 

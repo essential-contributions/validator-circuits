@@ -8,9 +8,13 @@ use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use anyhow::{anyhow, Result};
+use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
 use crate::{Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
+
+use super::serialization::{deserialize_circuit, serialize_circuit};
+use super::{Circuit, Proof, Serializeable};
 
 pub const PIS_VALIDATORS_UPDATE_INDEX: usize = 0;
 pub const PIS_VALIDATORS_UPDATE_PREVIOUS_ROOT: [usize; 4] = [1, 2, 3, 4];
@@ -33,9 +37,11 @@ struct ValidatorsUpdateCircuitTargets {
     new_stake: Target,
     merkle_proof: MerkleProofTarget,
 }
-
-impl ValidatorsUpdateCircuit {
-    pub fn new() -> Self {
+impl Circuit for ValidatorsUpdateCircuit {
+    type Data = ValidatorsUpdateCircuitData;
+    type Proof = ValidatorsUpdateProof;
+    
+    fn new() -> Self {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder);
@@ -43,15 +49,37 @@ impl ValidatorsUpdateCircuit {
 
         Self { circuit_data, targets }
     }
-    
-    pub fn generate_proof(&self, data: &ValidatorsUpdateCircuitData) -> Result<ValidatorsUpdateProof> {
+
+    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
         let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ValidatorsUpdateProof { proof })
     }
 
-    pub fn verify_proof(&self, proof: &ValidatorsUpdateProof) -> Result<()> {
+    fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
         self.circuit_data.verify(proof.proof.clone())
+    }
+
+    fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
+        return &self.circuit_data;
+    }
+}
+impl Serializeable for ValidatorsUpdateCircuit {
+    fn to_bytes(&self) -> Result<Vec<u8>> {
+        let mut buffer = serialize_circuit(&self.circuit_data)?;
+        if write_targets(&mut buffer, &self.targets).is_err() {
+            return Err(anyhow!("Failed to serialize circuit targets"));
+        }
+        Ok(buffer)
+    }
+
+    fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
+        let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
+        let targets = read_targets(&mut buffer);
+        if targets.is_err() {
+            return Err(anyhow!("Failed to deserialize circuit targets"));
+        }
+        Ok(Self { circuit_data, targets: targets.unwrap() })
     }
 }
 
@@ -59,7 +87,6 @@ impl ValidatorsUpdateCircuit {
 pub struct ValidatorsUpdateProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
-
 impl ValidatorsUpdateProof {
     pub fn validator_index(&self) -> u32 {
         self.proof.public_inputs[PIS_VALIDATORS_UPDATE_INDEX].to_canonical_u64() as u32
@@ -92,6 +119,11 @@ impl ValidatorsUpdateProof {
 
     pub fn new_stake(&self) -> u32 {
         self.proof.public_inputs[PIS_VALIDATORS_UPDATE_NEW_STAKE].to_canonical_u64() as u32
+    }
+}
+impl Proof for ValidatorsUpdateProof {
+    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
+        &self.proof
     }
 }
 
@@ -186,4 +218,41 @@ fn set_merkle_targets(pw: &mut PartialWitness<Field>, target: MerkleProofTarget,
         let hash: HashOut<Field> = HashOut::<Field> { elements: *v };
         pw.set_hash_target(*t, hash);
     }
+}
+
+#[inline]
+fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorsUpdateCircuitTargets) -> IoResult<()> {
+    buffer.write_target(targets.index)?;
+    buffer.write_target_hash(&targets.previous_root)?;
+    buffer.write_target_hash(&targets.previous_commitment)?;
+    buffer.write_target(targets.previous_stake)?;
+    buffer.write_target_hash(&targets.new_root)?;
+    buffer.write_target_hash(&targets.new_commitment)?;
+    buffer.write_target(targets.new_stake)?;
+    buffer.write_target_merkle_proof(&targets.merkle_proof)?;
+
+    Ok(())
+}
+
+#[inline]
+fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorsUpdateCircuitTargets> {
+    let index = buffer.read_target()?;
+    let previous_root = buffer.read_target_hash()?;
+    let previous_commitment = buffer.read_target_hash()?;
+    let previous_stake = buffer.read_target()?;
+    let new_root = buffer.read_target_hash()?;
+    let new_commitment = buffer.read_target_hash()?;
+    let new_stake = buffer.read_target()?;
+    let merkle_proof = buffer.read_target_merkle_proof()?;
+
+    Ok(ValidatorsUpdateCircuitTargets {
+        index,
+        previous_root,
+        previous_commitment,
+        previous_stake,
+        new_root,
+        new_commitment,
+        new_stake,
+        merkle_proof,
+    })
 }

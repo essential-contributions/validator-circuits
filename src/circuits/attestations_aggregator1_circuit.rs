@@ -14,6 +14,7 @@ use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HE
 use crate::Hash;
 
 use super::serialization::{deserialize_circuit, serialize_circuit};
+use super::{Circuit, Proof, Serializeable};
 
 const PARTICIPANTS_PER_FIELD: usize = 62;
 const NUM_PARTICIPATION_FIELDS: usize = div_ceil(AGGREGATION_PASS1_SIZE, PARTICIPANTS_PER_FIELD);
@@ -41,9 +42,11 @@ struct AttsAgg1ValidatorTargets {
     reveal: Vec<Target>,
     reveal_proof: MerkleProofTarget,
 }
+impl Circuit for AttestationsAggregator1Circuit {
+    type Data = AttestationsAggregator1Data;
+    type Proof = AttestationsAggregator1Proof;
 
-impl AttestationsAggregator1Circuit {
-    pub fn new() -> Self {
+    fn new() -> Self {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder);
@@ -52,21 +55,22 @@ impl AttestationsAggregator1Circuit {
         Self { circuit_data, targets }
     }
     
-    pub fn generate_proof(&self, data: &AttestationsAggregator1Data) -> Result<AttestationsAggregator1Proof> {
+    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
         let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationsAggregator1Proof { proof })
     }
 
-    pub fn verify_proof(&self, proof: &AttestationsAggregator1Proof) -> Result<()> {
+    fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
         self.circuit_data.verify(proof.proof.clone())
     }
 
-    pub fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
+    fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
     }
-
-    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+}
+impl Serializeable for AttestationsAggregator1Circuit {
+    fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = serialize_circuit(&self.circuit_data)?;
         if write_targets(&mut buffer, &self.targets).is_err() {
             return Err(anyhow!("Failed to serialize circuit targets"));
@@ -74,7 +78,7 @@ impl AttestationsAggregator1Circuit {
         Ok(buffer)
     }
 
-    pub fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
+    fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
         let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
         let targets = read_targets(&mut buffer);
         if targets.is_err() {
@@ -88,7 +92,6 @@ impl AttestationsAggregator1Circuit {
 pub struct AttestationsAggregator1Proof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
-
 impl AttestationsAggregator1Proof {
     pub fn validators_sub_root(&self) -> [Field; 4] {
         [self.proof.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[0]], 
@@ -115,8 +118,9 @@ impl AttestationsAggregator1Proof {
     pub fn total_stake(&self) -> u64 {
         self.proof.public_inputs[PIS_AGG1_TOTAL_STAKE].to_canonical_u64()
     }
-
-    pub fn raw_proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
+}
+impl Proof for AttestationsAggregator1Proof {
+    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }
 }

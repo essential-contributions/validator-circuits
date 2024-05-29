@@ -1,7 +1,8 @@
 mod utils;
 
+use validator_circuits::load_or_create_validators_update_circuit;
+use validator_circuits::Circuit;
 use validator_circuits::ValidatorCircuits;
-use validator_circuits::ValidatorsUpdateCircuit;
 use validator_circuits::ValidatorsUpdateCircuitData;
 use std::time::Instant;
 use jemallocator::Jemalloc;
@@ -15,7 +16,7 @@ fn main() {
     //generate the circuits
     println!("Building Circuit... ");
     let start = Instant::now();
-    let validators_update_circuit = ValidatorsUpdateCircuit::new();
+    let validators_update_circuit = load_or_create_validators_update_circuit();
     println!("(finished in {:?})", start.elapsed());
     println!("");
 

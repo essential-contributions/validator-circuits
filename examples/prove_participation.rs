@@ -1,6 +1,7 @@
 mod utils;
 
-use validator_circuits::ParticipationCircuit;
+use validator_circuits::load_or_create_participation_circuit;
+use validator_circuits::Circuit;
 use validator_circuits::ParticipationCircuitData;
 use validator_circuits::MAX_VALIDATORS;
 use std::time::Instant;
@@ -13,7 +14,7 @@ fn main() {
     //generate the circuits
     println!("Building Circuit... ");
     let start = Instant::now();
-    let participation_circuit = ParticipationCircuit::new();
+    let participation_circuit = load_or_create_participation_circuit();
     println!("(finished in {:?})", start.elapsed());
     println!("");
 
