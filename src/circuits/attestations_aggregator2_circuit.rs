@@ -241,7 +241,8 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg1_circuit_da
     }
 }
 
-#[derive(Clone)]pub struct AttestationsAggregator2Data {
+#[derive(Clone)]
+pub struct AttestationsAggregator2Data {
     pub block_slot: usize,
     pub agg1_data: Vec<AttestationsAggregator2Agg1Data>,
 }

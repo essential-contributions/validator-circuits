@@ -1,8 +1,12 @@
 mod utils;
 
 use validator_circuits::load_or_create_participation_circuit;
+use validator_circuits::save_circuit;
+use validator_circuits::save_proof;
+use validator_circuits::wrap::WrapperCircuit;
 use validator_circuits::Circuit;
 use validator_circuits::ParticipationCircuitData;
+use validator_circuits::Proof;
 use validator_circuits::MAX_VALIDATORS;
 use std::time::Instant;
 use jemallocator::Jemalloc;
@@ -39,6 +43,28 @@ fn main() {
         }
     } else {
         println!("Proof failed verification");
+    }
+    println!("");
+
+    //wrap proof
+    println!("Building Wrapper Circuit... ");
+    let start = Instant::now();
+    let inner_circuit = participation_circuit.circuit_data();
+    let inner_proof = proof.proof();
+    let wrapper = WrapperCircuit::new(inner_circuit);
+    println!("(finished in {:?})", start.elapsed());
+    println!("");
+
+    println!("Generating Wrapper Proof...");
+    let start = Instant::now();
+    let proof = wrapper.generate_proof(inner_circuit, inner_proof).unwrap();
+    println!("(finished in {:?})", start.elapsed());
+    if wrapper.verify_proof(&proof).is_ok() {
+        println!("Wrapper successfully verified!");
+        save_circuit(wrapper.circuit_data(), "participation");
+        save_proof(&proof, "participation");
+    } else {
+        println!("Wrapper proof failed verification");
     }
 }
 

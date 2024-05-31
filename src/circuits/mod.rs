@@ -15,10 +15,14 @@ pub use attestations_aggregator3_circuit::*;
 pub use participation_circuit::*;
 pub use validators_update_circuit::*;
 
-use crate::{Config, Field, D};
+use crate::{Config, ConfigBN128, Field, D};
 
 const CIRCUIT_OUTPUT_FOLDER: &str = "circuits";
-const CIRCUIT_DIRNAME: &str = "circuit.bin";
+const CIRCUIT_FILENAME: &str = "circuit.bin";
+const COMMON_DATA_FILENAME: &str = "common_circuit_data.json";
+const VERIFIER_ONLY_DATA_FILENAME: &str = "verifier_only_circuit_data.json";
+const PROOF_FILENAME: &str = "proof_with_public_inputs.json";
+
 const ATTESTATIONS_AGGREGATOR1_CIRCUIT_DIR: &str = "attestations_aggregator1";
 const ATTESTATIONS_AGGREGATOR2_CIRCUIT_DIR: &str = "attestations_aggregator2";
 const ATTESTATIONS_AGGREGATOR3_CIRCUIT_DIR: &str = "attestations_aggregator3";
@@ -109,7 +113,7 @@ pub fn load_or_create_circuit<C>(dir: &str) -> C
 where
     C: Circuit + Serializeable,
 {
-    let bytes = read_from_dir(dir);
+    let bytes = read_from_dir(dir, CIRCUIT_FILENAME);
     if bytes.is_ok() {
         let circuit = C::from_bytes(&bytes.unwrap());
         if circuit.is_ok() {
@@ -118,7 +122,7 @@ where
         }
     }
     let circuit = C::new();
-    write_circuit(circuit.to_bytes(), dir);
+    write_circuit(&circuit, dir);
     circuit
 }
 
@@ -127,7 +131,7 @@ where
     C: Circuit,
     CC: ContinuationCircuit<PrevCircuit = C> + Serializeable,
 {
-    let bytes = read_from_dir(dir);
+    let bytes = read_from_dir(dir, CIRCUIT_FILENAME);
     if bytes.is_ok() {
         let circuit = CC::from_bytes(&bytes.unwrap());
         if circuit.is_ok() {
@@ -136,27 +140,68 @@ where
         }
     }
     let circuit = CC::new_continuation(prev_circuit);
-    write_circuit(circuit.to_bytes(), dir);
+    write_circuit(&circuit, dir);
     circuit
 }
 
-#[inline]
-fn write_circuit(circuit_bytes: Result<Vec<u8>>, filename: &str) {
-    match circuit_bytes {
-        Ok(bytes) => {
-            if write_to_dir(&bytes, filename).is_err() {
-                println!("Failed to write file: {}", filename);
+pub fn save_circuit(circuit: &CircuitData<Field, ConfigBN128, D>, dir: &str) {
+    let common_circuit_data_serialized = serde_json::to_string(&circuit.common);
+    match common_circuit_data_serialized {
+        Ok(json) => {
+            let bytes = json.as_bytes().to_vec();
+            if write_to_dir(&bytes, CIRCUIT_OUTPUT_FOLDER, dir, COMMON_DATA_FILENAME).is_err() {
+                println!("Failed to write common data file: {}", dir);
             }
         },
-        Err(e) => println!("Failed to serialize for {}: {}", filename, e),
+        Err(e) => println!("Failed to serialize common data for {}: {}", dir, e),
+    }
+
+    let verifier_only_circuit_data_serialized  = serde_json::to_string(&circuit.verifier_only);
+    match verifier_only_circuit_data_serialized  {
+        Ok(json) => {
+            let bytes = json.as_bytes().to_vec();
+            if write_to_dir(&bytes, CIRCUIT_OUTPUT_FOLDER, dir, VERIFIER_ONLY_DATA_FILENAME).is_err() {
+                println!("Failed to write verifier only data file: {}", dir);
+            }
+        },
+        Err(e) => println!("Failed to serialize verifier only data for {}: {}", dir, e),
+    }
+}
+
+pub fn save_proof(proof: &ProofWithPublicInputs<Field, ConfigBN128, D>, dir: &str) {
+    let proof_serialized = serde_json::to_string(proof);
+    match proof_serialized {
+        Ok(json) => {
+            let bytes = json.as_bytes().to_vec();
+            if write_to_dir(&bytes, CIRCUIT_OUTPUT_FOLDER, dir, PROOF_FILENAME).is_err() {
+                println!("Failed to write proof file: {}", dir);
+            }
+        },
+        Err(e) => println!("Failed to serialize proof for {}: {}", dir, e),
     }
 }
 
 #[inline]
-fn write_to_dir(bytes: &Vec<u8>, dir: &str) -> io::Result<()> {
-    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
+fn write_circuit<C>(circuit: &C, dir: &str) 
+where
+    C: Serializeable,
+{
+    let circuit_bytes = circuit.to_bytes();
+    match circuit_bytes {
+        Ok(bytes) => {
+            if write_to_dir(&bytes, CIRCUIT_OUTPUT_FOLDER, dir, CIRCUIT_FILENAME).is_err() {
+                println!("Failed to write file: {}", dir);
+            }
+        },
+        Err(e) => println!("Failed to serialize for {}: {}", dir, e),
+    }
+}
+
+#[inline]
+fn write_to_dir(bytes: &Vec<u8>, out: &str, dir: &str, filename: &str) -> io::Result<()> {
+    let mut path = PathBuf::from(out);
     path.push(dir);
-    path.push(CIRCUIT_DIRNAME);
+    path.push(filename);
 
     if let Some(parent) = path.parent() {
         create_dir_all(parent)?;
@@ -170,10 +215,10 @@ fn write_to_dir(bytes: &Vec<u8>, dir: &str) -> io::Result<()> {
 }
 
 #[inline]
-fn read_from_dir(dir: &str) -> io::Result<Vec<u8>> {
+fn read_from_dir(dir: &str, filename: &str) -> io::Result<Vec<u8>> {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
-    path.push(CIRCUIT_DIRNAME);
+    path.push(filename);
 
     let file = File::open(&path)?;
     let mut reader = BufReader::with_capacity(134217728, file);
