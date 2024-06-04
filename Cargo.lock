@@ -575,6 +575,7 @@ dependencies = [
  "log",
  "plonky2",
  "rand",
+ "rayon",
  "serde",
  "serde_json",
 ]

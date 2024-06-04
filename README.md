@@ -23,7 +23,7 @@ cargo run --example prove_attestations --release
 
 ### Generate Commitment
 
-Generates a validator commitment merkle tree root. Because Poseidon hash is being used, this can take quite a bit of time compared to typical CPU friendly hash functions. Keep in mind that this has not been made multi-threaded yet and only has to be computed once per validator.
+Generates a validator commitment merkle tree root. Because Poseidon hash is being used, this can take quite a bit of time compared to typical CPU friendly hash functions. Keep in mind that this only has to be computed once per validator.
 ```
 cargo run --example generate_commitment --release
 ```
@@ -34,7 +34,7 @@ cargo run --example generate_commitment --release
 CPU:          Intel Core i7-8700 3.2GHz
 
 results
-Generate Commitment:  998.340866136s (16.639m)
+Generate Commitment:  146.920017455s
 Generate Circuits:    122.938929116s
 Prove Attestation Aggregation1:    3.919908366s
 Prove Attestation Aggregation2:   43.232141139s
