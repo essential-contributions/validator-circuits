@@ -10,8 +10,10 @@ use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use crate::{ConfigBN128, Config, Field, D};
 
 pub struct WrapperCircuit {
-    circuit_data: CircuitData<Field, ConfigBN128, D>,
-    targets: WrapperCircuitTargets,
+    circuit_data1: CircuitData<Field, Config, D>,
+    circuit_data2: CircuitData<Field, ConfigBN128, D>,
+    targets1: WrapperCircuitTargets,
+    targets2: WrapperCircuitTargets,
 }
 struct WrapperCircuitTargets {
     verifier: VerifierCircuitTarget,
@@ -39,25 +41,33 @@ impl WrapperCircuit {
             },
         };
 
+        let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config.clone());
+        let targets1 = generate_circuit(&mut builder, inner_circuit);
+        let circuit_data1 = builder.build::<Config>();
+        
         let mut builder = CircuitBuilder::<<ConfigBN128 as GenericConfig<D>>::F, D>::new(config);
-        let targets = generate_circuit(&mut builder, inner_circuit);
-        let circuit_data = builder.build::<ConfigBN128>();
+        let targets2 = generate_circuit(&mut builder, &circuit_data1);
+        let circuit_data2 = builder.build::<ConfigBN128>();
 
-        Self { circuit_data, targets }
+        Self { circuit_data1, circuit_data2, targets1, targets2 }
     }
     
     pub fn generate_proof(&self, inner_circuit: &CircuitData<Field, Config, D>, inner_proof: &ProofWithPublicInputs<Field, Config, D>) -> Result<ProofWithPublicInputs<Field, ConfigBN128, D>> {
-        let pw = generate_partial_witness(&self.targets, inner_proof, inner_circuit)?;
-        let proof = self.circuit_data.prove(pw)?;
-        Ok(proof)
+        let pw1 = generate_partial_witness(&self.targets1, inner_proof, inner_circuit)?;
+        let proof1 = self.circuit_data1.prove(pw1)?;
+
+        let pw2 = generate_partial_witness(&self.targets2, &proof1, &self.circuit_data1)?;
+        let proof2 = self.circuit_data2.prove(pw2)?;
+
+        Ok(proof2)
     }
 
     pub fn verify_proof(&self, proof: &ProofWithPublicInputs<Field, ConfigBN128, D>) -> Result<()> {
-        self.circuit_data.verify(proof.clone())
+        self.circuit_data2.verify(proof.clone())
     }
 
     pub fn circuit_data(&self) -> &CircuitData<Field, ConfigBN128, D> {
-        return &self.circuit_data;
+        return &self.circuit_data2;
     }
 }
 
