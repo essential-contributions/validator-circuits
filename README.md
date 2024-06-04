@@ -31,6 +31,18 @@ cargo run --example generate_commitment --release
 ## Benchmarks
 
 ```
+CPU:          Rockchip RK3588 (OrangePi5Plus 16GB)
+
+results
+Generate Commitment:  438.357194521s (7.3m)
+Generate Circuits:    118.091063397s
+Prove Attestation Aggregation1:    8.345273417s
+Prove Attestation Aggregation2:   71.388797726s
+Prove Attestation Aggregation3:   71.951521909s
+
+Theoretical 1M Prove Time:     10901.9530281s (181.7m)
+```
+```
 CPU:          Intel Core i7-8700 3.2GHz
 
 results
