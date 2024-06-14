@@ -1,11 +1,10 @@
-use std::ops::{AddAssign, MulAssign};
-
 use ff::Field;
+use std::ops::{AddAssign, MulAssign};
 
 use crate::poseidon_bn128_constants::{
     C_CONSTANTS, M_MATRIX, P_MATRIX, S_CONSTANTS,
 };
-use crate::utils::Fr;
+use crate::Fr;
 
 pub const RATE: usize = 3;
 pub const WIDTH: usize = 4;

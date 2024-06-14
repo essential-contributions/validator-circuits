@@ -455,6 +455,18 @@ version = "0.2.0"
 source = "git+https://github.com/0xPolygonZero/plonky2.git?tag=v0.2.3#76da1383384a99691506b3904dd8c2ddfd057555"
 
 [[package]]
+name = "poseidon_bn128"
+version = "0.1.0"
+dependencies = [
+ "ff",
+ "lazy_static",
+ "num",
+ "plonky2",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -659,17 +671,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "validator-circuits"
+name = "validator_circuits"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "blake3",
- "ff",
  "jemallocator",
- "lazy_static",
  "log",
- "num",
  "plonky2",
+ "poseidon_bn128",
  "rand",
  "rayon",
  "serde",

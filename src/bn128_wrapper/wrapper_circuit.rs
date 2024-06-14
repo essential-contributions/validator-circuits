@@ -9,7 +9,7 @@ use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 
 use crate::{ConfigBN128, Config, Field, D};
 
-pub struct WrapperCircuit {
+pub struct BN128WrapperCircuit {
     circuit_data: CircuitData<Field, ConfigBN128, D>,
     targets: WrapperCircuitTargets,
 }
@@ -18,8 +18,9 @@ struct WrapperCircuitTargets {
     proof: ProofWithPublicInputsTarget<D>,
 }
 
-impl WrapperCircuit {
+impl BN128WrapperCircuit {
     pub fn new(inner_circuit: &CircuitData<Field, Config, D>) -> Self {
+        //TODO: can we just use the standard recursion config?
         //let config = CircuitConfig::standard_recursion_config();
         let config = CircuitConfig {
             num_wires: 136,

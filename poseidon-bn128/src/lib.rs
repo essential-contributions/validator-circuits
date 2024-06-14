@@ -1,30 +1,26 @@
+mod poseidon_bn128;
+mod poseidon_bn128_constants;
+
 use core::fmt;
 use std::error::Error;
 use std::marker::PhantomData;
 
+use poseidon_bn128::*;
+
 use ff::{Field as ff_Field, PrimeField};
 use num::BigUint;
-use plonky2::field::extension::quadratic::QuadraticExtension;
-use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::field::types::Field;
 use plonky2::hash::hash_types::RichField;
-use plonky2::hash::poseidon::{PoseidonHash, PoseidonPermutation};
-use plonky2::plonk::config::{GenericConfig, GenericHashOut, Hasher};
+use plonky2::hash::poseidon::PoseidonPermutation;
+use plonky2::plonk::config::{GenericHashOut, Hasher};
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::poseidon_bn128::{permution, GOLDILOCKS_ELEMENTS, RATE};
-use crate::utils::{Fr, FrRepr};
-
-/// Configuration using Poseidon BN128 over the Goldilocks field.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
-pub struct PoseidonBN128GoldilocksConfig;
-impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
-    type F = GoldilocksField;
-    type FE = QuadraticExtension<Self::F>;
-    type Hasher = PoseidonBN128Hash;
-    type InnerHasher = PoseidonHash;
-}
+#[derive(PrimeField)]
+#[PrimeFieldModulus = "21888242871839275222246405745257275088548364400416034343698204186575808495617"]
+#[PrimeFieldGenerator = "7"]
+#[PrimeFieldReprEndianness = "little"]
+pub struct Fr([u64; 4]);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PoseidonBN128HashOut<F: Field> {

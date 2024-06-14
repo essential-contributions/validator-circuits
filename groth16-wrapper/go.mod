@@ -1,4 +1,4 @@
-module experiment/groth16-wrapper
+module validator-circuits/groth16-wrapper
 
 go 1.21
 

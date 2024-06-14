@@ -1,7 +1,7 @@
 use ff::{Field, PrimeField};
 use lazy_static::lazy_static;
 
-use crate::utils::Fr;
+use crate::Fr;
 
 lazy_static! {
     pub static ref C_CONSTANTS: Vec<Fr> = load_c_constants();

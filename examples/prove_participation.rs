@@ -4,7 +4,7 @@ use validator_circuits::load_or_create_participation_circuit;
 use validator_circuits::save_circuit;
 use validator_circuits::save_proof;
 use validator_circuits::save_wrapped_proof;
-use validator_circuits::wrap::WrapperCircuit;
+use validator_circuits::BN128WrapperCircuit;
 use validator_circuits::Circuit;
 use validator_circuits::ParticipationCircuitData;
 use validator_circuits::Proof;
@@ -53,7 +53,7 @@ fn main() {
     let start = Instant::now();
     let inner_circuit = participation_circuit.circuit_data();
     let inner_proof = proof.proof();
-    let wrapper = WrapperCircuit::new(inner_circuit);
+    let wrapper = BN128WrapperCircuit::new(inner_circuit);
     println!("(finished in {:?})", start.elapsed());
     println!("");
 

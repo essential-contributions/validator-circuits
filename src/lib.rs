@@ -1,11 +1,11 @@
 mod circuits;
-mod wrapper;
+mod bn128_wrapper;
 mod prover;
 mod commitment;
 
 pub use prover::*;
 pub use circuits::*;
-pub use wrapper::*;
+pub use bn128_wrapper::*;
 pub use commitment::*;
 use plonky2::{field::goldilocks_field::GoldilocksField, hash::poseidon::PoseidonHash, plonk::config::PoseidonGoldilocksConfig};
 
@@ -13,7 +13,7 @@ pub const D: usize = 2;
 pub type Field = GoldilocksField;
 pub type Hash = PoseidonHash;
 pub type Config = PoseidonGoldilocksConfig;
-pub type ConfigBN128 = plonky2_config::PoseidonBN128GoldilocksConfig;
+pub type ConfigBN128 = PoseidonBN128GoldilocksConfig;
 
 pub const VALIDATORS_TREE_HEIGHT: usize = 20; //1048576
 pub const VALIDATOR_COMMITMENT_TREE_HEIGHT: usize = 28; //102 years
