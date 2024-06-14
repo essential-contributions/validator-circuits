@@ -215,15 +215,6 @@ fn set_merkle_targets(pw: &mut PartialWitness<Field>, target: MerkleProofTarget,
         pw.set_hash_target(*t, hash);
     }
 }
-/*
-ParticipationCircuitTargets {
-    validator_field_index: Target,
-    participation_bit_field: Vec<Target>,
-    participation_root: HashOutTarget,
-    participation_root_index: Target,
-    participation_root_merkle_proof: MerkleProofTarget,
-}
-     */
 
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ParticipationCircuitTargets) -> IoResult<()> {

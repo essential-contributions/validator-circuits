@@ -3,6 +3,7 @@ mod utils;
 use validator_circuits::load_or_create_participation_circuit;
 use validator_circuits::save_circuit;
 use validator_circuits::save_proof;
+use validator_circuits::save_wrapped_proof;
 use validator_circuits::wrap::WrapperCircuit;
 use validator_circuits::Circuit;
 use validator_circuits::ParticipationCircuitData;
@@ -45,6 +46,7 @@ fn main() {
         println!("Proof failed verification");
     }
     println!("");
+    save_proof(proof.proof(), "participation");
 
     //wrap proof
     println!("Building Wrapper Circuit... ");
@@ -62,7 +64,7 @@ fn main() {
     if wrapper.verify_proof(&proof).is_ok() {
         println!("Wrapper successfully verified!");
         save_circuit(wrapper.circuit_data(), "participation");
-        save_proof(&proof, "participation");
+        save_wrapped_proof(&proof, "participation");
     } else {
         println!("Wrapper proof failed verification");
     }

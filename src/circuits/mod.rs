@@ -7,6 +7,7 @@ mod serialization;
 
 use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
 use std::{fs::{create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
+use std::str;
 use anyhow::Result;
 
 pub use attestations_aggregator1_circuit::*;
@@ -22,6 +23,7 @@ const CIRCUIT_FILENAME: &str = "circuit.bin";
 const COMMON_DATA_FILENAME: &str = "common_circuit_data.json";
 const VERIFIER_ONLY_DATA_FILENAME: &str = "verifier_only_circuit_data.json";
 const PROOF_FILENAME: &str = "proof_with_public_inputs.json";
+const WRAPPED_PROOF_FILENAME: &str = "wrapped_proof_with_public_inputs.json";
 
 const ATTESTATIONS_AGGREGATOR1_CIRCUIT_DIR: &str = "attestations_aggregator1";
 const ATTESTATIONS_AGGREGATOR2_CIRCUIT_DIR: &str = "attestations_aggregator2";
@@ -149,7 +151,7 @@ pub fn save_circuit(circuit: &CircuitData<Field, ConfigBN128, D>, dir: &str) {
     match common_circuit_data_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            if write_to_dir(&bytes, CIRCUIT_OUTPUT_FOLDER, dir, COMMON_DATA_FILENAME).is_err() {
+            if write_to_dir(&bytes, dir, COMMON_DATA_FILENAME).is_err() {
                 println!("Failed to write common data file: {}", dir);
             }
         },
@@ -160,7 +162,7 @@ pub fn save_circuit(circuit: &CircuitData<Field, ConfigBN128, D>, dir: &str) {
     match verifier_only_circuit_data_serialized  {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            if write_to_dir(&bytes, CIRCUIT_OUTPUT_FOLDER, dir, VERIFIER_ONLY_DATA_FILENAME).is_err() {
+            if write_to_dir(&bytes, dir, VERIFIER_ONLY_DATA_FILENAME).is_err() {
                 println!("Failed to write verifier only data file: {}", dir);
             }
         },
@@ -168,17 +170,38 @@ pub fn save_circuit(circuit: &CircuitData<Field, ConfigBN128, D>, dir: &str) {
     }
 }
 
-pub fn save_proof(proof: &ProofWithPublicInputs<Field, ConfigBN128, D>, dir: &str) {
+pub fn save_proof(proof: &ProofWithPublicInputs<Field, Config, D>, dir: &str) {
     let proof_serialized = serde_json::to_string(proof);
     match proof_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            if write_to_dir(&bytes, CIRCUIT_OUTPUT_FOLDER, dir, PROOF_FILENAME).is_err() {
+            if write_to_dir(&bytes, dir, PROOF_FILENAME).is_err() {
                 println!("Failed to write proof file: {}", dir);
             }
         },
         Err(e) => println!("Failed to serialize proof for {}: {}", dir, e),
     }
+}
+
+pub fn save_wrapped_proof(proof: &ProofWithPublicInputs<Field, ConfigBN128, D>, dir: &str) {
+    let proof_serialized = serde_json::to_string(proof);
+    match proof_serialized {
+        Ok(json) => {
+            let bytes = json.as_bytes().to_vec();
+            if write_to_dir(&bytes, dir, WRAPPED_PROOF_FILENAME).is_err() {
+                println!("Failed to write proof file: {}", dir);
+            }
+        },
+        Err(e) => println!("Failed to serialize proof for {}: {}", dir, e),
+    }
+}
+
+pub fn load_wrapped_proof(dir: &str) -> Result<ProofWithPublicInputs<Field, ConfigBN128, D>> {
+    let bytes = read_from_dir(dir, WRAPPED_PROOF_FILENAME)?;
+    let json_str = str::from_utf8(&bytes)?;
+    let deserialized: ProofWithPublicInputs<Field, ConfigBN128, D> = serde_json::from_str(&json_str)?;
+     
+    Ok(deserialized)
 }
 
 #[inline]
@@ -189,7 +212,7 @@ where
     let circuit_bytes = circuit.to_bytes();
     match circuit_bytes {
         Ok(bytes) => {
-            if write_to_dir(&bytes, CIRCUIT_OUTPUT_FOLDER, dir, CIRCUIT_FILENAME).is_err() {
+            if write_to_dir(&bytes, dir, CIRCUIT_FILENAME).is_err() {
                 println!("Failed to write file: {}", dir);
             }
         },
@@ -198,8 +221,8 @@ where
 }
 
 #[inline]
-fn write_to_dir(bytes: &Vec<u8>, out: &str, dir: &str, filename: &str) -> io::Result<()> {
-    let mut path = PathBuf::from(out);
+fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
+    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
     path.push(filename);
 
