@@ -1,14 +1,15 @@
 use plonky2::field::types::Field as Plonky2_Field;
 use plonky2::hash::hash_types::HashOut;
 use plonky2::plonk::config::Hasher as Plonky2_Hasher;
+use rayon::prelude::*;
 
-use validator_circuits::{CommitmentReveal, Field, Validator, ValidatorCircuits, ValidatorSet, VALIDATOR_COMMITMENT_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
+use validator_circuits::{ValidatorCommitmentReveal, Field, Validator, ValidatorCircuits, ValidatorSet, VALIDATOR_COMMITMENT_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
 use validator_circuits::Hash;
 
 pub const COMMITMENTS_REPEAT: usize = 2000;
 
 pub fn generate_validator_set(circuits: ValidatorCircuits) -> ValidatorSet {
-    let commitment_roots: Vec<[Field; 4]> = (0..COMMITMENTS_REPEAT).map(|i| commitment_root(i)).collect();
+    let commitment_roots: Vec<[Field; 4]> = (0..COMMITMENTS_REPEAT).into_par_iter().map(|i| commitment_root(i)).collect();
     let validator_stake_default = 7;
     let validators: Vec<Validator> = (0..(1 << VALIDATORS_TREE_HEIGHT)).map(|i| Validator {
         commitment_root: commitment_roots[i % COMMITMENTS_REPEAT],
@@ -27,7 +28,7 @@ pub fn commitment_root(validator_index: usize) -> [Field; 4] {
     node
 }
 
-pub fn commitment_reveal(validator_index: usize, block_slot: usize) -> CommitmentReveal {
+pub fn commitment_reveal(validator_index: usize, block_slot: usize) -> ValidatorCommitmentReveal {
     let secret = generate_secret_from_index(validator_index);
     let mut node = field_hash(&secret);
     let mut proof: Vec<[Field; 4]> = vec![];
@@ -36,7 +37,7 @@ pub fn commitment_reveal(validator_index: usize, block_slot: usize) -> Commitmen
         node = field_hash_two(node, node);
     }
 
-    CommitmentReveal {
+    ValidatorCommitmentReveal {
         validator_index,
         block_slot,
         reveal: secret,

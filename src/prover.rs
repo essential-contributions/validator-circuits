@@ -2,13 +2,14 @@ use plonky2::field::types::Field as Plonky2_Field;
 use plonky2::hash::hash_types::HashOut;
 use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 use serde::{Deserialize, Serialize};
+use rayon::prelude::*;
 use anyhow::*;
 
 use crate::{AttestationsAggregator1Data, AttestationsAggregator1RevealData, AttestationsAggregator1ValidatorData, AttestationsAggregator2Agg1Data, AttestationsAggregator2Data, AttestationsAggregator3Agg2Data, AttestationsAggregator3Data, AttestationsAggregator3Proof, ValidatorCircuits, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, ATTESTATION_AGGREGATION_PASS1_SIZE, ATTESTATION_AGGREGATION_PASS2_SIZE, ATTESTATION_AGGREGATION_PASS3_SIZE, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
 use crate::Hash;
 
-//TODO: implement multi-threading for tree construction and proof generation
+//TODO: implement multi-threading for proof generation
 
 const AGG1_BINS_LEN: usize = ATTESTATION_AGGREGATION_PASS2_SIZE * ATTESTATION_AGGREGATION_PASS3_SIZE;
 
@@ -52,7 +53,7 @@ impl ValidatorSet {
         &self.validators[index]
     }
 
-    pub fn prove_attestations(&self, reveals: Vec<CommitmentReveal>) -> Result<AttestationsAggregator3Proof> {
+    pub fn prove_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<AttestationsAggregator3Proof> {
         let max_attestations = ATTESTATION_AGGREGATION_PASS1_SIZE * ATTESTATION_AGGREGATION_PASS2_SIZE * ATTESTATION_AGGREGATION_PASS3_SIZE;
         if reveals.len() == 0 {
             return Err(anyhow!("At least one reveal must be provided for the attestations proof"));
@@ -70,7 +71,7 @@ impl ValidatorSet {
         }
 
         //sort each reveal into bins that must be proven
-        let mut agg1_bins: Vec<Vec<CommitmentReveal>> = Vec::new();
+        let mut agg1_bins: Vec<Vec<ValidatorCommitmentReveal>> = Vec::new();
         for _ in 0..AGG1_BINS_LEN {
             agg1_bins.push(Vec::new());
         }
@@ -161,7 +162,7 @@ impl ValidatorSet {
         todo!();
     }
 
-    pub fn verify_attestations(&self, reveals: Vec<CommitmentReveal>) -> Result<bool> {
+    pub fn verify_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<bool> {
         if reveals.len() == 0 {
             return Err(anyhow!("At least one reveal must be provided for the batch"));
         }
@@ -216,26 +217,34 @@ impl ValidatorSet {
 
     fn fill_nodes(&mut self) {
         //fill in leave digests first
-        let leave_digests_start = self.validators.len() - 1;
-        for i in 0..self.validators.len() {
-            let mut elements = self.validators[i].commitment_root.to_vec();
-            elements.push(Plonky2_Field::from_canonical_u64(self.validators[i].stake));
-            self.nodes[leave_digests_start + i] = field_hash(&elements);
+        {
+            let leave_digests: Vec<[Field; 4]> = (0..self.validators.len()).into_par_iter().map(|i| {
+                let mut elements = self.validators[i].commitment_root.to_vec();
+                elements.push(Plonky2_Field::from_canonical_u64(self.validators[i].stake));
+                field_hash(&elements)
+            }).collect();
+            let leave_digests_start = self.validators.len() - 1;
+            leave_digests.iter().enumerate().for_each(|(i, d)| {
+                self.nodes[leave_digests_start + i] = d.clone();
+            });
         }
     
         //fill in the rest of the tree
         for i in (0..self.height).rev() {
             let start = ((1 << i) - 1) as usize;
             let end = (start * 2) + 1;
-            for j in start..end {
-                self.nodes[j] = field_hash_two(self.nodes[(j * 2) + 1], self.nodes[(j * 2) + 2]);
-            }
+            let hashes: Vec<[Field; 4]> = (start..end).into_par_iter().map(|j| {
+                field_hash_two(self.nodes[(j * 2) + 1], self.nodes[(j * 2) + 2])
+            }).collect();
+            hashes.iter().enumerate().for_each(|(j, h)| {
+                self.nodes[j + start] = h.clone();
+            });
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct CommitmentReveal {
+pub struct ValidatorCommitmentReveal {
     pub validator_index: usize,
     pub block_slot: usize,
     pub reveal: [Field; 4],

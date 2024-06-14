@@ -671,6 +671,7 @@ dependencies = [
  "num",
  "plonky2",
  "rand",
+ "rayon",
  "serde",
  "serde_json",
 ]
