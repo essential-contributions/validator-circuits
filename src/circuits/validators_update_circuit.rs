@@ -10,7 +10,7 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use anyhow::{anyhow, Result};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
-use crate::{Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
+use crate::{example_validator_set, Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
 use super::serialization::{deserialize_circuit, serialize_circuit};
@@ -54,6 +54,13 @@ impl Circuit for ValidatorsUpdateCircuit {
         let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ValidatorsUpdateProof { proof })
+    }
+
+    fn example_proof(&self) -> Self::Proof {
+        let data = example_data();
+        let pw = generate_partial_witness(&self.targets, &data).unwrap();
+        let proof = self.circuit_data.prove(pw).unwrap();
+        ValidatorsUpdateProof { proof }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -255,4 +262,34 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorsUpdateCircuitTargets>
         new_stake,
         merkle_proof,
     })
+}
+
+fn example_data() -> ValidatorsUpdateCircuitData {
+    let mut validator_set = example_validator_set();
+
+    let validator_index = 10;
+    let mut validator = validator_set.validator(validator_index).clone();
+    let previous_root = validator_set.root().clone();
+    let previous_commitment = validator.commitment_root.clone();
+    let previous_stake = validator.stake;
+
+    let new_commitment = [Field::ONE; 4];
+    let new_stake = 21;
+    validator.commitment_root = new_commitment;
+    validator.stake = new_stake;
+    validator_set.set_validator(validator, validator_index);
+
+    let new_root = validator_set.root().clone();
+    let merkle_proof = validator_set.validator_merkle_proof(validator_index);
+
+    ValidatorsUpdateCircuitData {
+        validator_index,
+        previous_root,
+        previous_commitment,
+        previous_stake,
+        new_root,
+        new_commitment,
+        new_stake,
+        merkle_proof,
+    }
 }

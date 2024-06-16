@@ -10,7 +10,6 @@ These circuits and proofs are intended to maintain a small rollup that can be up
 
 - [ ] support for proving validator inactivity
 - [ ] review security
-- [ ] the update circuit
 
 ## Examples
 

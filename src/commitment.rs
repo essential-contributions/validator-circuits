@@ -254,3 +254,38 @@ fn fields_to_bytes(fields: &[Field; 4]) -> [u8; 32] {
 
     bytes
 }
+
+// The max number of unique commitments when generating examples (index is always modulo this value)
+pub const EXAMPLE_COMMITMENTS_REPEAT: usize = 2000;
+
+// Creates an example commitment root
+pub fn example_commitment_root(validator_index: usize) -> [Field; 4] {
+    let secret = generate_secret_from_seed(validator_index);
+    let mut node = field_hash(&secret);
+    for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
+        node = field_hash_two(node, node);
+    }
+    node
+}
+
+// Creates an example commitment proof (same for every index)
+pub fn example_commitment_proof(validator_index: usize) -> ([Field; 4], Vec<[Field; 4]>) {
+    let secret = generate_secret_from_seed(validator_index);
+    let mut node = field_hash(&secret);
+    let mut proof: Vec<[Field; 4]> = vec![];
+    for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
+        proof.push(node);
+        node = field_hash_two(node, node);
+    }
+    (secret, proof)
+}
+
+fn generate_secret_from_seed(seed: usize) -> [Field; 4] {
+    let seed = seed % EXAMPLE_COMMITMENTS_REPEAT;
+    [
+        Plonky2_Field::from_canonical_usize(seed + 10),
+        Plonky2_Field::from_canonical_usize(seed + 11),
+        Plonky2_Field::from_canonical_usize(seed + 12),
+        Plonky2_Field::from_canonical_usize(seed + 13),
+    ]
+}

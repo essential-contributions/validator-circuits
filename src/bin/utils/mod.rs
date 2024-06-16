@@ -8,7 +8,7 @@ use validator_circuits::Hash;
 
 pub const COMMITMENTS_REPEAT: usize = 2000;
 
-pub fn generate_validator_set(circuits: ValidatorCircuits) -> ValidatorSet {
+pub fn generate_validator_set() -> ValidatorSet {
     let commitment_roots: Vec<[Field; 4]> = (0..COMMITMENTS_REPEAT).into_par_iter().map(|i| commitment_root(i)).collect();
     let validator_stake_default = 7;
     let validators: Vec<Validator> = (0..(1 << VALIDATORS_TREE_HEIGHT)).map(|i| Validator {
@@ -16,7 +16,7 @@ pub fn generate_validator_set(circuits: ValidatorCircuits) -> ValidatorSet {
         stake: validator_stake_default,
     }).collect();
 
-    ValidatorSet::new(circuits, validators)
+    ValidatorSet::new(validators)
 }
 
 pub fn commitment_root(validator_index: usize) -> [Field; 4] {

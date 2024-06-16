@@ -9,11 +9,10 @@ use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
-use crate::{empty_agg1_participation_sub_root, AttestationsAggregator1Circuit, AttestationsAggregator1Proof, Config, Field, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, D, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_NUM_PARTICIPANTS, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_TOTAL_STAKE, PIS_AGG1_VALIDATORS_SUB_ROOT};
-use crate::Hash;
-
-use super::serialization::{deserialize_circuit, serialize_circuit};
-use super::{Circuit, ContinuationCircuit, Proof, Serializeable};
+use crate::{example_validator_set, Config, Field, Hash, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, D};
+use crate::circuits::ContinuationCircuit;
+use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
+use super::{empty_agg1_participation_sub_root, AttestationsAggregator1Circuit, AttestationsAggregator1Proof, Circuit, Proof, Serializeable, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_NUM_PARTICIPANTS, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_TOTAL_STAKE, PIS_AGG1_VALIDATORS_SUB_ROOT};
 
 pub const VALIDATORS_TREE_AGG2_SUB_HEIGHT: usize = AGGREGATION_PASS2_SUB_TREE_HEIGHT;
 pub const ATTESTATION_AGGREGATION_PASS2_SIZE: usize = AGGREGATION_PASS2_SIZE;
@@ -42,20 +41,31 @@ impl Circuit for AttestationsAggregator2Circuit {
     type Proof = AttestationsAggregator2Proof;
 
     fn new() -> Self {
-        let atts_agg1_circuit = AttestationsAggregator1Circuit::new();
+        log::warn!("AttestationsAggregator2Circuit: use 'new_continuation' instead of 'new' for faster building");
+        let prev_circuit = AttestationsAggregator1Circuit::new();
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
-        let targets = generate_circuit(&mut builder, atts_agg1_circuit.circuit_data());
+        let targets = generate_circuit(&mut builder, prev_circuit.circuit_data());
         let circuit_data = builder.build::<Config>();
 
         Self { circuit_data, targets }
     }
     
     fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
-        let atts_agg1_circuit = AttestationsAggregator1Circuit::new();
-        let pw = generate_partial_witness(&self.targets, data, atts_agg1_circuit.circuit_data())?;
+        log::warn!("AttestationsAggregator2Circuit: use 'generate_proof_continuation' instead of 'generate_proof' for faster proving");
+        let prev_circuit = AttestationsAggregator1Circuit::new();
+        let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationsAggregator2Proof { proof })
+    }
+
+    fn example_proof(&self) -> Self::Proof {
+        log::warn!("AttestationsAggregator2Circuit: use 'example_proof_continuation' instead of 'example_proof' for faster response");
+        let prev_circuit = AttestationsAggregator1Circuit::new();
+        let data = example_data(&prev_circuit.example_proof());
+        let pw = generate_partial_witness(&self.targets, &data, prev_circuit.circuit_data()).unwrap();
+        let proof = self.circuit_data.prove(pw).unwrap();
+        AttestationsAggregator2Proof { proof }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -82,6 +92,13 @@ impl ContinuationCircuit for AttestationsAggregator2Circuit {
         let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationsAggregator2Proof { proof })
+    }
+
+    fn example_proof_continuation(&self, prev_circuit: &Self::PrevCircuit, prev_proof: &<Self::PrevCircuit as Circuit>::Proof) -> Self::Proof {
+        let data = example_data(prev_proof);
+        let pw = generate_partial_witness(&self.targets, &data, prev_circuit.circuit_data()).unwrap();
+        let proof = self.circuit_data.prove(pw).unwrap();
+        AttestationsAggregator2Proof { proof }
     }
 }
 impl Serializeable for AttestationsAggregator2Circuit {
@@ -348,4 +365,27 @@ pub fn empty_agg2_participation_sub_root() -> [Field; 4] {
 
 fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
     <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
+}
+
+fn example_data(agg1_proof: &AttestationsAggregator1Proof) -> AttestationsAggregator2Data {
+    let validator_set = example_validator_set();
+    let agg1_data: Vec<AttestationsAggregator2Agg1Data> = (0..ATTESTATION_AGGREGATION_PASS2_SIZE).map(|i| {
+        let validators_sub_root = validator_set.sub_root(AGGREGATION_PASS1_SUB_TREE_HEIGHT, i).clone();
+        if i == 0 {
+            AttestationsAggregator2Agg1Data {
+                validators_sub_root,
+                agg1_proof: Some(agg1_proof.clone()),
+            }
+        } else {
+            AttestationsAggregator2Agg1Data {
+                validators_sub_root,
+                agg1_proof: None,
+            }
+        }
+    }).collect();
+
+    AttestationsAggregator2Data {
+        block_slot: 100,
+        agg1_data,
+    }
 }

@@ -1,12 +1,11 @@
-mod circuits;
-mod bn128_wrapper;
-mod prover;
+pub mod circuits;
+pub mod bn128_wrapper;
+mod validators;
 mod commitment;
 
-pub use prover::*;
-pub use circuits::*;
-pub use bn128_wrapper::*;
+pub use validators::*;
 pub use commitment::*;
+use bn128_wrapper::PoseidonBN128GoldilocksConfig;
 use plonky2::{field::goldilocks_field::GoldilocksField, hash::poseidon::PoseidonHash, plonk::config::PoseidonGoldilocksConfig};
 
 pub const D: usize = 2;
