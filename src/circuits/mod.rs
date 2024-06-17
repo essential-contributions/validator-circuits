@@ -6,7 +6,7 @@ mod serialization;
 use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
 use std::{fs::{create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
 use std::str;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use crate::{Config, Field, D};
 
@@ -81,6 +81,24 @@ where
     circuit
 }
 
+pub fn load_or_create_example_proof<C>(circuit: &C, dir: &str) -> ProofWithPublicInputs<Field, Config, D> 
+where
+    C: Circuit,
+{
+    if circuit_proof_exists(dir) {
+        match load_proof(dir) {
+            Ok(proof) => {
+                log::info!("Loaded proof [/{}]", dir);
+                return proof;
+            },
+            Err(e) => log::error!("{}", e),
+        };
+    }
+    let proof = circuit.example_proof().proof().clone();
+    save_proof(&proof, dir);
+    proof
+}
+
 pub fn save_circuit<C>(circuit: &C, dir: &str) 
 where
     C: Circuit + Serializeable,
@@ -141,8 +159,8 @@ where
     }
 }
 
-pub fn save_proof(proof: &dyn Proof, dir: &str) {
-    let proof_serialized = serde_json::to_string(proof.proof());
+pub fn save_proof(proof: &ProofWithPublicInputs<Field, Config, D>, dir: &str) {
+    let proof_serialized = serde_json::to_string(proof);
     match proof_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
@@ -157,6 +175,33 @@ pub fn save_proof(proof: &dyn Proof, dir: &str) {
         Err(e) => {
             log::error!("Failed to serialize proof [/{}]", dir);
             log::error!("{}", e);
+        },
+    }
+}
+
+pub fn load_proof(dir: &str) -> Result<ProofWithPublicInputs<Field, Config, D>> {
+    match read_from_dir(dir, PROOF_FILENAME) {
+        Ok(bytes) => {
+            match std::str::from_utf8(&bytes) {
+                Ok(serialized_str) => {
+                    let proof: Result<ProofWithPublicInputs<Field, Config, D>, serde_json::Error> = serde_json::from_str(serialized_str);
+                    match proof {
+                        Ok(proof) => Ok(proof),
+                        Err(_) => {
+                            log::error!("Failed to deserialize proof [/{}]", dir);
+                            Err(anyhow!("Failed to deserialize proof [/{}]", dir))
+                        },
+                    }
+                },
+                Err(_) => {
+                    log::error!("Failed to deserialize proof [/{}]", dir);
+                    Err(anyhow!("Failed to deserialize proof [/{}]", dir))
+                },
+            }
+        },
+        Err(_) => {
+            log::error!("Failed to load proof bytes [/{}]", dir);
+            Err(anyhow!("Failed to load proof bytes [/{}]", dir))
         },
     }
 }
