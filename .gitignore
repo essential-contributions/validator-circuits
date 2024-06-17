@@ -1,3 +1,5 @@
 /target
 /circuits
 /commitment
+
+/groth16-wrapper/groth16-wrapper

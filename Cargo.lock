@@ -876,6 +876,7 @@ dependencies = [
  "poseidon_bn128",
  "rand",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
 ]

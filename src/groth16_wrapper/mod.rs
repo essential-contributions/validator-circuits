@@ -1,82 +1,90 @@
-use std::{fs::{create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
+mod go;
 
-use plonky2::{field::{extension::quadratic::QuadraticExtension, goldilocks_field::GoldilocksField}, hash::poseidon::PoseidonHash, plonk::config::GenericConfig};
-use poseidon_bn128::PoseidonBN128Hash;
-use serde::Serialize;
+use go::{go_build, verify_go};
+use std::{path::{Path, PathBuf}, process::Command};
 
-use crate::circuits::{CIRCUIT_FILENAME, CIRCUIT_OUTPUT_FOLDER, COMMON_DATA_FILENAME, PROOF_FILENAME, VERIFIER_ONLY_DATA_FILENAME};
+use crate::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, BN128_WRAPPER_OUTPUT_FOLDER}, circuits::CIRCUIT_OUTPUT_FOLDER};
 
-const WRAPPER_OUTPUT_FOLDER: &str = "groth16";
+pub const GROTH16_WRAPPER_OUTPUT_FOLDER: &str = "groth16";
+const WRAPPER_GO_PROJECT_PATH: &str = "./groth16-wrapper";
+const WRAPPER_GO_PROJECT_BINARY: &str = "groth16-wrapper";
 
-/*
-pub fn save_wrapped_proof(proof: &ProofWithPublicInputs<Field, ConfigBN128, D>, dir: &str) {
-    let proof_serialized = serde_json::to_string(proof);
-    match proof_serialized {
-        Ok(json) => {
-            let bytes = json.as_bytes().to_vec();
-            if write_to_dir(&bytes, dir, WRAPPED_PROOF_FILENAME).is_err() {
-                println!("Failed to write proof file: {}", dir);
+const GROTH16_CIRCUIT_FILENAME: &str = "circuit.bin";
+const GROTH16_VERIFYING_KEY_FILENAME: &str = "verifying.key";
+const GROTH16_PROVING_KEY_FILENAME: &str = "proving.key";
+const GROTH16_SOLIDITY_VERIFIER_FILENAME: &str = "Verifier.sol";
+const GROTH16_PROOF_FILENAME: &str = "proof.json";
+
+pub fn create_groth16_wrapper_circuit(dir: &str) {
+    if verify_binary() {
+        //make sure bn128 wrapper exists
+        if bn128_wrapper_circuit_data_exists(dir) && bn128_wrapper_circuit_proof_exists(dir) {
+            //run the binary to build circuit and test proof
+            let binary_path = format!("{}/{}", WRAPPER_GO_PROJECT_PATH, WRAPPER_GO_PROJECT_BINARY);
+            let input_arg = format!("--in=./{}/{}/{}", CIRCUIT_OUTPUT_FOLDER, dir, BN128_WRAPPER_OUTPUT_FOLDER);
+            let output_arg = format!("--out=./{}/{}/{}", CIRCUIT_OUTPUT_FOLDER, dir, GROTH16_WRAPPER_OUTPUT_FOLDER);
+            match Command::new(Path::new(&binary_path)).args(&[input_arg, output_arg]).output() {
+                Ok(output) if output.status.success() => {
+                    log::info!("Successfully created groth16 wrapper circuit [/{}]", dir);
+                }
+                Ok(output) => {
+                    log::error!("Running Go binary failed: {}", String::from_utf8_lossy(&output.stderr));
+                }
+                Err(e) => {
+                    log::error!("Failed to run Go binary: {}", e);
+                }
             }
-        },
-        Err(e) => println!("Failed to serialize proof for {}: {}", dir, e),
+        } else {
+            log::error!("Cannot create groth16 wrapper circuit without bn128 wrapper ciruit");
+        }
     }
 }
 
-pub fn load_wrapped_proof(dir: &str) -> Result<ProofWithPublicInputs<Field, ConfigBN128, D>> {
-    let bytes = read_from_dir(dir, WRAPPED_PROOF_FILENAME)?;
-    let json_str = str::from_utf8(&bytes)?;
-    let deserialized: ProofWithPublicInputs<Field, ConfigBN128, D> = serde_json::from_str(&json_str)?;
-     
-    Ok(deserialized)
+pub fn generate_wrapper_proof(dir: &str) {
+    // make sure bn128
+    // wrap bn128
+
+    // return json
 }
-*/
+
+fn verify_binary() -> bool {
+    //check if binaries have been built
+    if !binary_exists() {
+
+        //check that Go is installed at at minimum spec
+        if !verify_go() {
+            return false;
+        }
+
+        //compile the binaries
+        if !go_build(WRAPPER_GO_PROJECT_PATH) {
+            return false;
+        }
+    }
+    true
+}
 
 pub fn groth16_wrapper_circuit_data_exists(dir: &str) -> bool {
-    file_exists(dir, CIRCUIT_FILENAME) && file_exists(dir, COMMON_DATA_FILENAME) && file_exists(dir, VERIFIER_ONLY_DATA_FILENAME)
+    file_exists(dir, GROTH16_CIRCUIT_FILENAME) && file_exists(dir, GROTH16_VERIFYING_KEY_FILENAME) 
+        && file_exists(dir, GROTH16_PROVING_KEY_FILENAME) && file_exists(dir, GROTH16_SOLIDITY_VERIFIER_FILENAME)
 }
 
 pub fn groth16_wrapper_circuit_proof_exists(dir: &str) -> bool {
-    file_exists(dir, PROOF_FILENAME)
-}
-
-#[inline]
-fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
-    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
-    path.push(dir);
-    path.push(WRAPPER_OUTPUT_FOLDER);
-    path.push(filename);
-
-    if let Some(parent) = path.parent() {
-        create_dir_all(parent)?;
-    }
-
-    let mut file = File::create(&path)?;
-    file.write_all(&bytes)?;
-    file.flush()?;
-
-    Ok(())
-}
-
-#[inline]
-fn read_from_dir(dir: &str, filename: &str) -> io::Result<Vec<u8>> {
-    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
-    path.push(dir);
-    path.push(WRAPPER_OUTPUT_FOLDER);
-    path.push(filename);
-
-    let file = File::open(&path)?;
-    let mut reader = BufReader::with_capacity(134217728, file);
-    let mut buffer: Vec<u8> = Vec::new();
-    reader.read_to_end(&mut buffer)?;
-
-    Ok(buffer)
+    file_exists(dir, GROTH16_PROOF_FILENAME)
 }
 
 #[inline]
 fn file_exists(dir: &str, filename: &str) -> bool {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
-    path.push(WRAPPER_OUTPUT_FOLDER);
+    path.push(GROTH16_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
+    path.exists()
+}
+
+#[inline]
+fn binary_exists() -> bool {
+    let mut path = PathBuf::from(WRAPPER_GO_PROJECT_PATH);
+    path.push(WRAPPER_GO_PROJECT_BINARY);
     path.exists()
 }

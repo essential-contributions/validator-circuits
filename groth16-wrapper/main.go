@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -25,11 +26,16 @@ import (
 	"github.com/succinctlabs/gnark-plonky2-verifier/verifier"
 )
 
-
-const circuitsFolder = "plonky2-circuits"
 const plonky2VerifierFile = "verifier_only_circuit_data.json"
 const plonky2CommonFile = "common_circuit_data.json"
 const plonky2ProofFile = "proof_with_public_inputs.json"
+
+const groth16CircuitFile = "circuit.bin"
+const groth16ProvingKeyFile = "proving.key"
+const groth16VerifyingKeyFile = "verifying.key"
+const groth16SolidityVerifierFile = "Verifier.sol"
+const groth16ProofFile = "proof.json"
+
 const fileReaderBuffSize = 134217728
 
 type VerifierCircuit struct {
@@ -55,13 +61,13 @@ type SolidityProof struct {
     Input         []uint64  `json:"input"`
 }
 
-func groth16Proof(circuitName string, dummy bool) {
+func groth16Proof(in string, out string, compressedKeys bool) {
 	var err error
-	ensureDir(circuitsFolder + "/" + circuitName + "/groth16")
+	ensureDir(out)
 
 	// Get the compiled r1cs
 	var r1csCompiled constraint.ConstraintSystem
-	var r1csFile = circuitsFolder + "/" + circuitName + "/groth16/circuit.bin"
+	var r1csFile = out + groth16CircuitFile
 	if fileExists(r1csFile) {
 		fmt.Println("Loading r1cs", time.Now())
 
@@ -74,9 +80,9 @@ func groth16Proof(circuitName string, dummy bool) {
 	} else {
 		fmt.Println("Building r1cs", time.Now())
 
-		verifierOnlyCircuitData := variables.DeserializeVerifierOnlyCircuitData(types.ReadVerifierOnlyCircuitData(circuitsFolder + "/" + circuitName + "/" + plonky2VerifierFile))
-		proofWithPis := variables.DeserializeProofWithPublicInputs(types.ReadProofWithPublicInputs(circuitsFolder + "/" + circuitName + "/" + plonky2ProofFile))
-		commonCircuitData := types.ReadCommonCircuitData(circuitsFolder + "/" + circuitName + "/" + plonky2CommonFile)
+		verifierOnlyCircuitData := variables.DeserializeVerifierOnlyCircuitData(types.ReadVerifierOnlyCircuitData(in + plonky2VerifierFile))
+		proofWithPis := variables.DeserializeProofWithPublicInputs(types.ReadProofWithPublicInputs(in + plonky2ProofFile))
+		commonCircuitData := types.ReadCommonCircuitData(in + plonky2CommonFile)
 		circuit := VerifierCircuit{
 			Proof:                   proofWithPis.Proof,
 			PublicInputs:            proofWithPis.PublicInputs,
@@ -99,9 +105,9 @@ func groth16Proof(circuitName string, dummy bool) {
 	// Get the proving and verifying key
 	var pk groth16.ProvingKey
 	var vk groth16.VerifyingKey
-	var provingKeyFile = circuitsFolder + "/" + circuitName + "/groth16/proving.key"
-	var verifyingKeyFile = circuitsFolder + "/" + circuitName + "/groth16/verifying.key"
-	var verifierSolFile = circuitsFolder + "/" + circuitName + "/groth16/Verifier.sol"
+	var provingKeyFile = out + groth16ProvingKeyFile
+	var verifyingKeyFile = out + groth16VerifyingKeyFile
+	var verifierSolFile = out + groth16SolidityVerifierFile
 	if fileExists(provingKeyFile) && fileExists(verifyingKeyFile) {
 		fmt.Println("Loading proving and verifying key", time.Now())
 		
@@ -120,26 +126,27 @@ func groth16Proof(circuitName string, dummy bool) {
 	} else {
 		fmt.Println("Setting up proving and verifying key", time.Now())
 
-		if dummy {
-			fmt.Println("Using dummy setup")
-			pk, err = groth16.DummySetup(r1csCompiled)
-		} else {
-			pk, vk, err = groth16.Setup(r1csCompiled)
-		}
+		pk, vk, err = groth16.Setup(r1csCompiled)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
 		fPK, _ := os.Create(provingKeyFile)
-		//pk.WriteTo(fPK)
-		pk.WriteRawTo(fPK)
+		if compressedKeys {
+			pk.WriteTo(fPK)
+		} else {
+			pk.WriteRawTo(fPK)
+		}
 		fPK.Close()
 
 		if vk != nil {
 			fVK, _ := os.Create(verifyingKeyFile)
-			//vk.WriteTo(fVK)
-			vk.WriteRawTo(fVK)
+			if compressedKeys {
+				vk.WriteTo(fVK)
+			} else {
+				vk.WriteRawTo(fVK)
+			}
 			fVK.Close()
 		}
 
@@ -153,8 +160,8 @@ func groth16Proof(circuitName string, dummy bool) {
 
 	var witness witness.Witness
 	{
-		verifierOnlyCircuitData := variables.DeserializeVerifierOnlyCircuitData(types.ReadVerifierOnlyCircuitData(circuitsFolder + "/" + circuitName + "/" + plonky2VerifierFile))
-		proofWithPis := variables.DeserializeProofWithPublicInputs(types.ReadProofWithPublicInputs(circuitsFolder + "/" + circuitName + "/" + plonky2ProofFile))
+		verifierOnlyCircuitData := variables.DeserializeVerifierOnlyCircuitData(types.ReadVerifierOnlyCircuitData(in + plonky2VerifierFile))
+		proofWithPis := variables.DeserializeProofWithPublicInputs(types.ReadProofWithPublicInputs(in + plonky2ProofFile))
 		assignment := VerifierCircuit{
 			PublicInputs:            proofWithPis.PublicInputs,
 			Proof:                   proofWithPis.Proof,
@@ -198,7 +205,7 @@ func groth16Proof(circuitName string, dummy bool) {
 		os.Exit(1)
 	}
 
-	fProof, _ := os.Create(circuitsFolder + "/" + circuitName + "/groth16/proof.json")
+	fProof, _ := os.Create(out + groth16ProofFile)
 	fProof.Write(jsonProof)
 	fProof.Close()
 }
@@ -265,44 +272,28 @@ func buildSolidityProof(rawProof groth16.Proof, publicWitness witness.Witness) S
 }
 
 func main() {
-	//TODO: remove dummy option
-	//TODO: add options for input file names
-	//TODO: add option for input directory
-	//TODO: add options for output file names
-	//TODO: add option for output directory
-	//TODO: add option for just building the circuits (with force that deletes the old) [--build-only --clean]
-	//TODO: option for compressed public and verifier keys
-	plonky2Circuit := flag.String("circuit", "step", "plonky2 circuit to benchmark")
-	dummySetup := flag.Bool("dummy", false, "use dummy setup")
+	inputFiles := plonky2VerifierFile + ", " + plonky2CommonFile + ", " + plonky2ProofFile
+	outputFiles := groth16CircuitFile + ", " + groth16ProvingKeyFile + ", " + groth16VerifyingKeyFile + ", " + groth16SolidityVerifierFile
+
+	in := flag.String("in", "./", "path for input files [" + inputFiles + "]")
+	out := flag.String("out", "./groth16/", "path for output files [" + outputFiles + "]")
+	compressedKeys := flag.Bool("compressed", false, "use compressed keys")
 
 	flag.Parse()
 
-	if plonky2Circuit == nil || *plonky2Circuit == "" {
-		fmt.Println("Please provide a plonky2 circuit to benchmark")
-		os.Exit(1)
+	if in == nil || *in == "" {
+		*in = "./"
+	}
+	if !strings.HasSuffix(*in, "/") {
+		*in += "/"
 	}
 
-	groth16Proof(*plonky2Circuit, *dummySetup)
+	if out == nil || *out == "" {
+		*out = "./groth16/"
+	}
+	if !strings.HasSuffix(*out, "/") {
+		*out += "/"
+	}
+
+	groth16Proof(*in, *out, *compressedKeys)
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

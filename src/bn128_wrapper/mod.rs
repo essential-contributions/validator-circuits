@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::{circuits::{CIRCUIT_FILENAME, CIRCUIT_OUTPUT_FOLDER, COMMON_DATA_FILENAME, PROOF_FILENAME, VERIFIER_ONLY_DATA_FILENAME}, Config, Field, D};
 
-pub const WRAPPER_OUTPUT_FOLDER: &str = "bn128";
+pub const BN128_WRAPPER_OUTPUT_FOLDER: &str = "bn128";
 
 /// Configuration using Poseidon BN128 over the Goldilocks field.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
@@ -140,7 +140,7 @@ pub fn bn128_wrapper_circuit_proof_exists(dir: &str) -> bool {
 fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
-    path.push(WRAPPER_OUTPUT_FOLDER);
+    path.push(BN128_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
 
     if let Some(parent) = path.parent() {
@@ -158,7 +158,7 @@ fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
 fn read_from_dir(dir: &str, filename: &str) -> io::Result<Vec<u8>> {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
-    path.push(WRAPPER_OUTPUT_FOLDER);
+    path.push(BN128_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
 
     let file = File::open(&path)?;
@@ -173,7 +173,7 @@ fn read_from_dir(dir: &str, filename: &str) -> io::Result<Vec<u8>> {
 fn file_exists(dir: &str, filename: &str) -> bool {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
-    path.push(WRAPPER_OUTPUT_FOLDER);
+    path.push(BN128_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
     path.exists()
 }

@@ -8,9 +8,10 @@ use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
-use crate::{PoseidonBN128GoldilocksConfig, Config, Field, D};
+use crate::{Config, Field, D};
 
 use super::serialization::{deserialize_circuit, serialize_circuit};
+use super::PoseidonBN128GoldilocksConfig;
 
 pub struct BN128WrapperCircuit {
     circuit_data: CircuitData<Field, PoseidonBN128GoldilocksConfig, D>,
