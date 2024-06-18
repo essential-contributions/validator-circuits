@@ -1,28 +1,35 @@
+mod actions;
+
 use clap::{arg, command, Parser};
+use env_logger::{Builder, Env};
+use jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, default_value_t = String::from("null"))]
-    name: String,
+    #[arg(help = "The action to benchmark (commitment/attestations/participation/update)")]
+    action: String,
 
-    #[arg(short, long, default_value_t = 1)]
-    count: u8,
-
-    number: i64,
+    #[arg(short, long, default_value_t = false, help = "Build full circuits including wrappers")]
+    full: bool,
 }
-
 
 fn main() {
+    Builder::from_env(Env::default().default_filter_or("info")).init();
+    
     let args = Args::parse();
-
-    // Use the library function to convert the number
-    let hex_string = int_to_hex(args.number);
-
-    // Print the result
-    println!("{}", hex_string);
-}
-
-pub fn int_to_hex(num: i64) -> String {
-    format!("0x{:X}", num)
+    if args.action.eq("commitment")  {
+        actions::benchmark_commitment_generation();
+    } else if args.action.eq("attestations")  {
+        actions::benchmark_prove_attestations_aggregation(args.full);
+    } else if args.action.eq("participation")  {
+        actions::benchmark_prove_participation(args.full);
+    } else if args.action.eq("update")  {
+        actions::benchmark_prove_validators_update(args.full);
+    } else {
+        log::error!("Invalid action [{}]", args.action);
+    }
 }

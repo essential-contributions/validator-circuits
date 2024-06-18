@@ -54,7 +54,7 @@ impl ValidatorSet {
         &self.validators[index]
     }
 
-    pub fn prove_attestations(&self, circuit: &AttestationsAggregatorCircuit, reveals: Vec<ValidatorCommitmentReveal>) -> Result<AttestationsAggregatorProof> {
+    pub fn prove_attestations(&self, circuit: &AttestationsAggregatorCircuit, reveals: &Vec<ValidatorCommitmentReveal>) -> Result<AttestationsAggregatorProof> {
         let max_attestations = ATTESTATION_AGGREGATION_PASS1_SIZE * ATTESTATION_AGGREGATION_PASS2_SIZE * ATTESTATION_AGGREGATION_PASS3_SIZE;
         if reveals.len() == 0 {
             return Err(anyhow!("At least one reveal must be provided for the attestations proof"));
@@ -72,15 +72,13 @@ impl ValidatorSet {
         }
 
         //place the validator reveals in data
-        let mut validator_data: [ValidatorPrimaryGroupData; ATTESTATION_AGGREGATION_PASS3_SIZE] = 
-            std::array::from_fn(|_| ValidatorPrimaryGroupData::ValidatorGroupRoot([Field::ZERO; 4]));
+        let mut validator_data: Vec<ValidatorPrimaryGroupData> = vec![ValidatorPrimaryGroupData::ValidatorGroupRoot([Field::ZERO; 4]); ATTESTATION_AGGREGATION_PASS3_SIZE];
         for reveal in reveals.iter() {
             let validator_primary_group_index = reveal.validator_index / (ATTESTATION_AGGREGATION_PASS1_SIZE * ATTESTATION_AGGREGATION_PASS2_SIZE);
             let primary_group = &validator_data[validator_primary_group_index];
             //add full primary group if it is currently just a root
             if let ValidatorPrimaryGroupData::ValidatorGroupRoot(_) = primary_group {
-                let validator_group_data: [ValidatorSecondaryGroupData; ATTESTATION_AGGREGATION_PASS2_SIZE] = 
-                    std::array::from_fn(|_| ValidatorSecondaryGroupData::ValidatorGroupRoot([Field::ZERO; 4]));
+                let validator_group_data: Vec<ValidatorSecondaryGroupData> = vec![ValidatorSecondaryGroupData::ValidatorGroupRoot([Field::ZERO; 4]); ATTESTATION_AGGREGATION_PASS2_SIZE];
                 validator_data[validator_primary_group_index] = ValidatorPrimaryGroupData::ValidatorGroupData(validator_group_data);
             }
             let primary_group = &mut validator_data[validator_primary_group_index];
@@ -89,9 +87,8 @@ impl ValidatorSet {
                 let secondary_group = &primary_group[validator_secondary_group_index];
                 //add full secondary group if it is currently just a root
                 if let ValidatorSecondaryGroupData::ValidatorGroupRoot(_) = secondary_group {
-                    let validators: [ValidatorData; ATTESTATION_AGGREGATION_PASS1_SIZE] = 
-                        std::array::from_fn(|_| ValidatorData {stake: 0, commitment_root: [Field::ZERO; 4], reveal: None});
-                        primary_group[validator_secondary_group_index] = ValidatorSecondaryGroupData::ValidatorGroupData(validators);
+                    let validators: Vec<ValidatorData> = vec![ValidatorData {stake: 0, commitment_root: [Field::ZERO; 4], reveal: None}; ATTESTATION_AGGREGATION_PASS1_SIZE];
+                    primary_group[validator_secondary_group_index] = ValidatorSecondaryGroupData::ValidatorGroupData(validators);
                 }
                 let secondary_group = &mut primary_group[validator_secondary_group_index];
                 if let ValidatorSecondaryGroupData::ValidatorGroupData(secondary_group) = secondary_group {

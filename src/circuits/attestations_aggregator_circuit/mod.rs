@@ -138,16 +138,16 @@ impl Proof for AttestationsAggregatorProof {
 #[derive(Clone)]
 pub struct AttestationsAggregatorCircuitData {
     pub block_slot: usize,
-    pub validator_data: [ValidatorPrimaryGroupData; ATTESTATION_AGGREGATION_PASS3_SIZE],
+    pub validator_data: Vec<ValidatorPrimaryGroupData>,
 }
 #[derive(Clone)]
 pub enum ValidatorPrimaryGroupData {
-    ValidatorGroupData([ValidatorSecondaryGroupData; ATTESTATION_AGGREGATION_PASS2_SIZE]),
+    ValidatorGroupData(Vec<ValidatorSecondaryGroupData>),
     ValidatorGroupRoot([Field; 4]),
 }
 #[derive(Clone)]
 pub enum ValidatorSecondaryGroupData {
-    ValidatorGroupData([ValidatorData; ATTESTATION_AGGREGATION_PASS1_SIZE]),
+    ValidatorGroupData(Vec<ValidatorData>),
     ValidatorGroupRoot([Field; 4]),
 }
 #[derive(Clone)]
@@ -173,17 +173,17 @@ fn generate_proof_from_data(circuits: &AttestationsAggregatorCircuit, data: &Att
                 if let ValidatorSecondaryGroupData::ValidatorGroupData(validators) = secondary_group {
                     let agg1_data = AttestationsAggregator1Data {
                         block_slot: data.block_slot,
-                        validators: validators.clone().map(|v| AttestationsAggregator1ValidatorData {
+                        validators: validators.into_iter().map(|v| AttestationsAggregator1ValidatorData {
                             stake: v.stake,
                             commitment_root: v.commitment_root,
-                            reveal: match v.reveal {
+                            reveal: match &v.reveal {
                                 Some(r) => Some(AttestationsAggregator1RevealData {
                                     reveal: r.reveal,
-                                    reveal_proof: r.reveal_proof,
+                                    reveal_proof: r.reveal_proof.clone(),
                                 }),
                                 None => None,
                             },
-                        }).to_vec(),
+                        }).collect(),
                     };
                     agg1_proofs[i * ATTESTATION_AGGREGATION_PASS3_SIZE + j] = Some(circuits.attestations_aggregator1.generate_proof(&agg1_data)?);
                 }
@@ -214,7 +214,7 @@ fn generate_proof_from_data(circuits: &AttestationsAggregatorCircuit, data: &Att
                     },
                 }).collect(),
             };
-            agg2_proofs[i] = Some(circuits.attestations_aggregator2.generate_proof(&agg2_data)?);
+            agg2_proofs[i] = Some(circuits.attestations_aggregator2.generate_proof_continuation(&agg2_data, &circuits.attestations_aggregator1)?);
         }
     }
 
@@ -238,7 +238,7 @@ fn generate_proof_from_data(circuits: &AttestationsAggregatorCircuit, data: &Att
             },
         }).collect(),
     };
-    let pass3_proof = circuits.attestations_aggregator3.generate_proof(&agg3_data)?;
+    let pass3_proof = circuits.attestations_aggregator3.generate_proof_continuation(&agg3_data, &circuits.attestations_aggregator2)?;
 
     return Ok(AttestationsAggregatorProof {
         proof: pass3_proof,

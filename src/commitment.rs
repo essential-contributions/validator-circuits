@@ -1,3 +1,7 @@
+use std::fs::{create_dir_all, File};
+use std::io::{BufReader, Read, Write};
+use std::path::PathBuf;
+
 use blake3::Hasher as Blake3_Hasher;
 use plonky2::{field::types::Field as Plonky2_Field, hash::hash_types::HashOut};
 use plonky2::plonk::config::Hasher as Plonky2_Hasher;
@@ -10,6 +14,9 @@ use crate::{Field, Hash, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 
 const COMMITMENT_COMPUTED_TREE_HEIGHT: usize = 14;
 const COMMITMENT_MEMORY_TREE_HEIGHT: usize = VALIDATOR_COMMITMENT_TREE_HEIGHT - COMMITMENT_COMPUTED_TREE_HEIGHT;
+
+const COMMITMENT_OUTPUT_FOLDER: &str = "commitment";
+const COMMITMENT_OUTPUT_FILE: &str = "secret.bin";
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct CommitmentReveal {
@@ -288,4 +295,35 @@ fn generate_secret_from_seed(seed: usize) -> [Field; 4] {
         Plonky2_Field::from_canonical_usize(seed + 12),
         Plonky2_Field::from_canonical_usize(seed + 13),
     ]
+}
+
+pub fn save_commitment(commitment: &Commitment) -> Result<()> {
+    let bytes = commitment.to_bytes()?;
+
+    let mut path = PathBuf::from(COMMITMENT_OUTPUT_FOLDER);
+    path.push(COMMITMENT_OUTPUT_FILE);
+
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent)?;
+    }
+
+    let mut file = File::create(&path)?;
+    file.write_all(&bytes)?;
+    file.flush()?;
+
+    Ok(())
+}
+
+pub fn load_commitment() -> Result<Commitment> {
+    let mut path = PathBuf::from(COMMITMENT_OUTPUT_FOLDER);
+    path.push(COMMITMENT_OUTPUT_FILE);
+
+    let file = File::open(&path)?;
+    let mut reader = BufReader::with_capacity(32 * 1024, file);
+    let mut bytes: Vec<u8> = Vec::new();
+    reader.read_to_end(&mut bytes)?;
+
+    let commitment = Commitment::from_bytes(&bytes)?;
+    
+    Ok(commitment)
 }

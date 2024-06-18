@@ -1,6 +1,10 @@
 use clap::{arg, command, Parser};
 use env_logger::{Builder, Env};
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestations_aggregator_circuit::AttestationsAggregatorCircuit, circuit_data_exists, circuit_proof_exists, load_or_create_circuit, load_or_create_example_proof, participation_circuit::ParticipationCircuit, validators_update_circuit::ValidatorsUpdateCircuit, Circuit, Serializeable, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, PARTICIPATION_CIRCUIT_DIR, VALIDATORS_UPDATE_CIRCUIT_DIR}, groth16_wrapper::{create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists}};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, bn128_wrapper_clear_data_and_proof, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestations_aggregator_circuit::AttestationsAggregatorCircuit, circuit_data_exists, circuit_proof_exists, clear_data_and_proof, load_or_create_circuit, load_or_create_example_proof, participation_circuit::ParticipationCircuit, validators_update_circuit::ValidatorsUpdateCircuit, Circuit, Serializeable, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, PARTICIPATION_CIRCUIT_DIR, VALIDATORS_UPDATE_CIRCUIT_DIR}, groth16_wrapper::{create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists, groth16_wrapper_clear_data_and_proof}};
+use jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "Builds the circuits related to validator activities")]
@@ -22,27 +26,34 @@ fn main() {
     match args.circuit {
         Some(circuit_name) => {
             if circuit_name.eq("attestations")  {
-                build_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full);
+                build_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full, args.clear);
             } else if circuit_name.eq("participation")  {
-                build_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR, args.full);
+                build_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR, args.full, args.clear);
             } else if circuit_name.eq("update")  {
-                build_circuit::<ValidatorsUpdateCircuit>(VALIDATORS_UPDATE_CIRCUIT_DIR, args.full);
+                build_circuit::<ValidatorsUpdateCircuit>(VALIDATORS_UPDATE_CIRCUIT_DIR, args.full, args.clear);
             } else {
                 log::error!("Invalid circuit name [{}]", circuit_name);
             }
         },
         None => {
-            build_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR, args.full);
-            build_circuit::<ValidatorsUpdateCircuit>(VALIDATORS_UPDATE_CIRCUIT_DIR, args.full);
-            build_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full);
+            build_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR, args.full, args.clear);
+            build_circuit::<ValidatorsUpdateCircuit>(VALIDATORS_UPDATE_CIRCUIT_DIR, args.full, args.clear);
+            build_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full, args.clear);
         },
     }
 }
 
-pub fn build_circuit<C>(dir: &str, full: bool)
+pub fn build_circuit<C>(dir: &str, full: bool, clear: bool)
 where
     C: Circuit + Serializeable,
 {
+    //clear old data
+    if clear {
+        clear_data_and_proof(dir);
+        bn128_wrapper_clear_data_and_proof(dir);
+        groth16_wrapper_clear_data_and_proof(dir);
+    }
+
     //check current build artifacts
     let no_data = !circuit_data_exists(dir);
     let no_proof = !circuit_proof_exists(dir);

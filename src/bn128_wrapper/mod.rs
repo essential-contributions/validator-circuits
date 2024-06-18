@@ -1,7 +1,7 @@
 mod serialization;
 mod wrapper_circuit;
 
-use std::{fs::{create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
+use std::{fs::{self, create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
 
 pub use wrapper_circuit::*;
 
@@ -136,6 +136,13 @@ pub fn bn128_wrapper_circuit_proof_exists(dir: &str) -> bool {
     file_exists(dir, PROOF_FILENAME)
 }
 
+pub fn bn128_wrapper_clear_data_and_proof(dir: &str) {
+    delete_file(dir, CIRCUIT_FILENAME);
+    delete_file(dir, COMMON_DATA_FILENAME);
+    delete_file(dir, VERIFIER_ONLY_DATA_FILENAME);
+    delete_file(dir, PROOF_FILENAME);
+}
+
 #[inline]
 fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
@@ -176,4 +183,16 @@ fn file_exists(dir: &str, filename: &str) -> bool {
     path.push(BN128_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
     path.exists()
+}
+
+#[inline]
+fn delete_file(dir: &str, filename: &str) {
+    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
+    path.push(dir);
+    path.push(BN128_WRAPPER_OUTPUT_FOLDER);
+    path.push(filename);
+    match fs::remove_file(path.clone()) {
+        Ok(_) => log::info!("File '{}' deleted.", path.display()),
+        Err(e) => log::error!("Failed to delete file '{}': {}", path.display(), e),
+    }
 }
