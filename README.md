@@ -9,26 +9,37 @@ These circuits and proofs are intended to maintain a small rollup that can be up
 ### TODOs
 
 - [ ] support for proving validator inactivity
+- [ ] more parallelization
 - [ ] review security
-- [ ] the update circuit
+- [ ] include already compile circuits in repo
 
-## Examples
+## Building
+The circuits should be built/compiled ahead of time in order to speed up the benchmarking. This is especially relevant when benchmarking with full wrapping to groth16. Please make sure you have both Rust [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) and [Go (1.19+)](https://go.dev/doc/install) installed. It can take around 30 minutes to finish building since the groth16 circuits need to go through the full generation routine with mock trusted setup ceremony and everything.
+```
+ RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin cbuild -- --full
+```
+
+Exclude the `--full` flag if you want to skip the groth16 stuff. 
+
+## Benchmarks
 
 ### Prove Attestations
 
 Proves a minimal amount of "signatures" through the 3 stage attestation aggregation proofs
 ```
-cargo run --example prove_attestations --release
+RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- attestations
 ```
+***add a `--full` flag at the end to include wrapping to groth16***
 
 ### Generate Commitment
 
 Generates a validator commitment merkle tree root. Because Poseidon hash is being used, this can take quite a bit of time compared to typical CPU friendly hash functions. Keep in mind that this only has to be computed once per validator.
 ```
-cargo run --example generate_commitment --release
+RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- commitment
 ```
+***add a `--full` flag at the end to include wrapping to groth16***
 
-## Benchmarks
+### Benchmark Results
 
 ```
 CPU:          Rockchip RK3588 (OrangePi5Plus 16GB)

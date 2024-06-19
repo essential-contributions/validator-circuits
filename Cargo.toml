@@ -1,15 +1,30 @@
 [package]
-name = "validator-circuits"
+name = "validator_circuits"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 anyhow = "1.0.82"
 blake3 = "1.5.1"
+clap = { version = "4.5.7", features = ["derive"] }
+env_logger = "0.11.3"
 jemallocator = "0.5.0"
 log = "0.4.21"
-plonky2 = { git = "https://github.com/0xPolygonZero/plonky2.git" }
+plonky2 = { git = "https://github.com/0xPolygonZero/plonky2.git", tag = "v0.2.3" }
+poseidon_bn128 = { path = "./poseidon-bn128" }
 rand = "0.8.5"
 rayon = "1.10.0"
+regex = "1.10.5"
 serde = "1.0"
 serde_json = "1.0"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "benchmark"
+path = "src/bin/benchmark.rs"
+
+[[bin]]
+name = "cbuild"
+path = "src/bin/cbuild.rs"

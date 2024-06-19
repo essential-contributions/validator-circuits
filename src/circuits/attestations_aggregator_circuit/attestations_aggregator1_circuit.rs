@@ -10,10 +10,10 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
-use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
+use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
+use crate::{example_commitment_proof, example_validator_set, Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 use crate::Hash;
 
-use super::serialization::{deserialize_circuit, serialize_circuit};
 use super::{Circuit, Proof, Serializeable};
 
 const PARTICIPANTS_PER_FIELD: usize = 62;
@@ -59,6 +59,13 @@ impl Circuit for AttestationsAggregator1Circuit {
         let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationsAggregator1Proof { proof })
+    }
+
+    fn example_proof(&self) -> Self::Proof {
+        let data = example_data();
+        let pw = generate_partial_witness(&self.targets, &data).unwrap();
+        let proof = self.circuit_data.prove(pw).unwrap();
+        AttestationsAggregator1Proof { proof }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -399,6 +406,36 @@ fn field_hash(input: &[Field]) -> [Field; 4] {
 
 fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
     <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
+}
+
+fn example_data() -> AttestationsAggregator1Data {
+    let num_attestations = 500;
+    let validator_set = example_validator_set();
+    let validators: Vec<AttestationsAggregator1ValidatorData> = (0..ATTESTATION_AGGREGATION_PASS1_SIZE).map(|i| {
+        let validator = validator_set.validator(i);
+        if i < num_attestations {
+            let (secret, proof) = example_commitment_proof(i);
+            AttestationsAggregator1ValidatorData {
+                stake: validator.stake,
+                commitment_root: validator.commitment_root,
+                reveal: Some(AttestationsAggregator1RevealData {
+                    reveal: secret,
+                    reveal_proof: proof,
+                }),
+            }
+        } else {
+            AttestationsAggregator1ValidatorData {
+                stake: validator.stake,
+                commitment_root: validator.commitment_root,
+                reveal: None,
+            }
+        }
+    }).collect();
+
+    AttestationsAggregator1Data {
+        block_slot: 100,
+        validators,
+    }
 }
 
 const fn div_ceil(x: usize, y: usize) -> usize {

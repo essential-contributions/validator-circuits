@@ -18,6 +18,7 @@ use super::{Circuit, Proof, Serializeable};
 
 const PARTICIPANTS_PER_FIELD: usize = 62;
 const NUM_PARTICIPATION_FIELDS: usize = div_ceil(AGGREGATION_PASS1_SIZE, PARTICIPANTS_PER_FIELD);
+const PARTICIPATION_BIT_FIELD_BYTE_SIZE: usize = (AGGREGATION_PASS1_SIZE * AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE) / 8;
 
 pub const PARTICIPATION_TREE_HEIGHT: usize = AGGREGATION_PASS2_SUB_TREE_HEIGHT + AGGREGATION_PASS3_SUB_TREE_HEIGHT;
 pub const PARTICIPATION_TREE_SIZE: usize = AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE;
@@ -53,6 +54,16 @@ impl Circuit for ParticipationCircuit {
         let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ParticipationProof { proof })
+    }
+
+    fn example_proof(&self) -> Self::Proof {
+        let data = ParticipationCircuitData {
+            participation_bit_field: vec![0u8; PARTICIPATION_BIT_FIELD_BYTE_SIZE],
+            validator_index: 0,
+        };
+        let pw = generate_partial_witness(&self.targets, &data).unwrap();
+        let proof = self.circuit_data.prove(pw).unwrap();
+        ParticipationProof { proof }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -215,15 +226,6 @@ fn set_merkle_targets(pw: &mut PartialWitness<Field>, target: MerkleProofTarget,
         pw.set_hash_target(*t, hash);
     }
 }
-/*
-ParticipationCircuitTargets {
-    validator_field_index: Target,
-    participation_bit_field: Vec<Target>,
-    participation_root: HashOutTarget,
-    participation_root_index: Target,
-    participation_root_merkle_proof: MerkleProofTarget,
-}
-     */
 
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ParticipationCircuitTargets) -> IoResult<()> {
@@ -301,7 +303,7 @@ fn participation_fields(participation_bit_field: &Vec<u8>, group_index: usize) -
     for _ in 0..NUM_PARTICIPATION_FIELDS {
         let mut field_u64: u64 = 0;
         for _ in 0..PARTICIPANTS_PER_FIELD {
-            if b < AGGREGATION_PASS1_SIZE {
+            if b < (group_index + 1) * AGGREGATION_PASS1_SIZE {
                 field_u64 = field_u64 << 1;
                 if bit_from_field(participation_bit_field, b) {
                     field_u64 += 1;

@@ -1,64 +1,34 @@
-pub mod attestations_aggregator_circuit;
-pub mod participation_circuit;
-pub mod validators_update_circuit;
 mod serialization;
+mod wrapper_circuit;
 
-use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
 use std::{fs::{self, create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
-use std::str;
-use anyhow::{anyhow, Result};
 
-use crate::{Config, Field, D};
+pub use wrapper_circuit::*;
 
-pub const CIRCUIT_OUTPUT_FOLDER: &str = "circuits";
-pub const CIRCUIT_FILENAME: &str = "circuit.bin";
-pub const COMMON_DATA_FILENAME: &str = "common_circuit_data.json";
-pub const VERIFIER_ONLY_DATA_FILENAME: &str = "verifier_only_circuit_data.json";
-pub const PROOF_FILENAME: &str = "proof_with_public_inputs.json";
+use plonky2::{field::{extension::quadratic::QuadraticExtension, goldilocks_field::GoldilocksField}, hash::poseidon::PoseidonHash, plonk::{circuit_data::CircuitData, config::GenericConfig, proof::ProofWithPublicInputs}};
+use poseidon_bn128::PoseidonBN128Hash;
+use serde::Serialize;
 
-pub const ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR: &str = "attestations_aggregator";
-pub const PARTICIPATION_CIRCUIT_DIR: &str = "participation";
-pub const VALIDATORS_UPDATE_CIRCUIT_DIR: &str = "validators_update";
+use crate::{circuits::{CIRCUIT_FILENAME, CIRCUIT_OUTPUT_FOLDER, COMMON_DATA_FILENAME, PROOF_FILENAME, VERIFIER_ONLY_DATA_FILENAME}, Config, Field, D};
 
-pub trait Circuit {
-    type Data;
-    type Proof: Proof;
+pub const BN128_WRAPPER_OUTPUT_FOLDER: &str = "bn128";
 
-    fn new() -> Self;
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof>;
-    fn example_proof(&self) -> Self::Proof;
-    fn verify_proof(&self, proof: &Self::Proof) -> Result<()>;
-    fn circuit_data(&self) -> &CircuitData<Field, Config, D>;
+/// Configuration using Poseidon BN128 over the Goldilocks field.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
+pub struct PoseidonBN128GoldilocksConfig;
+impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
+    type F = GoldilocksField;
+    type FE = QuadraticExtension<Self::F>;
+    type Hasher = PoseidonBN128Hash;
+    type InnerHasher = PoseidonHash;
 }
 
-pub trait ContinuationCircuit: Circuit {
-    type PrevCircuit: Circuit;
-
-    fn new_continuation(prev_circuit: &Self::PrevCircuit) -> Self;
-    fn generate_proof_continuation(&self, data: &Self::Data, prev_circuit: &Self::PrevCircuit) -> Result<Self::Proof>;
-    fn example_proof_continuation(&self, prev_circuit: &Self::PrevCircuit, prev_proof: &<Self::PrevCircuit as Circuit>::Proof) -> Self::Proof;
-}
-
-pub trait Proof {
-    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D>;
-}
-
-pub trait Serializeable {
-    fn to_bytes(&self) -> Result<Vec<u8>>;
-    fn from_bytes(bytes: &Vec<u8>) -> Result<Self> 
-    where 
-        Self: Sized;
-}
-
-pub fn load_or_create_circuit<C>(dir: &str) -> C 
-where
-    C: Circuit + Serializeable,
-{
-    if circuit_data_exists(dir) {
+pub fn load_or_create_bn128_wrapper_circuit(inner_circuit: &CircuitData<Field, Config, D>, dir: &str) -> BN128WrapperCircuit {
+    if bn128_wrapper_circuit_data_exists(dir) {
         let bytes = read_from_dir(dir, CIRCUIT_FILENAME);
         match bytes {
             Ok(bytes) => {
-                let circuit = C::from_bytes(&bytes);
+                let circuit = BN128WrapperCircuit::from_bytes(&bytes);
                 match circuit {
                     Ok(circuit) => {
                         log::info!("Loaded circuit [/{}]", dir);
@@ -76,33 +46,12 @@ where
             },
         };
     }
-    let circuit = C::new();
-    save_circuit(&circuit, dir);
+    let circuit = BN128WrapperCircuit::new(inner_circuit);
+    save_bn128_wrapper_circuit(&circuit, dir);
     circuit
 }
 
-pub fn load_or_create_example_proof<C>(circuit: &C, dir: &str) -> ProofWithPublicInputs<Field, Config, D> 
-where
-    C: Circuit,
-{
-    if circuit_proof_exists(dir) {
-        match load_proof(dir) {
-            Ok(proof) => {
-                log::info!("Loaded proof [/{}]", dir);
-                return proof;
-            },
-            Err(e) => log::error!("{}", e),
-        };
-    }
-    let proof = circuit.example_proof().proof().clone();
-    save_proof(&proof, dir);
-    proof
-}
-
-pub fn save_circuit<C>(circuit: &C, dir: &str) 
-where
-    C: Circuit + Serializeable,
-{
+pub fn save_bn128_wrapper_circuit(circuit: &BN128WrapperCircuit, dir: &str) {
     let circuit_bytes = circuit.to_bytes();
     match circuit_bytes {
         Ok(bytes) => {
@@ -159,7 +108,7 @@ where
     }
 }
 
-pub fn save_proof(proof: &ProofWithPublicInputs<Field, Config, D>, dir: &str) {
+pub fn save_bn128_wrapper_proof(proof: &ProofWithPublicInputs<Field, PoseidonBN128GoldilocksConfig, D>, dir: &str) {
     let proof_serialized = serde_json::to_string(proof);
     match proof_serialized {
         Ok(json) => {
@@ -179,42 +128,15 @@ pub fn save_proof(proof: &ProofWithPublicInputs<Field, Config, D>, dir: &str) {
     }
 }
 
-pub fn load_proof(dir: &str) -> Result<ProofWithPublicInputs<Field, Config, D>> {
-    match read_from_dir(dir, PROOF_FILENAME) {
-        Ok(bytes) => {
-            match std::str::from_utf8(&bytes) {
-                Ok(serialized_str) => {
-                    let proof: Result<ProofWithPublicInputs<Field, Config, D>, serde_json::Error> = serde_json::from_str(serialized_str);
-                    match proof {
-                        Ok(proof) => Ok(proof),
-                        Err(_) => {
-                            log::error!("Failed to deserialize proof [/{}]", dir);
-                            Err(anyhow!("Failed to deserialize proof [/{}]", dir))
-                        },
-                    }
-                },
-                Err(_) => {
-                    log::error!("Failed to deserialize proof [/{}]", dir);
-                    Err(anyhow!("Failed to deserialize proof [/{}]", dir))
-                },
-            }
-        },
-        Err(_) => {
-            log::error!("Failed to load proof bytes [/{}]", dir);
-            Err(anyhow!("Failed to load proof bytes [/{}]", dir))
-        },
-    }
-}
-
-pub fn circuit_data_exists(dir: &str) -> bool {
+pub fn bn128_wrapper_circuit_data_exists(dir: &str) -> bool {
     file_exists(dir, CIRCUIT_FILENAME) && file_exists(dir, COMMON_DATA_FILENAME) && file_exists(dir, VERIFIER_ONLY_DATA_FILENAME)
 }
 
-pub fn circuit_proof_exists(dir: &str) -> bool {
+pub fn bn128_wrapper_circuit_proof_exists(dir: &str) -> bool {
     file_exists(dir, PROOF_FILENAME)
 }
 
-pub fn clear_data_and_proof(dir: &str) {
+pub fn bn128_wrapper_clear_data_and_proof(dir: &str) {
     delete_file(dir, CIRCUIT_FILENAME);
     delete_file(dir, COMMON_DATA_FILENAME);
     delete_file(dir, VERIFIER_ONLY_DATA_FILENAME);
@@ -225,6 +147,7 @@ pub fn clear_data_and_proof(dir: &str) {
 fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
+    path.push(BN128_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
 
     if let Some(parent) = path.parent() {
@@ -242,6 +165,7 @@ fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
 fn read_from_dir(dir: &str, filename: &str) -> io::Result<Vec<u8>> {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
+    path.push(BN128_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
 
     let file = File::open(&path)?;
@@ -256,6 +180,7 @@ fn read_from_dir(dir: &str, filename: &str) -> io::Result<Vec<u8>> {
 fn file_exists(dir: &str, filename: &str) -> bool {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
+    path.push(BN128_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
     path.exists()
 }
@@ -264,6 +189,7 @@ fn file_exists(dir: &str, filename: &str) -> bool {
 fn delete_file(dir: &str, filename: &str) {
     let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
     path.push(dir);
+    path.push(BN128_WRAPPER_OUTPUT_FOLDER);
     path.push(filename);
     match fs::remove_file(path.clone()) {
         Ok(_) => log::info!("File '{}' deleted.", path.display()),

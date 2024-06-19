@@ -1,9 +1,10 @@
-mod circuits;
-mod prover;
+pub mod circuits;
+pub mod bn128_wrapper;
+pub mod groth16_wrapper;
+mod validators;
 mod commitment;
 
-pub use prover::*;
-pub use circuits::*;
+pub use validators::*;
 pub use commitment::*;
 use plonky2::{field::goldilocks_field::GoldilocksField, hash::poseidon::PoseidonHash, plonk::config::PoseidonGoldilocksConfig};
 
