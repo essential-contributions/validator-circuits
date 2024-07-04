@@ -1,5 +1,6 @@
 pub mod attestations_aggregator_circuit;
 pub mod participation_circuit;
+pub mod state_update_circuit;
 pub mod validators_update_circuit;
 mod serialization;
 
@@ -19,6 +20,7 @@ pub const PROOF_FILENAME: &str = "proof_with_public_inputs.json";
 pub const ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR: &str = "attestations_aggregator";
 pub const PARTICIPATION_CIRCUIT_DIR: &str = "participation";
 pub const VALIDATORS_UPDATE_CIRCUIT_DIR: &str = "validators_update";
+pub const STATE_UPDATE_CIRCUIT_DIR: &str = "state_update";
 
 pub trait Circuit {
     type Data;
