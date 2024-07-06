@@ -1,4 +1,4 @@
-use plonky2::hash::hash_types::{HashOut, HashOutTarget};
+use plonky2::hash::hash_types::HashOutTarget;
 use plonky2::hash::merkle_proofs::MerkleProofTarget;
 use plonky2::iop::target::Target;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
@@ -13,6 +13,7 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use crate::{example_validator_set, Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
+use super::extensions::PartialWitnessExtended;
 use super::serialization::{deserialize_circuit, serialize_circuit};
 use super::{Circuit, Proof, Serializeable};
 
@@ -203,28 +204,15 @@ fn generate_partial_witness(targets: &ValidatorsUpdateCircuitTargets, data: &Val
 
     let mut pw = PartialWitness::new();
     pw.set_target(targets.index, Plonky2_Field::from_canonical_usize(data.validator_index));
-    set_targets(&mut pw, targets.previous_root.elements.to_vec(), data.previous_root.to_vec());
-    set_targets(&mut pw, targets.previous_commitment.elements.to_vec(), data.previous_commitment.to_vec());
+    pw.set_target_arr(&targets.previous_root.elements, &data.previous_root);
+    pw.set_target_arr(&targets.previous_commitment.elements, &data.previous_commitment);
     pw.set_target(targets.previous_stake, Plonky2_Field::from_canonical_u64(data.previous_stake));
-    set_targets(&mut pw, targets.new_root.elements.to_vec(), data.new_root.to_vec());
-    set_targets(&mut pw, targets.new_commitment.elements.to_vec(), data.new_commitment.to_vec());
+    pw.set_target_arr(&targets.new_root.elements, &data.new_root);
+    pw.set_target_arr(&targets.new_commitment.elements, &data.new_commitment);
     pw.set_target(targets.new_stake, Plonky2_Field::from_canonical_u64(data.new_stake));
-    set_merkle_targets(&mut pw, targets.merkle_proof.clone(), data.merkle_proof.clone());
+    pw.set_merkle_proof_target(targets.merkle_proof.clone(), &data.merkle_proof);
 
     Ok(pw)
-}
-
-fn set_targets(pw: &mut PartialWitness<Field>, targets: Vec<Target>, values: Vec<Field>) {
-    for (t, v) in targets.iter().zip(values.iter()) {
-        pw.set_target(*t, *v);
-    }
-}
-
-fn set_merkle_targets(pw: &mut PartialWitness<Field>, target: MerkleProofTarget, value: Vec<[Field; 4]>) {
-    for (t, v) in target.siblings.iter().zip(value.iter()) {
-        let hash: HashOut<Field> = HashOut::<Field> { elements: *v };
-        pw.set_hash_target(*t, hash);
-    }
 }
 
 #[inline]

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, state_update_circuit::{self, StateUpdateCircuitData}, Circuit, Proof, STATE_UPDATE_CIRCUIT_DIR}, example_validator_set, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, state_update_circuit::{self, StateUpdateCircuitData, STATE_UPDATE_OP_ADD, STATE_UPDATE_OP_MUL}, Circuit, Proof, STATE_UPDATE_CIRCUIT_DIR}, example_validator_set, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}};
 use validator_circuits::circuits::state_update_circuit::StateUpdateCircuit;
 
 pub fn benchmark_prove_state_update(full: bool) {
@@ -27,7 +27,7 @@ pub fn benchmark_prove_state_update(full: bool) {
     let proof = state_update_circuit.initial_proof();
     println!("(finished in {:?})", start.elapsed());
     if state_update_circuit.verify_proof(&proof).is_ok() {
-        println!("Proved state update {:?} from {:?} to {:?}!", proof.counter(), proof.initial_hash(), proof.hash());
+        println!("Proved state update [{:?} at root {:?}]!", proof.total_staked(), proof.root());
     } else {
         log::error!("Proof failed verification.");
         return;
@@ -38,11 +38,13 @@ pub fn benchmark_prove_state_update(full: bool) {
     println!("Generating 1st Round Proof...");
     let start = Instant::now();
     let proof = state_update_circuit.generate_proof(&StateUpdateCircuitData {
+        op_code: STATE_UPDATE_OP_ADD,
+        params: [4],
         previous_proof: proof,
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     if state_update_circuit.verify_proof(&proof).is_ok() {
-        println!("Proved state update {:?} from {:?} to {:?}!", proof.counter(), proof.initial_hash(), proof.hash());
+        println!("Proved state update [{:?} at root {:?}]!", proof.total_staked(), proof.root());
     } else {
         log::error!("Proof failed verification.");
         return;
@@ -53,11 +55,47 @@ pub fn benchmark_prove_state_update(full: bool) {
     println!("Generating 2nd Round Proof...");
     let start = Instant::now();
     let proof = state_update_circuit.generate_proof(&StateUpdateCircuitData {
+        op_code: STATE_UPDATE_OP_MUL,
+        params: [3],
         previous_proof: proof,
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     if state_update_circuit.verify_proof(&proof).is_ok() {
-        println!("Proved state update {:?} from {:?} to {:?}!", proof.counter(), proof.initial_hash(), proof.hash());
+        println!("Proved state update [{:?} at root {:?}]!", proof.total_staked(), proof.root());
+    } else {
+        log::error!("Proof failed verification.");
+        return;
+    }
+    println!("");
+    
+    //generate proof off the last proof
+    println!("Generating 3rd Round Proof...");
+    let start = Instant::now();
+    let proof = state_update_circuit.generate_proof(&StateUpdateCircuitData {
+        op_code: STATE_UPDATE_OP_ADD,
+        params: [5],
+        previous_proof: proof,
+    }).unwrap();
+    println!("(finished in {:?})", start.elapsed());
+    if state_update_circuit.verify_proof(&proof).is_ok() {
+        println!("Proved state update [{:?} at root {:?}]!", proof.total_staked(), proof.root());
+    } else {
+        log::error!("Proof failed verification.");
+        return;
+    }
+    println!("");
+    
+    //generate proof off the last proof
+    println!("Generating 4th Round Proof...");
+    let start = Instant::now();
+    let proof = state_update_circuit.generate_proof(&StateUpdateCircuitData {
+        op_code: STATE_UPDATE_OP_MUL,
+        params: [10],
+        previous_proof: proof,
+    }).unwrap();
+    println!("(finished in {:?})", start.elapsed());
+    if state_update_circuit.verify_proof(&proof).is_ok() {
+        println!("Proved state update [{:?} at root {:?}]!", proof.total_staked(), proof.root());
     } else {
         log::error!("Proof failed verification.");
         return;

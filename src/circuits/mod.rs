@@ -2,7 +2,7 @@ pub mod attestations_aggregator_circuit;
 pub mod participation_circuit;
 pub mod state_update_circuit;
 pub mod validators_update_circuit;
-mod serialization;
+mod utils;
 
 use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
 use std::{fs::{self, create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
@@ -10,6 +10,7 @@ use std::str;
 use anyhow::{anyhow, Result};
 
 use crate::{Config, Field, D};
+use utils::*;
 
 pub const CIRCUIT_OUTPUT_FOLDER: &str = "circuits";
 pub const CIRCUIT_FILENAME: &str = "circuit.bin";

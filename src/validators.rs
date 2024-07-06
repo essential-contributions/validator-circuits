@@ -11,6 +11,7 @@ use crate::{example_commitment_root, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGAT
 use crate::Field;
 use crate::Hash;
 
+//TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: implement multi-threading for manual verification
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -20,14 +21,14 @@ pub struct Validator {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ValidatorSet {
+pub struct ValidatorsTree {
     validators: Vec<Validator>,
     nodes: Vec<[Field; 4]>,
     height: u32,
 }
 
-impl ValidatorSet {
-    pub fn new(validators: Vec<Validator>) -> Self {
+impl ValidatorsTree {
+    pub fn from_validators(validators: Vec<Validator>) -> Self {
         let height = VALIDATORS_TREE_HEIGHT as u32;
         let num_nodes = (1 << (height + 1)) - 1;
         let nodes: Vec<[Field; 4]> = vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
@@ -178,7 +179,7 @@ impl ValidatorSet {
         for i in (0..self.height).rev() {
             let start = (2u32.pow(i + 1) - 1) as usize;
             if (idx & 1) == 0 {
-                 nodes[node_index] = self.nodes[start + idx + 1];
+                nodes[node_index] = self.nodes[start + idx + 1];
             } else {
                 nodes[node_index] = self.nodes[start + idx - 1];
             }
@@ -233,7 +234,7 @@ fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
 }
 
 // Creates an example validator set
-pub fn example_validator_set() -> ValidatorSet {
+pub fn example_validator_set() -> ValidatorsTree {
     let commitment_roots: Vec<[Field; 4]> = (0..EXAMPLE_COMMITMENTS_REPEAT).into_par_iter().map(|i| example_commitment_root(i)).collect();
     let validator_stake_default = 7;
     let validators: Vec<Validator> = (0..(1 << VALIDATORS_TREE_HEIGHT)).map(|i| Validator {
@@ -241,5 +242,5 @@ pub fn example_validator_set() -> ValidatorSet {
         stake: validator_stake_default,
     }).collect();
 
-    ValidatorSet::new(validators)
+    ValidatorsTree::from_validators(validators)
 }

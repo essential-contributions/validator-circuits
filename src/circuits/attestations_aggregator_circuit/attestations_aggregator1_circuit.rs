@@ -10,6 +10,7 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
+use crate::circuits::extensions::PartialWitnessExtended;
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
 use crate::{example_commitment_proof, example_validator_set, Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 use crate::Hash;
@@ -276,8 +277,8 @@ fn generate_partial_witness(targets: &AttsAgg1Targets, data: &AttestationsAggreg
     for (t, v) in targets.validators.iter().zip(validators.iter()) {
         pw.set_target(t.stake, Plonky2_Field::from_canonical_u64(v.stake));
         pw.set_hash_target(t.commitment_root, HashOut::<Field> { elements: v.commitment_root });
-        set_targets(&mut pw, t.reveal.clone(), v.reveal.clone().unwrap().reveal.to_vec());
-        set_merkle_targets(&mut pw, t.reveal_proof.clone(), v.reveal.clone().unwrap().reveal_proof.clone());
+        pw.set_target_arr(&t.reveal, &v.reveal.clone().unwrap().reveal);
+        pw.set_merkle_proof_target(t.reveal_proof.clone(), &v.reveal.clone().unwrap().reveal_proof);
     }
 
     let participation_bit_field = participation_fields(validator_participation);
@@ -286,19 +287,6 @@ fn generate_partial_witness(targets: &AttsAgg1Targets, data: &AttestationsAggreg
     }
 
     Ok(pw)
-}
-
-fn set_targets(pw: &mut PartialWitness<Field>, targets: Vec<Target>, values: Vec<Field>) {
-    for (t, v) in targets.iter().zip(values.iter()) {
-        pw.set_target(*t, *v);
-    }
-}
-
-fn set_merkle_targets(pw: &mut PartialWitness<Field>, target: MerkleProofTarget, value: Vec<[Field; 4]>) {
-    for (t, v) in target.siblings.iter().zip(value.iter()) {
-        let hash: HashOut<Field> = HashOut::<Field> { elements: *v };
-        pw.set_hash_target(*t, hash);
-    }
 }
 
 #[inline]
