@@ -1,26 +1,20 @@
-use plonky2::field::extension::Extendable;
-use plonky2::field::packed::PackedField;
-use plonky2::gates::noop::NoopGate;
-use plonky2::hash::hash_types::{HashOut, HashOutTarget, RichField};
-use plonky2::hash::merkle_proofs::MerkleProofTarget;
+use plonky2::hash::hash_types::HashOutTarget;
 use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::field::types::{Field as Plonky2_Field, PrimeField64};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, CommonCircuitData, VerifierCircuitTarget};
-use plonky2::plonk::config::{AlgebraicHasher, GenericConfig};
+use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierCircuitTarget};
+use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
 use plonky2::recursion::dummy_circuit::cyclic_base_proof;
-use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
-use crate::{example_validator_set, Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
+use crate::{Config, Field, D};
 use crate::Hash;
 
 use super::extensions::{common_data_for_recursion, CircuitBuilderExtended};
-use super::serialization::{deserialize_circuit, serialize_circuit};
-use super::{Circuit, Proof, Serializeable};
+use super::{Circuit, Proof};
 
 //pub const PIS_STATE_UPDATE_INDEX: usize = 0;
 //pub const PIS_STATE_UPDATE_PREVIOUS_ROOT: [usize; 4] = [1, 2, 3, 4];

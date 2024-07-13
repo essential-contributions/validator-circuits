@@ -2,6 +2,7 @@ pub mod attestations_aggregator_circuit;
 pub mod participation_circuit;
 pub mod state_update_circuit;
 pub mod validators_update_circuit;
+pub mod sha256_circuit;
 mod utils;
 
 use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};

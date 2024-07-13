@@ -31,6 +31,8 @@ fn main() {
         actions::benchmark_prove_validators_update(args.full);
     } else if args.action.eq("state")  {
         actions::benchmark_prove_state_update(args.full);
+    } else if args.action.eq("sha256")  {
+        actions::benchmark_sha256(args.full);
     } else {
         log::error!("Invalid action [{}]", args.action);
     }
