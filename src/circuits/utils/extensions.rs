@@ -38,29 +38,37 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
     }
 /*
     fn greater_than(&mut self, x: Target, y: Target, num_bits: usize) -> BoolTarget {
+        let or_equal_to = false;
         let x_bits = self.split_le(x, num_bits);
         let y_bits = self.split_le(y, num_bits);
 
-        //starting with the smallest bit, compute `!y_bit & (x_bit | previous_bit_comparison)`
-        let mut previous_bit_comparison = self.constant_bool(false);
+        //starting with the smallest bit, compute `(x_bit & prev_bit_comp) | (x_bit & ~y_bit) | (prev_bit_comp & ~y_bit)`
+        let mut previous_bit_comparison = self.constant_bool(or_equal_to);
         for i in 0..num_bits {
-            let x_bit_or_prev_comp = self.or(x_bits[i], previous_bit_comparison);
             let not_y_bit = self.not(y_bits[i]);
-            previous_bit_comparison = self.and(not_y_bit, x_bit_or_prev_comp);
+            let x_bit_and_prev_comp = self.and(x_bits[i], previous_bit_comparison);
+            let x_bit_and_not_y_bit = self.and(x_bits[i], not_y_bit);
+            let prev_comp_and_not_y_bit = self.and(previous_bit_comparison, not_y_bit);
+            let x_bit_and_prev_comp_or_x_bit_and_not_y_bit = self.or(x_bit_and_prev_comp, x_bit_and_not_y_bit);
+            previous_bit_comparison = self.or(x_bit_and_prev_comp_or_x_bit_and_not_y_bit, prev_comp_and_not_y_bit);
         }
         previous_bit_comparison
     }
 */
     fn less_than(&mut self, x: Target, y: Target, num_bits: usize) -> BoolTarget {
+        let or_equal_to = false;
         let x_bits = self.split_le(x, num_bits);
         let y_bits = self.split_le(y, num_bits);
 
-        //starting with the smallest bit, compute `y_bit & (!x_bit | previous_bit_comparison)`
-        let mut previous_bit_comparison = self.constant_bool(false);
+        //starting with the smallest bit, compute `(y_bit & prev_bit_comp) | (y_bit & ~x_bit) | (prev_bit_comp & ~x_bit)`
+        let mut previous_bit_comparison = self.constant_bool(or_equal_to);
         for i in 0..num_bits {
             let not_x_bit = self.not(x_bits[i]);
-            let not_x_bit_or_prev_comp = self.or(not_x_bit, previous_bit_comparison);
-            previous_bit_comparison = self.and(y_bits[i], not_x_bit_or_prev_comp);
+            let y_bit_and_prev_comp = self.and(y_bits[i], previous_bit_comparison);
+            let y_bit_and_not_x_bit = self.and(y_bits[i], not_x_bit);
+            let prev_comp_and_not_x_bit = self.and(previous_bit_comparison, not_x_bit);
+            let y_bit_and_prev_comp_or_y_bit_and_not_x_bit = self.or(y_bit_and_prev_comp, y_bit_and_not_x_bit);
+            previous_bit_comparison = self.or(y_bit_and_prev_comp_or_y_bit_and_not_x_bit, prev_comp_and_not_x_bit);
         }
         previous_bit_comparison
     }

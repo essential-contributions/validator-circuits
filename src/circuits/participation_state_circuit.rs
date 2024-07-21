@@ -177,13 +177,12 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
 
     //Determine the new round data based on the input and previous participation count
     let input_is_less = builder.less_than(participation_count, current_participation_count, VALIDATORS_TREE_HEIGHT);
-    let new_state_inputs_hash = builder.select_many(input_is_less, &current_state_inputs_hash, &state_inputs_hash);
     let new_participation_root = builder.select_hash(input_is_less, current_participation_root, participation_root);
     let new_participation_count = builder.select(input_is_less, current_participation_count, participation_count);
     
     //Compute the new participation rounds tree root
     let mut new_pr_tree_root = builder.hash_n_to_hash_no_pad::<Hash>([
-        &new_state_inputs_hash[..], 
+        &state_inputs_hash[..], 
         &new_participation_root.elements[..], 
         &[new_participation_count],
     ].concat());

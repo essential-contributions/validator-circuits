@@ -83,7 +83,6 @@ impl ParticipationRoundsTree {
 
         //compute intermediary nodes for each level of the tree
         for _ in 0..PARTICIPATION_ROUNDS_TREE_HEIGHT {
-            println!("intermediary_nodes {:?}", intermediary_nodes);///////////////////////////////////////
             let mut next_level_intermediary_nodes: Vec<(usize, [Field; 4])> = Vec::new();
             let mut skip_next = false;
             for i in 0..intermediary_nodes.len() {
@@ -223,8 +222,19 @@ impl ParticipationRoundsTree {
 
     pub fn update_round(&mut self, round: ParticipationRound) {
         let state_epoch = round.num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
+        match self.state_inputs_hashes.get(&state_epoch) {
+            Some(inputs_hash) => {
+                assert_eq!(
+                    inputs_hash.clone(), 
+                    round.state_inputs_hash, 
+                    "round update must have the same state_inputs_hash as previous updates within the same epoch"
+                );
+            },
+            _ => {},
+        }
+
         let current_round = self.round(round.num);
-        if current_round.participation_count <= round.participation_count {
+        if round.participation_count >= current_round.participation_count {
             self.state_inputs_hashes.insert(state_epoch, round.state_inputs_hash);
             self.rounds.insert(round.num, ParticipationRoundData {
                 participation_root: round.participation_root,

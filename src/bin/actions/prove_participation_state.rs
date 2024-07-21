@@ -57,13 +57,13 @@ pub fn benchmark_prove_participation_state(full: bool) {
         return;
     }
     participation_rounds_tree.update_round(round);
-    println!("expected root: {:?}", participation_rounds_tree.root());/////////////////////
+    println!("expected root: {:?}", participation_rounds_tree.root());
     println!();
     
     //generate proof off the last proof
     let round = ParticipationRound {
         num: 2,
-        state_inputs_hash: [7, 5, 8, 0],
+        state_inputs_hash: [1, 2, 3, 4],
         participation_root: [Field::TWO; 4],
         participation_count: 7700,
         participation_bits: ParticipationBits { bit_flags: vec![55, 55, 55, 55] },
@@ -94,44 +94,119 @@ pub fn benchmark_prove_participation_state(full: bool) {
         return;
     }
     participation_rounds_tree.update_round(round);
-    println!("expected root: {:?}", participation_rounds_tree.root());/////////////////////
+    println!("expected root: {:?}", participation_rounds_tree.root());
     println!();
     
-    /*
     //generate proof off the last proof
+    let round = ParticipationRound {
+        num: 2,
+        state_inputs_hash: [1, 2, 3, 4],
+        participation_root: [Field::TWO, Field::ONE, Field::TWO, Field::ONE],
+        participation_count: 7699,
+        participation_bits: ParticipationBits { bit_flags: vec![44, 44, 44, 44] },
+    };
+    let current_round_data = participation_rounds_tree.round(round.num);
     println!("Generating 3rd Round Proof...");
     let start = Instant::now();
     let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
-        op_code: 0,
-        params: [5],
-        previous_proof: proof,
+        round_num: round.num,
+        state_inputs_hash: round.state_inputs_hash,
+        participation_root: round.participation_root,
+        participation_count: round.participation_count,
+        current_state_inputs_hash: current_round_data.state_inputs_hash,
+        current_participation_root: current_round_data.participation_root,
+        current_participation_count: current_round_data.participation_count,
+        participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
+        previous_proof: Some(proof),
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     if participation_state_circuit.verify_proof(&proof).is_ok() {
-        println!("Proved state update [{:?} at root {:?}]!", proof.total_staked(), proof.root());
+        print!("Proved participation update to {:?} (inputs hash:", proof.participation_rounds_tree_root());
+        for word in proof.inputs_hash() {
+            print!("{:16x}", word);
+        }
+        println!(")");
     } else {
         log::error!("Proof failed verification.");
         return;
     }
-    println!("");
+    participation_rounds_tree.update_round(round);
+    println!("expected root: {:?}", participation_rounds_tree.root());
+    println!();
     
     //generate proof off the last proof
+    let round = ParticipationRound {
+        num: 78923,
+        state_inputs_hash: [8, 8, 9, 9],
+        participation_root: [Field::ZERO, Field::ONE, Field::TWO, Field::ZERO],
+        participation_count: 100_000,
+        participation_bits: ParticipationBits { bit_flags: vec![123, 99] },
+    };
+    let current_round_data = participation_rounds_tree.round(round.num);
     println!("Generating 4th Round Proof...");
     let start = Instant::now();
     let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
-        op_code: 0,
-        params: [10],
-        previous_proof: proof,
+        round_num: round.num,
+        state_inputs_hash: round.state_inputs_hash,
+        participation_root: round.participation_root,
+        participation_count: round.participation_count,
+        current_state_inputs_hash: current_round_data.state_inputs_hash,
+        current_participation_root: current_round_data.participation_root,
+        current_participation_count: current_round_data.participation_count,
+        participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
+        previous_proof: Some(proof),
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     if participation_state_circuit.verify_proof(&proof).is_ok() {
-        println!("Proved state update [{:?} at root {:?}]!", proof.total_staked(), proof.root());
+        print!("Proved participation update to {:?} (inputs hash:", proof.participation_rounds_tree_root());
+        for word in proof.inputs_hash() {
+            print!("{:16x}", word);
+        }
+        println!(")");
     } else {
         log::error!("Proof failed verification.");
         return;
     }
-    println!("");
-    */
+    participation_rounds_tree.update_round(round);
+    println!("expected root: {:?}", participation_rounds_tree.root());
+    println!();
+    
+    //generate proof off the last proof
+    let round = ParticipationRound {
+        num: 78923,
+        state_inputs_hash: [8, 8, 9, 9],
+        participation_root: [Field::from_canonical_u64(123); 4],
+        participation_count: 100_000,
+        participation_bits: ParticipationBits { bit_flags: vec![255, 52, 1] },
+    };
+    let current_round_data = participation_rounds_tree.round(round.num);
+    println!("Generating 5th Round Proof...");
+    let start = Instant::now();
+    let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
+        round_num: round.num,
+        state_inputs_hash: round.state_inputs_hash,
+        participation_root: round.participation_root,
+        participation_count: round.participation_count,
+        current_state_inputs_hash: current_round_data.state_inputs_hash,
+        current_participation_root: current_round_data.participation_root,
+        current_participation_count: current_round_data.participation_count,
+        participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
+        previous_proof: Some(proof),
+    }).unwrap();
+    println!("(finished in {:?})", start.elapsed());
+    if participation_state_circuit.verify_proof(&proof).is_ok() {
+        print!("Proved participation update to {:?} (inputs hash:", proof.participation_rounds_tree_root());
+        for word in proof.inputs_hash() {
+            print!("{:16x}", word);
+        }
+        println!(")");
+    } else {
+        log::error!("Proof failed verification.");
+        return;
+    }
+    participation_rounds_tree.update_round(round);
+    println!("expected root: {:?}", participation_rounds_tree.root());
+    println!();
 
 
 
