@@ -30,7 +30,7 @@ pub struct ParticipationBits {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ParticipationRound {
     pub num: usize,
-    pub state_inputs_hash: [u64; 4],
+    pub state_inputs_hash: [u8; 32],
     pub participation_root: [Field; 4],
     pub participation_count: u32,
     pub participation_bits: ParticipationBits,
@@ -45,7 +45,7 @@ pub struct ParticipationRoundData {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ParticipationRoundsTree {
-    state_inputs_hashes: HashMap<usize, [u64; 4]>,
+    state_inputs_hashes: HashMap<usize, [u8; 32]>,
     rounds: HashMap<usize, ParticipationRoundData>,
 }
 
@@ -73,7 +73,7 @@ impl ParticipationRoundsTree {
         //compute the initial default node
         let mut default_node = Self::hash_round(ParticipationRound {
             num: 0,
-            state_inputs_hash: [0u64; 4],
+            state_inputs_hash: [0u8; 32],
             participation_root: empty_participation_root(),
             participation_count: 0,
             participation_bits: ParticipationBits {
@@ -137,7 +137,7 @@ impl ParticipationRoundsTree {
         //compute the initial default node
         let mut default_node = Self::hash_round(ParticipationRound {
             num: 0,
-            state_inputs_hash: [0u64; 4],
+            state_inputs_hash: [0u8; 32],
             participation_root: empty_participation_root(),
             participation_count: 0,
             participation_bits: ParticipationBits {
@@ -202,7 +202,7 @@ impl ParticipationRoundsTree {
                 num,
                 state_inputs_hash: match self.state_inputs_hashes.get(&state_epoch) {
                     Some(state_inputs_hash) => state_inputs_hash.clone(),
-                    None => [0u64; 4],
+                    None => [0u8; 32],
                 },
                 participation_root: round.participation_root,
                 participation_count: round.participation_count,
@@ -210,7 +210,7 @@ impl ParticipationRoundsTree {
             },
             None => ParticipationRound {
                 num,
-                state_inputs_hash: [0u64; 4],
+                state_inputs_hash: [0u8; 32],
                 participation_root: empty_participation_root(),
                 participation_count: 0,
                 participation_bits: ParticipationBits {
@@ -246,9 +246,8 @@ impl ParticipationRoundsTree {
     
     fn hash_round(round: ParticipationRound) -> [Field; 4] {
         let mut state_inputs_hash_as_fields = Vec::new();
-        for e in round.state_inputs_hash {
-            state_inputs_hash_as_fields.push(Field::from_canonical_u64(e >> 32));
-            state_inputs_hash_as_fields.push(Field::from_canonical_u32(e as u32));
+        for c in round.state_inputs_hash.chunks(4) {
+            state_inputs_hash_as_fields.push(Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])));
         }
         let fields_to_hash = [
             state_inputs_hash_as_fields,

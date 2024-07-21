@@ -62,6 +62,7 @@ impl Circuit for ParticipationStateCircuit {
     }
 
     fn example_proof(&self) -> Self::Proof {
+        //TODO
         todo!()
     }
 
@@ -104,15 +105,13 @@ pub struct ParticipationStateProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
 impl ParticipationStateProof {
-    pub fn inputs_hash(&self) -> [u64; 4] {
-        [(self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[0]].to_canonical_u64() << 32)
-            + self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[1]].to_canonical_u64(), 
-        (self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[2]].to_canonical_u64() << 32)
-            + self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[3]].to_canonical_u64(), 
-        (self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[4]].to_canonical_u64() << 32)
-            + self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[5]].to_canonical_u64(), 
-        (self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[6]].to_canonical_u64() << 32)
-            + self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[7]].to_canonical_u64()]
+    pub fn inputs_hash(&self) -> [u8; 32] {
+        let mut hash = [0u8; 32];
+        for i in 0..8 {
+            let bytes = (self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[i]].to_canonical_u64() as u32).to_be_bytes();
+            hash[(i * 4)..((i * 4) + 4)].copy_from_slice(&bytes);
+        }
+        hash
     }
 
     pub fn participation_rounds_tree_root(&self) -> [Field; 4] {
@@ -244,11 +243,11 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
 #[derive(Clone)]
 pub struct ParticipationStateCircuitData {
     pub round_num: usize,
-    pub state_inputs_hash: [u64; 4],
+    pub state_inputs_hash: [u8; 32],
     pub participation_root: [Field; 4],
     pub participation_count: u32,
 
-    pub current_state_inputs_hash: [u64; 4],
+    pub current_state_inputs_hash: [u8; 32],
     pub current_participation_root: [Field; 4],
     pub current_participation_count: u32,
     pub participation_round_proof: Vec<[Field; 4]>,
@@ -265,16 +264,16 @@ fn generate_partial_witness(
     let mut pw = PartialWitness::new();
 
     pw.set_target(targets.round_num, Field::from_canonical_usize(data.round_num));
-    data.state_inputs_hash.iter().enumerate().for_each(|(i, t)| {
-        pw.set_target(targets.state_inputs_hash[i * 2], Field::from_canonical_u64(*t >> 32));
-        pw.set_target(targets.state_inputs_hash[(i * 2) + 1], Field::from_canonical_u32(*t as u32));
+    data.state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
+        let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
+        pw.set_target(targets.state_inputs_hash[i], value);
     });
     pw.set_hash_target(targets.participation_root, HashOut::<Field> { elements: data.participation_root });
     pw.set_target(targets.participation_count, Field::from_canonical_u32(data.participation_count));
     
-    data.current_state_inputs_hash.iter().enumerate().for_each(|(i, t)| {
-        pw.set_target(targets.current_state_inputs_hash[i * 2], Field::from_canonical_u64(*t >> 32));
-        pw.set_target(targets.current_state_inputs_hash[(i * 2) + 1], Field::from_canonical_u32(*t as u32));
+    data.current_state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
+        let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
+        pw.set_target(targets.current_state_inputs_hash[i], value);
     });
     pw.set_hash_target(targets.current_participation_root, HashOut::<Field> { elements: data.current_participation_root });
     pw.set_target(targets.current_participation_count, Field::from_canonical_u32(data.current_participation_count));

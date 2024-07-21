@@ -9,7 +9,7 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
         if !bn128_wrapper_circuit_data_exists(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR) || !groth16_wrapper_circuit_data_exists(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR) {
             log::error!("Cannot generate full wrapped proof until circuits are built.");
             log::error!("Please run the build util and try again. [cargo run --release --bin cbuild -- --full]");
-            return;
+            panic!();
         }
     }
 

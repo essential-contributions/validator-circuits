@@ -64,17 +64,17 @@ impl Circuit for AttestationsAggregatorCircuit {
 impl Serializeable for AttestationsAggregatorCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer: Vec<u8> = Vec::new();
-        write_all(&mut buffer, &(0 as u64).to_le_bytes())?;
-        write_all(&mut buffer, &(0 as u64).to_le_bytes())?;
+        write_all(&mut buffer, &(0 as u64).to_be_bytes())?;
+        write_all(&mut buffer, &(0 as u64).to_be_bytes())?;
 
         {
             let bytes = self.attestations_aggregator1.to_bytes()?;
-            buffer[0..8].copy_from_slice(&(bytes.len() as u64).to_le_bytes());
+            buffer[0..8].copy_from_slice(&(bytes.len() as u64).to_be_bytes());
             write_all(&mut buffer, bytes.as_slice())?;
         }
         {
             let bytes = self.attestations_aggregator2.to_bytes()?;
-            buffer[8..16].copy_from_slice(&(bytes.len() as u64).to_le_bytes());
+            buffer[8..16].copy_from_slice(&(bytes.len() as u64).to_be_bytes());
             write_all(&mut buffer, bytes.as_slice())?;
         }
         {
@@ -86,12 +86,12 @@ impl Serializeable for AttestationsAggregatorCircuit {
     }
 
     fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
-        let mut le_bytes = [0u8; 8];
+        let mut be_bytes = [0u8; 8];
         let start1 = 16;
-        le_bytes.copy_from_slice(&bytes[0..8]);
-        let start2 = start1 + (u64::from_le_bytes(le_bytes) as usize);
-        le_bytes.copy_from_slice(&bytes[8..16]);
-        let start3 = start2 + (u64::from_le_bytes(le_bytes) as usize);
+        be_bytes.copy_from_slice(&bytes[0..8]);
+        let start2 = start1 + (u64::from_be_bytes(be_bytes) as usize);
+        be_bytes.copy_from_slice(&bytes[8..16]);
+        let start3 = start2 + (u64::from_be_bytes(be_bytes) as usize);
 
         log::info!("Loading sub circuit from bytes [AttestationsAggregator1Circuit]");
         let attestations_aggregator1 = AttestationsAggregator1Circuit::from_bytes(&(&bytes[start1..start2]).to_vec())?;

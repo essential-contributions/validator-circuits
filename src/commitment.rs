@@ -205,7 +205,7 @@ fn computed_nodes(seed: [u8; 32], offset: usize) -> Vec<[Field; 4]> {
 }
 
 fn computed_secret(seed: [u8; 32], index: usize) -> [Field; 4] {
-    let index_bytes: [u8; 4] = (index as u32).to_le_bytes();
+    let index_bytes: [u8; 4] = (index as u32).to_be_bytes();
     let mut seed_bytes = seed.to_vec();
     seed_bytes.append(&mut index_bytes.to_vec());
 
@@ -237,25 +237,25 @@ fn bytes_to_fields(bytes: &[u8]) -> [Field; 4] {
     chunk3.copy_from_slice(&bytes[24..32]);
     
     [
-        Plonky2_Field::from_canonical_u64(u64::from_le_bytes(chunk0)),
-        Plonky2_Field::from_canonical_u64(u64::from_le_bytes(chunk1)),
-        Plonky2_Field::from_canonical_u64(u64::from_le_bytes(chunk2)),
-        Plonky2_Field::from_canonical_u64(u64::from_le_bytes(chunk3)),
+        Plonky2_Field::from_canonical_u64(u64::from_be_bytes(chunk0)),
+        Plonky2_Field::from_canonical_u64(u64::from_be_bytes(chunk1)),
+        Plonky2_Field::from_canonical_u64(u64::from_be_bytes(chunk2)),
+        Plonky2_Field::from_canonical_u64(u64::from_be_bytes(chunk3)),
     ]
 }
 
 fn fields_to_bytes(fields: &[Field; 4]) -> [u8; 32] {
     let mut bytes = [0u8; 32];
-    fields[0].0.to_le_bytes().iter().enumerate().for_each(|(i, b)| {
+    fields[0].0.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
         bytes[i] = *b;
     });
-    fields[1].0.to_le_bytes().iter().enumerate().for_each(|(i, b)| {
+    fields[1].0.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
         bytes[8 + i] = *b;
     });
-    fields[2].0.to_le_bytes().iter().enumerate().for_each(|(i, b)| {
+    fields[2].0.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
         bytes[16 + i] = *b;
     });
-    fields[3].0.to_le_bytes().iter().enumerate().for_each(|(i, b)| {
+    fields[3].0.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
         bytes[24 + i] = *b;
     });
 
