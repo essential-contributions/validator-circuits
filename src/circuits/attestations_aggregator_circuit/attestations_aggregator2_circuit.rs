@@ -4,15 +4,17 @@ use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::field::types::{Field as Plonky2_Field, PrimeField64};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierCircuitTarget};
-use plonky2::plonk::config::{GenericConfig, Hasher as Plonky2_Hasher};
+use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
-use crate::{example_validator_set, Config, Field, Hash, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, D};
+use crate::participation::empty_participation_sub_root;
+use crate::validators::example_validator_set;
+use crate::{Config, Field, Hash, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, D};
 use crate::circuits::ContinuationCircuit;
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use super::{empty_agg1_participation_sub_root, AttestationsAggregator1Circuit, AttestationsAggregator1Proof, Circuit, Proof, Serializeable, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_NUM_PARTICIPANTS, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_TOTAL_STAKE, PIS_AGG1_VALIDATORS_SUB_ROOT};
+use super::{AttestationsAggregator1Circuit, AttestationsAggregator1Proof, Circuit, Proof, Serializeable, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_NUM_PARTICIPANTS, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_TOTAL_STAKE, PIS_AGG1_VALIDATORS_SUB_ROOT};
 
 pub const VALIDATORS_TREE_AGG2_SUB_HEIGHT: usize = AGGREGATION_PASS2_SUB_TREE_HEIGHT;
 pub const ATTESTATION_AGGREGATION_PASS2_SIZE: usize = AGGREGATION_PASS2_SIZE;
@@ -349,22 +351,10 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg2Targets> {
 }
 
 fn build_empty_participation_sub_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
-    let root = empty_agg1_participation_sub_root();
+    let root = empty_participation_sub_root(0);
     HashOutTarget {
         elements: root.map(|f| { builder.constant(f) }),
     }
-}
-
-pub fn empty_agg2_participation_sub_root() -> [Field; 4] {
-    let mut node = empty_agg1_participation_sub_root();
-    for _ in 0..VALIDATORS_TREE_AGG2_SUB_HEIGHT {
-        node = field_hash_two(node.clone(), node.clone());
-    }
-    node
-}
-
-fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
 }
 
 fn example_data(agg1_proof: &AttestationsAggregator1Proof) -> AttestationsAggregator2Data {

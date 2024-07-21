@@ -86,6 +86,10 @@ impl AccountsTree {
         tree
     }
 
+    pub fn root(&self) -> [Field; 4] {
+        self.root
+    }
+
     pub fn set_account(&mut self, account: Account) {
         let mut address = account.address;
         self.accounts.insert(address, account.clone());
@@ -180,9 +184,6 @@ impl AccountsTree {
         field_hash(&fields)
     }
 }
-
-
-
 
 fn field_hash(input: &[Field]) -> [Field; 4] {
     <Hash as Plonky2_Hasher<Field>>::hash_no_pad(input).elements

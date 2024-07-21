@@ -1,3 +1,4 @@
+pub mod participation_state_circuit;
 pub mod attestations_aggregator_circuit;
 pub mod participation_circuit;
 pub mod state_update_circuit;
@@ -19,6 +20,7 @@ pub const COMMON_DATA_FILENAME: &str = "common_circuit_data.json";
 pub const VERIFIER_ONLY_DATA_FILENAME: &str = "verifier_only_circuit_data.json";
 pub const PROOF_FILENAME: &str = "proof_with_public_inputs.json";
 
+pub const PARTICIPATION_STATE_CIRCUIT_DIR: &str = "participation_state";
 pub const ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR: &str = "attestations_aggregator";
 pub const PARTICIPATION_CIRCUIT_DIR: &str = "participation";
 pub const VALIDATORS_UPDATE_CIRCUIT_DIR: &str = "validators_update";

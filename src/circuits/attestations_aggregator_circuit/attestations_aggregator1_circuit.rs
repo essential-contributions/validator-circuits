@@ -5,20 +5,20 @@ use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::field::types::{Field as Plonky2_Field, PrimeField64};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData};
-use plonky2::plonk::config::{GenericConfig, Hasher as Plonky2_Hasher};
+use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
 use crate::circuits::extensions::PartialWitnessExtended;
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use crate::{example_commitment_proof, example_validator_set, Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
+use crate::commitment::{empty_commitment, empty_commitment_root, example_commitment_proof};
+use crate::participation::{leaf_fields, PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF};
+use crate::validators::example_validator_set;
+use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 use crate::Hash;
 
 use super::{Circuit, Proof, Serializeable};
-
-const PARTICIPANTS_PER_FIELD: usize = 62;
-const NUM_PARTICIPATION_FIELDS: usize = div_ceil(AGGREGATION_PASS1_SIZE, PARTICIPANTS_PER_FIELD);
 
 pub const VALIDATORS_TREE_AGG1_SUB_HEIGHT: usize = AGGREGATION_PASS1_SUB_TREE_HEIGHT;
 pub const ATTESTATION_AGGREGATION_PASS1_SIZE: usize = AGGREGATION_PASS1_SIZE;
@@ -35,7 +35,7 @@ pub struct AttestationsAggregator1Circuit {
 struct AttsAgg1Targets {
     block_slot: Target,
     validators: Vec<AttsAgg1ValidatorTargets>,
-    participation_bit_field: Vec<Target>,
+    participation_bits_fields: Vec<Target>,
 }
 struct AttsAgg1ValidatorTargets {
     stake: Target,
@@ -144,19 +144,19 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
     let mut num_participants = builder.zero();
     
     // Participation targets
-    let mut participation_bit_field: Vec<Target> = Vec::new();
+    let mut participation_bits_fields: Vec<Target> = Vec::new();
     let mut participation_bits: Vec<BoolTarget> = Vec::new();
-    for i in 0..NUM_PARTICIPATION_FIELDS {
+    for i in 0..PARTICIPATION_FIELDS_PER_LEAF {
         let num_bits = PARTICIPANTS_PER_FIELD.min(ATTESTATION_AGGREGATION_PASS1_SIZE - (i * PARTICIPANTS_PER_FIELD));
         let part = builder.add_virtual_target();
         let part_bits = builder.split_le(part, num_bits);
         
-        participation_bit_field.push(part);
+        participation_bits_fields.push(part);
         for b in part_bits.iter().rev() {
             participation_bits.push(*b);
         }
     }
-    let participation_root = builder.hash_n_to_hash_no_pad::<Hash>(participation_bit_field.clone());
+    let participation_root = builder.hash_n_to_hash_no_pad::<Hash>(participation_bits_fields.clone());
 
     // Verify each validator reveal
     for not_skip in participation_bits {
@@ -227,7 +227,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
     AttsAgg1Targets {
         block_slot,
         validators: validator_targets,
-        participation_bit_field,
+        participation_bits_fields,
     }
 }
 
@@ -281,8 +281,8 @@ fn generate_partial_witness(targets: &AttsAgg1Targets, data: &AttestationsAggreg
         pw.set_merkle_proof_target(t.reveal_proof.clone(), &v.reveal.clone().unwrap().reveal_proof);
     }
 
-    let participation_bit_field = participation_fields(validator_participation);
-    for (t, v) in targets.participation_bit_field.iter().zip(participation_bit_field.iter()) {
+    let participation_bits_fields = leaf_fields(validator_participation);
+    for (t, v) in targets.participation_bits_fields.iter().zip(participation_bits_fields.iter()) {
         pw.set_target(*t, *v);
     }
 
@@ -299,7 +299,7 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &AttsAgg1Targets) -> IoResult<()
         buffer.write_target_vec(&v.reveal)?;
         buffer.write_target_merkle_proof(&v.reveal_proof)?;
     }
-    buffer.write_target_vec(&targets.participation_bit_field)?;
+    buffer.write_target_vec(&targets.participation_bits_fields)?;
 
     Ok(())
 }
@@ -321,79 +321,20 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg1Targets> {
             reveal_proof,
         });
     }
-    let participation_bit_field = buffer.read_target_vec()?;
+    let participation_bits_fields = buffer.read_target_vec()?;
 
     Ok(AttsAgg1Targets {
         block_slot,
         validators,
-        participation_bit_field,
+        participation_bits_fields,
     })
 }
 
-struct EmptyCommitment {
-    pub root: [Field; 4],
-    pub reveal: [Field; 4],
-    pub proof: Vec<[Field; 4]>,
-}
-
 fn build_skip_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
-    let validator = empty_commitment();
+    let root = empty_commitment_root();
     HashOutTarget {
-        elements: validator.root.map(|f| { builder.constant(f) }),
+        elements: root.map(|f| { builder.constant(f) }),
     }
-}
-
-fn empty_commitment() -> EmptyCommitment {
-    let reveal = [
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
-    ];
-    let mut node = field_hash(&reveal);
-    let mut proof: Vec<[Field; 4]> = vec![];
-    for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
-        proof.push(node);
-        node = field_hash_two(node, node);
-    }
-
-    EmptyCommitment {
-        root: node,
-        reveal,
-        proof,
-    }
-}
-
-pub fn empty_agg1_participation_sub_root() -> [Field; 4] {
-    field_hash(&participation_fields(vec![false; ATTESTATION_AGGREGATION_PASS1_SIZE]))
-}
-
-fn participation_fields(validator_participation: Vec<bool>) -> Vec<Field> {
-    let mut b = 0;
-    let mut participation_bit_field_u64: Vec<u64> = Vec::new();
-    for _ in 0..NUM_PARTICIPATION_FIELDS {
-        let mut field_u64: u64 = 0;
-        for _ in 0..PARTICIPANTS_PER_FIELD {
-            if b < AGGREGATION_PASS1_SIZE {
-                field_u64 = field_u64 << 1;
-                if validator_participation[b] {
-                    field_u64 += 1;
-                }
-            }
-            b += 1;
-        }
-        participation_bit_field_u64.push(field_u64);
-    }
-    let fields: Vec<Field> = participation_bit_field_u64.iter().map(|f| Plonky2_Field::from_canonical_u64(*f)).collect();
-    fields
-}
-
-fn field_hash(input: &[Field]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::hash_no_pad(input).elements
-}
-
-fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
 }
 
 fn example_data() -> AttestationsAggregator1Data {
@@ -402,13 +343,13 @@ fn example_data() -> AttestationsAggregator1Data {
     let validators: Vec<AttestationsAggregator1ValidatorData> = (0..ATTESTATION_AGGREGATION_PASS1_SIZE).map(|i| {
         let validator = validator_set.validator(i);
         if i < num_attestations {
-            let (secret, proof) = example_commitment_proof(i);
+            let commitment_proof = example_commitment_proof(i);
             AttestationsAggregator1ValidatorData {
                 stake: validator.stake,
                 commitment_root: validator.commitment_root,
                 reveal: Some(AttestationsAggregator1RevealData {
-                    reveal: secret,
-                    reveal_proof: proof,
+                    reveal: commitment_proof.reveal,
+                    reveal_proof: commitment_proof.proof,
                 }),
             }
         } else {
@@ -424,16 +365,4 @@ fn example_data() -> AttestationsAggregator1Data {
         block_slot: 100,
         validators,
     }
-}
-
-const fn div_ceil(x: usize, y: usize) -> usize {
-    if x == 0 {
-        return 0;
-    }
-
-    let div = x / y;
-    if y * div == x {
-        return div;
-    }
-    div + 1
 }

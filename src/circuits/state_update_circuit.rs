@@ -33,6 +33,8 @@ const STATE_UPDATE_MAX_PARAMS: usize = 1;
 const STATE_UPDATE_INITIAL_ROOT: [u64; 4] = [0, 0, 0, 0];
 const STATE_UPDATE_INITIAL_VALIDATORS_TREE_ROOT: [u64; 4] = [0, 0, 0, 0];
 
+const MAX_GATES: usize = 1 << 12;
+
 pub struct StateUpdateCircuit {
     circuit_data: CircuitData<Field, Config, D>,
     targets: StateUpdateCircuitTargets,
@@ -162,7 +164,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> StateUpdateCircui
     builder.register_public_input(new_total_staked);
 
     //Unpack inner proof public inputs
-    let mut common_data = common_data_for_recursion();
+    let mut common_data = common_data_for_recursion(MAX_GATES);
     let verifier_data_target = builder.add_verifier_data_public_inputs();
     common_data.num_public_inputs = builder.num_public_inputs();
     let inner_cyclic_proof_with_pis = builder.add_virtual_proof_with_pis(&common_data);

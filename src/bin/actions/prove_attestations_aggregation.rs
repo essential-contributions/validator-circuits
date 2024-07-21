@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, participation_circuit::calculate_participation_root, save_proof, Circuit, Proof, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR}, example_commitment_proof, example_validator_set, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, Field, ValidatorCommitmentReveal, EXAMPLE_COMMITMENTS_REPEAT, MAX_VALIDATORS};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, Circuit, Proof, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR}, commitment::{example_commitment_proof, EXAMPLE_COMMITMENTS_REPEAT}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::{example_validator_set, ValidatorCommitmentReveal}, Field, MAX_VALIDATORS};
 use validator_circuits::circuits::attestations_aggregator_circuit::AttestationsAggregatorCircuit;
 
 pub fn benchmark_prove_attestations_aggregation(full: bool) {
@@ -31,12 +31,12 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
     let block_slot = 100;
     let num_attestations = 1000;
     let reveals: Vec<ValidatorCommitmentReveal> = (0..num_attestations).map(|i| {
-        let (reveal, proof) = example_commitment_proof(i % EXAMPLE_COMMITMENTS_REPEAT);
+        let commitment_reveal = example_commitment_proof(i % EXAMPLE_COMMITMENTS_REPEAT);
         ValidatorCommitmentReveal {
             validator_index: i,
             block_slot,
-            reveal,
-            proof,
+            reveal: commitment_reveal.reveal,
+            proof: commitment_reveal.proof,
         }
     }).collect();
     
@@ -55,7 +55,7 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
             proof.participation_root(),
         );
         println!("expected validator root: {:?}", validators.root());
-        println!("expected participation root: {:?}", participation_root(num_attestations));
+        println!("expected participation root: {:?}", calculate_participation_root(num_attestations));
     } else {
         log::error!("Proof failed verification.");
         return;
@@ -98,7 +98,7 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
     }
 }
 
-fn participation_root(to: usize) -> [Field; 4] {
+fn calculate_participation_root(to: usize) -> [Field; 4] {
     let mut bytes: Vec<u8> = vec![0u8; MAX_VALIDATORS / 8];
 
     let full_bytes = to / 8;
@@ -110,5 +110,5 @@ fn participation_root(to: usize) -> [Field; 4] {
         bytes[full_bytes] = 0xff << (8 - remainder);
     }
 
-    calculate_participation_root(&bytes)
+    participation_root(&bytes)
 }

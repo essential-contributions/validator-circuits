@@ -1,13 +1,11 @@
 pub mod circuits;
 pub mod bn128_wrapper;
 pub mod groth16_wrapper;
-mod validators;
-mod accounts;
-mod commitment;
+pub mod validators;
+pub mod accounts;
+pub mod participation;
+pub mod commitment;
 
-pub use validators::*;
-pub use accounts::*;
-pub use commitment::*;
 use plonky2::{field::goldilocks_field::GoldilocksField, hash::poseidon::PoseidonHash, plonk::config::PoseidonGoldilocksConfig};
 
 pub const D: usize = 2;
@@ -17,6 +15,8 @@ pub type Config = PoseidonGoldilocksConfig;
 
 pub const VALIDATORS_TREE_HEIGHT: usize = 20; //1048576
 pub const VALIDATOR_COMMITMENT_TREE_HEIGHT: usize = 28; //102 years
+pub const PARTICIPATION_ROUNDS_TREE_HEIGHT: usize = 21; //102 years
+pub const PARTICIPATION_ROUNDS_PER_STATE_EPOCH: usize = 64;
 pub const AGGREGATION_PASS1_SIZE: usize = 1024;
 pub const AGGREGATION_PASS2_SIZE: usize = 32;
 pub const AGGREGATION_PASS3_SIZE: usize = 32;

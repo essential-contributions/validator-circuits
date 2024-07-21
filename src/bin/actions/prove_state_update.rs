@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, state_update_circuit::{self, StateUpdateCircuitData, STATE_UPDATE_OP_ADD, STATE_UPDATE_OP_MUL}, Circuit, Proof, STATE_UPDATE_CIRCUIT_DIR}, example_validator_set, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}};
+use validator_circuits::{bn128_wrapper::bn128_wrapper_circuit_data_exists, circuits::{state_update_circuit::{self, StateUpdateCircuitData, STATE_UPDATE_OP_ADD, STATE_UPDATE_OP_MUL}, Circuit, Proof, STATE_UPDATE_CIRCUIT_DIR}, example_validator_set, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}};
 use validator_circuits::circuits::state_update_circuit::StateUpdateCircuit;
 
 pub fn benchmark_prove_state_update(full: bool) {

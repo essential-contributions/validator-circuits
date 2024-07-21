@@ -276,15 +276,48 @@ pub fn example_commitment_root(validator_index: usize) -> [Field; 4] {
 }
 
 // Creates an example commitment proof (same for every index)
-pub fn example_commitment_proof(validator_index: usize) -> ([Field; 4], Vec<[Field; 4]>) {
-    let secret = generate_secret_from_seed(validator_index);
-    let mut node = field_hash(&secret);
+pub fn example_commitment_proof(validator_index: usize) -> CommitmentReveal {
+    let reveal = generate_secret_from_seed(validator_index);
+    let mut node = field_hash(&reveal);
     let mut proof: Vec<[Field; 4]> = vec![];
     for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
         proof.push(node);
         node = field_hash_two(node, node);
     }
-    (secret, proof)
+    CommitmentReveal {reveal, proof }
+}
+
+// Generates an empty commitment proof
+pub fn empty_commitment() -> CommitmentReveal {
+    let reveal = [
+        Plonky2_Field::from_canonical_usize(0),
+        Plonky2_Field::from_canonical_usize(0),
+        Plonky2_Field::from_canonical_usize(0),
+        Plonky2_Field::from_canonical_usize(0),
+    ];
+    let mut node = field_hash(&reveal);
+    let mut proof: Vec<[Field; 4]> = vec![];
+    for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
+        proof.push(node);
+        node = field_hash_two(node, node);
+    }
+
+    CommitmentReveal {reveal, proof }
+}
+
+// Generates an empty commitment root
+pub fn empty_commitment_root() -> [Field; 4] {
+    let reveal = [
+        Plonky2_Field::from_canonical_usize(0),
+        Plonky2_Field::from_canonical_usize(0),
+        Plonky2_Field::from_canonical_usize(0),
+        Plonky2_Field::from_canonical_usize(0),
+    ];
+    let mut node = field_hash(&reveal);
+    for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
+        node = field_hash_two(node, node);
+    }
+    node
 }
 
 fn generate_secret_from_seed(seed: usize) -> [Field; 4] {

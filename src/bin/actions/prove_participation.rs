@@ -22,14 +22,14 @@ pub fn benchmark_prove_participation(full: bool) {
 
     //data
     let validator_index = 53;
-    let mut participation_bit_field = participation_bit_field(0);
-    participation_bit_field[6] = 0x04;
+    let mut participation_bits = participation_bit_field(0);
+    participation_bits[6] = 0x04;
 
     //prove
     println!("Generating Proof...");
     let start = Instant::now();
     let proof = participation_circuit.generate_proof(&ParticipationCircuitData {
-        participation_bit_field,
+        participation_bits,
         validator_index,
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());

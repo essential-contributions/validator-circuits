@@ -10,7 +10,8 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use anyhow::{anyhow, Result};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
-use crate::{example_validator_set, Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
+use crate::validators::example_validator_set;
+use crate::{Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
 use super::extensions::PartialWitnessExtended;

@@ -9,10 +9,12 @@ use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
-use crate::{example_validator_set, Config, Field, Hash, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D};
+use crate::participation::empty_participation_sub_root;
+use crate::validators::example_validator_set;
+use crate::{Config, Field, Hash, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D};
 use crate::circuits::ContinuationCircuit;
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use super::{empty_agg2_participation_sub_root, AttestationsAggregator2Circuit, AttestationsAggregator2Proof, Circuit, Proof, Serializeable, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_NUM_PARTICIPANTS, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_TOTAL_STAKE, PIS_AGG2_VALIDATORS_SUB_ROOT};
+use super::{AttestationsAggregator2Circuit, AttestationsAggregator2Proof, Circuit, Proof, Serializeable, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_NUM_PARTICIPANTS, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_TOTAL_STAKE, PIS_AGG2_VALIDATORS_SUB_ROOT};
 
 pub const VALIDATORS_TREE_AGG3_SUB_HEIGHT: usize = AGGREGATION_PASS3_SUB_TREE_HEIGHT;
 pub const ATTESTATION_AGGREGATION_PASS3_SIZE: usize = AGGREGATION_PASS3_SIZE;
@@ -349,7 +351,7 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg3Targets> {
 }
 
 fn build_empty_participation_sub_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
-    let root = empty_agg2_participation_sub_root();
+    let root = empty_participation_sub_root(AGGREGATION_PASS2_SUB_TREE_HEIGHT);
     HashOutTarget {
         elements: root.map(|f| { builder.constant(f) }),
     }

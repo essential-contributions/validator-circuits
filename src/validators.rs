@@ -7,7 +7,8 @@ use anyhow::*;
 
 use crate::circuits::attestations_aggregator_circuit::{AttestationsAggregatorCircuit, AttestationsAggregatorCircuitData, AttestationsAggregatorProof, ValidatorData, ValidatorPrimaryGroupData, ValidatorRevealData, ValidatorSecondaryGroupData, ATTESTATION_AGGREGATION_PASS1_SIZE, ATTESTATION_AGGREGATION_PASS2_SIZE, ATTESTATION_AGGREGATION_PASS3_SIZE};
 use crate::circuits::Circuit;
-use crate::{example_commitment_root, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, EXAMPLE_COMMITMENTS_REPEAT, VALIDATORS_TREE_HEIGHT};
+use crate::commitment::{example_commitment_root, EXAMPLE_COMMITMENTS_REPEAT};
+use crate::{AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
 use crate::Hash;
 
@@ -24,15 +25,13 @@ pub struct Validator {
 pub struct ValidatorsTree {
     validators: Vec<Validator>,
     nodes: Vec<[Field; 4]>,
-    height: u32,
 }
 
 impl ValidatorsTree {
     pub fn from_validators(validators: Vec<Validator>) -> Self {
-        let height = VALIDATORS_TREE_HEIGHT as u32;
-        let num_nodes = (1 << (height + 1)) - 1;
+        let num_nodes = (1 << (VALIDATORS_TREE_HEIGHT + 1)) - 1;
         let nodes: Vec<[Field; 4]> = vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
-        let mut validator_set = Self { validators, nodes, height };
+        let mut validator_set = Self { validators, nodes };
         validator_set.fill_nodes();
 
         validator_set
@@ -43,12 +42,12 @@ impl ValidatorsTree {
     }
 
     pub fn sub_root(&self, height: usize, index: usize) -> &[Field; 4] {
-        let start = (2u32.pow(self.height - (height as u32)) - 1) as usize;
+        let start = (2u32.pow((VALIDATORS_TREE_HEIGHT - height) as u32) - 1) as usize;
         &self.nodes[start + index]
     }
 
-    pub fn height(&self) -> u32 {
-        self.height
+    pub fn height(&self) -> usize {
+        VALIDATORS_TREE_HEIGHT
     }
 
     pub fn validator(&self, index: usize) -> &Validator {
@@ -143,10 +142,6 @@ impl ValidatorsTree {
         })
     }
 
-    pub fn prove_update(&self) {
-        todo!();
-    }
-
     pub fn verify_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<bool> {
         if reveals.len() == 0 {
             return Err(anyhow!("At least one reveal must be provided for the batch"));
@@ -173,11 +168,11 @@ impl ValidatorsTree {
     }
 
     pub fn validator_merkle_proof(&self, index: usize) -> Vec<[Field; 4]> {
-        let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; self.height as usize];
+        let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; VALIDATORS_TREE_HEIGHT];
         let mut node_index: usize = 0;
         let mut idx = index;
-        for i in (0..self.height).rev() {
-            let start = (2u32.pow(i + 1) - 1) as usize;
+        for i in (0..VALIDATORS_TREE_HEIGHT).rev() {
+            let start = (2u32.pow((i + 1) as u32) - 1) as usize;
             if (idx & 1) == 0 {
                 nodes[node_index] = self.nodes[start + idx + 1];
             } else {
@@ -204,7 +199,7 @@ impl ValidatorsTree {
         }
     
         //fill in the rest of the tree
-        for i in (0..self.height).rev() {
+        for i in (0..VALIDATORS_TREE_HEIGHT).rev() {
             let start = ((1 << i) - 1) as usize;
             let end = (start * 2) + 1;
             let hashes: Vec<[Field; 4]> = (start..end).into_par_iter().map(|j| {
