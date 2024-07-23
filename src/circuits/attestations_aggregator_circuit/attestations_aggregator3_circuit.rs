@@ -361,7 +361,7 @@ fn example_data(agg2_proof: &AttestationsAggregator2Proof) -> AttestationsAggreg
     let validator_set = example_validator_set();
     let agg2_data: Vec<AttestationsAggregator3Agg2Data> = (0..ATTESTATION_AGGREGATION_PASS3_SIZE).map(|i| {
         let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT + AGGREGATION_PASS2_SUB_TREE_HEIGHT;
-        let validators_sub_root = validator_set.sub_root(height, i).clone();
+        let validators_sub_root = validator_set.sub_root(height, i);
         if i == 0 {
             AttestationsAggregator3Agg2Data {
                 validators_sub_root,

@@ -8,7 +8,7 @@ use anyhow::*;
 use crate::circuits::attestations_aggregator_circuit::{AttestationsAggregatorCircuit, AttestationsAggregatorCircuitData, AttestationsAggregatorProof, ValidatorData, ValidatorPrimaryGroupData, ValidatorRevealData, ValidatorSecondaryGroupData, ATTESTATION_AGGREGATION_PASS1_SIZE, ATTESTATION_AGGREGATION_PASS2_SIZE, ATTESTATION_AGGREGATION_PASS3_SIZE};
 use crate::circuits::Circuit;
 use crate::commitment::{example_commitment_root, EXAMPLE_COMMITMENTS_REPEAT};
-use crate::{AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
+use crate::{AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
 use crate::Hash;
 
@@ -22,12 +22,31 @@ pub struct Validator {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ValidatorCommitmentReveal {
+    pub validator_index: usize,
+    pub block_slot: usize,
+    pub reveal: [Field; 4],
+    pub proof: Vec<[Field; 4]>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ValidatorsTree {
     validators: Vec<Validator>,
     nodes: Vec<[Field; 4]>,
 }
 
 impl ValidatorsTree {
+    pub fn new() -> Self {
+        let mut validators: Vec<Validator> = Vec::new();
+        for _ in 0..MAX_VALIDATORS {
+            validators.push(Validator {
+                commitment_root: [Field::ZERO; 4],
+                stake: 0,
+            });
+        }
+        Self::from_validators(validators)
+    }
+
     pub fn from_validators(validators: Vec<Validator>) -> Self {
         let num_nodes = (1 << (VALIDATORS_TREE_HEIGHT + 1)) - 1;
         let nodes: Vec<[Field; 4]> = vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
@@ -37,13 +56,13 @@ impl ValidatorsTree {
         validator_set
     }
 
-    pub fn root(&self) -> &[Field; 4] {
-        &self.nodes[0]
+    pub fn root(&self) -> [Field; 4] {
+        self.nodes[0].clone()
     }
 
-    pub fn sub_root(&self, height: usize, index: usize) -> &[Field; 4] {
+    pub fn sub_root(&self, height: usize, index: usize) -> [Field; 4] {
         let start = (2u32.pow((VALIDATORS_TREE_HEIGHT - height) as u32) - 1) as usize;
-        &self.nodes[start + index]
+        self.nodes[start + index].clone()
     }
 
     pub fn height(&self) -> usize {
@@ -109,7 +128,7 @@ impl ValidatorsTree {
                     //primary group root
                     let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT + AGGREGATION_PASS2_SUB_TREE_HEIGHT;
                     let index = i;
-                    *primary_group_root = self.sub_root(height, index).clone();
+                    *primary_group_root = self.sub_root(height, index);
                 },
                 ValidatorPrimaryGroupData::ValidatorGroupData(ref mut primary_group) => {
                     for (j, secondary_group) in primary_group.iter_mut().enumerate() {
@@ -118,7 +137,7 @@ impl ValidatorsTree {
                                 //secondary group root
                                 let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT;
                                 let index = (i * AGGREGATION_PASS2_SUB_TREE_HEIGHT) + j;
-                                *secondary_group_root = self.sub_root(height, index).clone();
+                                *secondary_group_root = self.sub_root(height, index);
                             },
                             ValidatorSecondaryGroupData::ValidatorGroupData(ref mut secondary_group) => {
                                 for (k, validator) in secondary_group.iter_mut().enumerate() {
@@ -212,23 +231,11 @@ impl ValidatorsTree {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ValidatorCommitmentReveal {
-    pub validator_index: usize,
-    pub block_slot: usize,
-    pub reveal: [Field; 4],
-    pub proof: Vec<[Field; 4]>,
+pub fn initial_validators_tree_root() -> [Field; 4] {
+    let validators_tree = ValidatorsTree::new();
+    validators_tree.root()
 }
 
-fn field_hash(input: &[Field]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::hash_no_pad(input).elements
-}
-
-fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
-}
-
-// Creates an example validator set
 pub fn example_validator_set() -> ValidatorsTree {
     let commitment_roots: Vec<[Field; 4]> = (0..EXAMPLE_COMMITMENTS_REPEAT).into_par_iter().map(|i| example_commitment_root(i)).collect();
     let validator_stake_default = 7;
@@ -238,4 +245,12 @@ pub fn example_validator_set() -> ValidatorsTree {
     }).collect();
 
     ValidatorsTree::from_validators(validators)
+}
+
+fn field_hash(input: &[Field]) -> [Field; 4] {
+    <Hash as Plonky2_Hasher<Field>>::hash_no_pad(input).elements
+}
+
+fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
+    <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
 }

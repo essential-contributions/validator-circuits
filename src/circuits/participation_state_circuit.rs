@@ -137,13 +137,13 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
     let participation_root = builder.add_virtual_hash();
     let participation_count = builder.add_virtual_target();
 
-    //Previous state targets (will be connected to inner proof later)
-    let prev_inputs_hash = builder.add_virtual_targets(8);
-    let prev_pr_tree_root = builder.add_virtual_hash();
+    //Current state targets (will be connected to inner proof later)
+    let current_inputs_hash = builder.add_virtual_targets(8);
+    let current_pr_tree_root = builder.add_virtual_hash();
 
     //Compute the new inputs hash
     let mut inputs: Vec<Target> = Vec::new();
-    prev_inputs_hash.iter().for_each(|t| inputs.push(*t));
+    current_inputs_hash.iter().for_each(|t| inputs.push(*t));
     inputs.push(round_num);
     state_inputs_hash.iter().for_each(|t| inputs.push(*t));
     participation_root.elements.iter().for_each(|t| {
@@ -170,27 +170,23 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
     builder.verify_merkle_proof::<Hash>(
         current_round_hash.elements.to_vec(), 
         &round_num_bits, 
-        prev_pr_tree_root,
+        current_pr_tree_root,
         &participation_round_proof,
     );
 
-    //Determine the new round data based on the input and previous participation count
+    //Determine the new round data based on the input and current participation count
     let input_is_less = builder.less_than(participation_count, current_participation_count, VALIDATORS_TREE_HEIGHT);
     let new_participation_root = builder.select_hash(input_is_less, current_participation_root, participation_root);
     let new_participation_count = builder.select(input_is_less, current_participation_count, participation_count);
-    
-    //Compute the new participation rounds tree root
-    let mut new_pr_tree_root = builder.hash_n_to_hash_no_pad::<Hash>([
-        &state_inputs_hash[..], 
-        &new_participation_root.elements[..], 
-        &[new_participation_count],
-    ].concat());
-    for (&bit, &sibling) in round_num_bits.iter().zip(&participation_round_proof.siblings) {
-        let perm_inputs_a = [&new_pr_tree_root.elements[..], &sibling.elements[..]].concat();
-        let perm_inputs_b = [&sibling.elements[..], &new_pr_tree_root.elements[..]].concat();
-        let perm_inputs = builder.select_many(bit, &perm_inputs_b, &perm_inputs_a);
-        new_pr_tree_root = builder.hash_n_to_hash_no_pad::<Hash>(perm_inputs);
-    }
+    let new_pr_tree_root = builder.merkle_root_from_prev_proof::<Hash>(
+        [
+            &state_inputs_hash[..], 
+            &new_participation_root.elements[..], 
+            &[new_participation_count],
+        ].concat(), 
+        &round_num_bits, 
+        &participation_round_proof
+    );
 
     //Register all public inputs
     builder.register_public_inputs(&new_inputs_hash);
@@ -205,18 +201,18 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
     let inner_proof_inputs_hash = inner_cyclic_pis[0..8].to_vec();
     let inner_proof_pr_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[8..12]).unwrap();
 
-    //Connect the previous inputs hash with inner proof or initial value
-    inner_proof_inputs_hash.iter().zip(prev_inputs_hash).for_each(|(inner_proof, prev)| {
+    //Connect the current inputs hash with inner proof or initial value
+    inner_proof_inputs_hash.iter().zip(current_inputs_hash).for_each(|(inner_proof, prev)| {
         let inner_proof_or_init = builder.mul(*inner_proof, init_zero.target);
         builder.connect(prev, inner_proof_or_init);
     });
 
-    //Connect the previous participation rounds tree root with inner proof or initial value
+    //Connect the current participation rounds tree root with inner proof or initial value
     let initial_pr_tree_root = HashOutTarget { 
         elements: initial_participation_rounds_root().map(|f| builder.constant(f)) 
     };
     let inner_proof_pr_tree_root_or_init = builder.select_hash(init_zero, inner_proof_pr_tree_root, initial_pr_tree_root);
-    builder.connect_hashes(prev_pr_tree_root, inner_proof_pr_tree_root_or_init);
+    builder.connect_hashes(current_pr_tree_root, inner_proof_pr_tree_root_or_init);
 
     //Finally verify the previous (inner) proof
     builder.conditionally_verify_cyclic_proof_or_dummy::<Config>(

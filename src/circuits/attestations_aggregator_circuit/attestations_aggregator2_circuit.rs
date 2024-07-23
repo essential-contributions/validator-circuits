@@ -360,7 +360,7 @@ fn build_empty_participation_sub_root(builder: &mut CircuitBuilder<Field, D>) ->
 fn example_data(agg1_proof: &AttestationsAggregator1Proof) -> AttestationsAggregator2Data {
     let validator_set = example_validator_set();
     let agg1_data: Vec<AttestationsAggregator2Agg1Data> = (0..ATTESTATION_AGGREGATION_PASS2_SIZE).map(|i| {
-        let validators_sub_root = validator_set.sub_root(AGGREGATION_PASS1_SUB_TREE_HEIGHT, i).clone();
+        let validators_sub_root = validator_set.sub_root(AGGREGATION_PASS1_SUB_TREE_HEIGHT, i);
         if i == 0 {
             AttestationsAggregator2Agg1Data {
                 validators_sub_root,

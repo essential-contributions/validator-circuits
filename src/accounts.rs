@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
-use plonky2::field::types::Field as Plonky2_Field;
+use plonky2::field::types::{Field as Plonky2_Field, Field64};
 use plonky2::{hash::hash_types::HashOut, plonk::config::Hasher as Plonky2_Hasher};
 use serde::{Deserialize, Serialize};
+use rayon::prelude::*;
 
 use crate::{Field, MAX_VALIDATORS};
 use crate::Hash;
@@ -11,178 +12,223 @@ const SPARSE_ACCOUNTS_TREE_HEIGHT: usize = 160;
 const ACCOUNTS_NULL_FIELD: u64 = 0xffffffff00000000;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
+//TODO: root and merkle proof generation can add more parallelism
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Account {
     pub address: [u8; 20],
-    pub active: bool,
     pub validator_index: Option<u32>,
-    pub start_unchecked_participation_epoch: Option<u32>,
-    pub end_unchecked_participation_epoch: Option<u32>,
-    pub balance: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AccountsTree {
     accounts: HashMap<[u8; 20], Account>,
-    intermediary_nodes: Vec<HashMap<[u8; 20], [Field; 4]>>,
-    default_nodes: Vec<[Field; 4]>,
-    root: [Field; 4],
 }
 
 impl AccountsTree {
     pub fn new() -> Self {
-        let mut tree = Self::from_accounts(&vec![]);
-
-        //create a default account for each of the validators
-        for i in 0..MAX_VALIDATORS as u32 {
-            tree.set_account(Account {
-                address: address_add([0u8; 20], i),
-                active: true,
+        //create the default accounts
+        let mut accounts = HashMap::new();
+        for i in 0..(MAX_VALIDATORS as u32) {
+            let mut address = [0u8; 20];
+            address[16..20].copy_from_slice(&i.to_be_bytes());
+            accounts.insert(address, Account {
+                address,
                 validator_index: Some(i),
-                start_unchecked_participation_epoch: Some(0),
-                end_unchecked_participation_epoch: None,
-                balance: 0,
             });
         }
-        tree
+
+        Self { accounts }
     }
 
-    pub fn from_accounts(accounts: &Vec<Account>) -> Self {
-        //compute the default nodes
-        let mut default_nodes: Vec<[Field; 4]> = Vec::new();
-        let mut hash = Self::hash_account(Account {
-            address: [0u8; 20],
-            active: false,
-            validator_index: None,
-            start_unchecked_participation_epoch: None,
-            end_unchecked_participation_epoch: None,
-            balance: 0
-        });
-        for _ in 0..SPARSE_ACCOUNTS_TREE_HEIGHT {
-            default_nodes.push(hash);
-            hash = field_hash_two(hash, hash);
-        }
-
-        //build maps for intermediary nodes
-        let mut intermediary_nodes: Vec<HashMap<[u8; 20], [Field; 4]>> = Vec::new();
-        for _ in 0..SPARSE_ACCOUNTS_TREE_HEIGHT {
-            intermediary_nodes.push(HashMap::new());
-        }
-
-        //build tree
-        let mut tree = AccountsTree {
-            accounts: HashMap::new(),
-            intermediary_nodes,
-            default_nodes,
-            root: hash,
-        };
-
-        //add accounts
+    pub fn from_accounts(accounts: &[Account]) -> Self {
+        let mut accounts_tree = Self::new();
         for account in accounts {
-            tree.set_account(account.clone());
+            accounts_tree.set_account(account.clone());
         }
-
-        tree
+        accounts_tree
     }
 
     pub fn root(&self) -> [Field; 4] {
-        self.root
+        //compute initial intermediary nodes
+        let mut account_addresses: Vec<[u8; 20]> = self.accounts.iter().map(|(k, _)| *k).collect();
+        account_addresses.sort();
+        let mut intermediary_nodes: Vec<([u8; 20], [Field; 4])> = account_addresses.par_iter().map(|address| {
+            (*address, Self::hash_account(self.account(*address)))
+        }).collect();
+
+        //compute the initial default node
+        let mut default_node = Self::hash_account(Account { address: [0u8; 20], validator_index: None });
+
+        //compute intermediary nodes for each level of the tree
+        for _ in 0..SPARSE_ACCOUNTS_TREE_HEIGHT {
+            let mut next_level_intermediary_nodes: Vec<([u8; 20], [Field; 4])> = Vec::new();
+            let mut skip_next = false;
+            for i in 0..intermediary_nodes.len() {
+                if skip_next {
+                    skip_next = false;
+                    continue;
+                }
+
+                let node = intermediary_nodes[i];
+                let mut parent_node = (address_shr(node.0, 1), [Field::ZERO; 4]);
+                if (node.0[19] % 2) == 0 {
+                    if (i + 1) < intermediary_nodes.len() {
+                        let next_node = intermediary_nodes[i + 1];
+                        if next_node.0 == address_add(node.0, 1) {
+                            parent_node.1 = field_hash_two(node.1, next_node.1);
+                            skip_next = true;
+                        } else {
+                            parent_node.1 = field_hash_two(node.1, default_node);
+                        }
+                    } else {
+                        parent_node.1 = field_hash_two(node.1, default_node);
+                    }
+                } else {
+                    parent_node.1 = field_hash_two(default_node, node.1);
+                }
+                next_level_intermediary_nodes.push(parent_node);
+            }
+
+            //move everything forward for next loop iteration
+            intermediary_nodes = next_level_intermediary_nodes;
+            default_node = field_hash_two(default_node, default_node);
+        }
+
+        match intermediary_nodes.get(0) {
+            Some(node) => node.1,
+            None => default_node,
+        }
+    }
+
+    pub fn height(&self) -> usize {
+        SPARSE_ACCOUNTS_TREE_HEIGHT
+    }
+
+    pub fn merkle_proof(&self, address: [u8; 20]) -> Vec<[Field; 4]> {
+        //compute initial intermediary nodes
+        let mut account_addresses: Vec<[u8; 20]> = self.accounts.iter().map(|(k, _)| *k).collect();
+        account_addresses.sort();
+        let mut intermediary_nodes: Vec<([u8; 20], [Field; 4])> = account_addresses.par_iter().map(|address| {
+            (*address, Self::hash_account(self.account(*address)))
+        }).collect();
+
+        //compute the initial default node
+        let mut default_node = Self::hash_account(Account { address: [0u8; 20], validator_index: None });
+
+        //build the merkle proof for each level in the tree
+        let mut proof: Vec<[Field; 4]> = Vec::new();
+        let mut idx = address;
+        for _ in 0..SPARSE_ACCOUNTS_TREE_HEIGHT {
+            //add sibling to proof
+            let sibling_idx = if (idx[19] % 2) == 0 { address_add(idx, 1) } else { address_sub(idx, 1) };
+            let sibling = match intermediary_nodes.iter().find(|x| x.0 == sibling_idx ) {
+                Some(node) => node.1,
+                None => default_node,
+            };
+            proof.push(sibling);
+            idx = address_shr(idx, 1);
+
+            //compute intermediary nodes for next level 
+            let mut next_level_intermediary_nodes: Vec<([u8; 20], [Field; 4])> = Vec::new();
+            let mut skip_next = false;
+            for i in 0..intermediary_nodes.len() {
+                if skip_next {
+                    skip_next = false;
+                    continue;
+                }
+
+                let node = intermediary_nodes[i];
+                let mut parent_node = (address_shr(node.0, 1), [Field::ZERO; 4]);
+                if (node.0[19] % 2) == 0 {
+                    if (i + 1) < intermediary_nodes.len() {
+                        let next_node = intermediary_nodes[i + 1];
+                        if next_node.0 == address_add(node.0, 1) {
+                            parent_node.1 = field_hash_two(node.1, next_node.1);
+                            skip_next = true;
+                        } else {
+                            parent_node.1 = field_hash_two(node.1, default_node);
+                        }
+                    } else {
+                        parent_node.1 = field_hash_two(node.1, default_node);
+                    }
+                } else {
+                    parent_node.1 = field_hash_two(default_node, node.1);
+                }
+                next_level_intermediary_nodes.push(parent_node);
+            }
+
+            //move everything forward for next loop iteration
+            intermediary_nodes = next_level_intermediary_nodes;
+            default_node = field_hash_two(default_node, default_node);
+        }
+
+        proof
+    }
+
+    pub fn account(&self, address: [u8; 20]) -> Account {
+        match self.accounts.get(&address) {
+            Some(account) => account.clone(),
+            None => Account { address, validator_index: None },
+        }
+    }
+
+    pub fn account_with_index(&self, validator_index: u32) -> Option<Account> {
+        let account_entry = self.accounts.iter().find(|(_, v) | {
+            if v.validator_index.is_some() {
+                return v.validator_index.unwrap() == validator_index;
+            }
+            return false;
+        });
+        match account_entry {
+            Some((_, account)) => {
+                Some(account.clone())
+            },
+            None => None,
+        }
     }
 
     pub fn set_account(&mut self, account: Account) {
-        let mut address = account.address;
-        self.accounts.insert(address, account.clone());
-
-        //fill intermediary nodes
-        let mut hash = Self::hash_account(account);
-        for i in 0..SPARSE_ACCOUNTS_TREE_HEIGHT {
-            self.set_node(i, address, hash);
-            hash = if (address[19] & 1) == 0 {
-                let neighbor = self.get_node(0, address_add(address, 1));
-                field_hash_two(hash, neighbor)
-            } else {
-                let neighbor = self.get_node(0, address_sub(address, 1));
-                field_hash_two(neighbor, hash)
-            };
-            address = address_shr(address, 1);
-        }
-
-        //set new root
-        self.root = hash;
-    }
-
-    pub fn get_account(&self, address: [u8; 20]) -> Account {
-        match self.accounts.get(&address) {
-            Some(node) => node.clone(),
-            None => Account {
-                address,
-                active: false,
-                validator_index: None,
-                start_unchecked_participation_epoch: None,
-                end_unchecked_participation_epoch: None,
-                balance: 0,
+        match account.validator_index {
+            Some(validator_index) => {
+                match self.account_with_index(validator_index) {
+                    Some(account_with_index) => {
+                        self.accounts.remove(&account_with_index.address);
+                    },
+                    None => {},
+                }
+                self.accounts.insert(account.address, account);
             },
-        }
-    }
-
-    pub fn account_merkle_proof(&self, address: [u8; 20]) -> Vec<[Field; 4]> {
-        let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; SPARSE_ACCOUNTS_TREE_HEIGHT];
-        let mut node_index: usize = 0;
-        let mut idx = address;
-        for i in (0..SPARSE_ACCOUNTS_TREE_HEIGHT).rev() {
-            if (idx[19] & 1) == 0 {
-                nodes[node_index] = self.get_node(i, address_add(idx, 1));
-            } else {
-                nodes[node_index] = self.get_node(i, address_sub(idx, 1));
+            None => {
+                let account_data = self.account(account.address);
+                match account_data.validator_index {
+                    Some(validator_index) => {
+                        let mut null_account_address = [0u8; 20];
+                        null_account_address[16..20].copy_from_slice(&validator_index.to_be_bytes());
+                        self.accounts.insert(null_account_address, Account {
+                            address: null_account_address,
+                            validator_index: Some(validator_index),
+                        });
+                    },
+                    None => todo!(),
+                }
+                self.accounts.remove(&account.address);
             }
-            idx = address_shr(idx, 1);
-            node_index = node_index + 1;
-        }
-        nodes
-    }
-
-    fn set_node(&mut self, height: usize, index: [u8; 20], value: [Field; 4]) {
-        let map = self.intermediary_nodes.get_mut(height).expect("invalid height");
-        let default_node = self.default_nodes.get(height as usize).expect("invalid height");
-        if value[0].eq(&default_node[0]) && value[1].eq(&default_node[1]) && value[2].eq(&default_node[2]) && value[3].eq(&default_node[3]) {
-            map.remove(&index);
-        } else {
-            map.insert(index, value);
         }
     }
-
-    fn get_node(&self, height: usize, index: [u8; 20]) -> [Field; 4] {
-        let map = self.intermediary_nodes.get(height).expect("invalid height");
-        let default_node = self.default_nodes.get(height as usize).expect("invalid height");
-        match map.get(&index) {
-            Some(node) => node.clone(),
-            None => default_node.clone(),
-        }
-    }
-
+    
     fn hash_account(account: Account) -> [Field; 4] {
-        let validator_index_field = match account.validator_index {
+        let validator_index = match account.validator_index {
             Some(validator_index) => Field::from_canonical_u32(validator_index),
-            None => Field::from_canonical_u64(ACCOUNTS_NULL_FIELD),
+            None => Field::ZERO.sub_one(),
         };
-        let validator_start_epoch = match account.start_unchecked_participation_epoch {
-            Some(start_unchecked_participation_epoch) => Field::from_canonical_u32(start_unchecked_participation_epoch),
-            None => Field::from_canonical_u64(ACCOUNTS_NULL_FIELD),
-        };
-        let validator_end_epoch = match account.end_unchecked_participation_epoch {
-            Some(end_unchecked_participation_epoch) => Field::from_canonical_u32(end_unchecked_participation_epoch),
-            None => Field::from_canonical_u64(ACCOUNTS_NULL_FIELD),
-        };
-        let fields = [
-            Field::from_bool(account.active),
-            validator_index_field,
-            validator_start_epoch,
-            validator_end_epoch,
-            Field::from_canonical_u64(account.balance),
-        ];
-        field_hash(&fields)
+        [validator_index, Field::ZERO, Field::ZERO, Field::ZERO]
     }
+}
+
+pub fn initial_accounts_tree_root() -> [Field; 4] {
+    let accounts_tree = AccountsTree::new();
+    accounts_tree.root()
 }
 
 fn field_hash(input: &[Field]) -> [Field; 4] {

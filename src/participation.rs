@@ -51,13 +51,13 @@ pub struct ParticipationRoundsTree {
 
 impl ParticipationRoundsTree {
     pub fn new() -> Self {
-        Self::from_rounds(Vec::<ParticipationRound>::new())
+        Self::from_rounds(&Vec::<ParticipationRound>::new())
     }
 
-    pub fn from_rounds(rounds: Vec<ParticipationRound>) -> Self {
+    pub fn from_rounds(rounds: &[ParticipationRound]) -> Self {
         let mut rounds_tree = Self { state_inputs_hashes: HashMap::new(), rounds: HashMap::new() };
         for round in rounds {
-            rounds_tree.update_round(round);
+            rounds_tree.update_round(round.clone());
         }
         rounds_tree
     }
