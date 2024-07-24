@@ -32,7 +32,6 @@ pub struct Commitment {
 
 impl Commitment {
     pub fn from_seed(seed: [u8; 32]) -> Self {
-
         //build memory tree nodes
         let num_nodes = (1 << (COMMITMENT_MEMORY_TREE_HEIGHT + 1)) - 1;
         let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; num_nodes];
@@ -98,8 +97,8 @@ impl Commitment {
         Ok(bytes)
     }
 
-    pub fn root(&self) -> &[Field; 4] {
-        &self.nodes[0]
+    pub fn root(&self) -> [Field; 4] {
+        self.nodes[0].clone()
     }
 
     pub fn height(&self) -> u32 {

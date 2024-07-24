@@ -429,7 +429,9 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsStateCi
 }
 
 fn is_account_null(builder: &mut CircuitBuilder<Field, D>, account: &[Target], validator_index: Target) -> BoolTarget {
-    let null_account = [builder.zero(), builder.zero(), builder.zero(), builder.zero(), validator_index];
+    let shift_amount = builder.constant(Field::from_canonical_usize(1 << (32 - VALIDATORS_TREE_HEIGHT)));
+    let validator_index_shifted = builder.mul(validator_index, shift_amount);
+    let null_account = [validator_index_shifted, builder.zero(), builder.zero(), builder.zero(), builder.zero()];
     builder.is_equal_many(account, &null_account)
 }
 

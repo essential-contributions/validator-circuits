@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use plonky2::field::types::Field as Plonky2_Field;
 use plonky2::hash::hash_types::HashOut;
 use plonky2::plonk::config::Hasher as Plonky2_Hasher;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
@@ -99,6 +100,28 @@ impl ParticipationRoundsTree {
         }
 
         proof
+    }
+
+    pub fn verify_merkle_proof(&self, round: ParticipationRound, proof: &[[Field; 4]]) -> Result<bool> {
+        if proof.len() != PARTICIPATION_ROUNDS_TREE_HEIGHT {
+            return Err(anyhow!("Invalid proof length."));
+        }
+
+        let mut idx = round.num;
+        let mut hash = Self::hash_round(round);
+        for sibling in proof {
+            if (idx & 1) == 0 {
+                hash = field_hash_two(hash, *sibling);
+            } else {
+                hash = field_hash_two(*sibling, hash);
+            }
+            idx = idx >> 1;
+        }
+
+        if hash != self.root() {
+            return Err(anyhow!("Invalid proof"));
+        }
+        Ok(true)
     }
 
     pub fn round(&self, num: usize) -> ParticipationRound {

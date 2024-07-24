@@ -3,7 +3,7 @@ use plonky2::hash::hash_types::HashOut;
 use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
-use anyhow::*;
+use anyhow::{anyhow, Result};
 
 use crate::circuits::attestations_aggregator_circuit::{AttestationsAggregatorCircuit, AttestationsAggregatorCircuitData, AttestationsAggregatorProof, ValidatorData, ValidatorPrimaryGroupData, ValidatorRevealData, ValidatorSecondaryGroupData, ATTESTATION_AGGREGATION_PASS1_SIZE, ATTESTATION_AGGREGATION_PASS2_SIZE, ATTESTATION_AGGREGATION_PASS3_SIZE};
 use crate::circuits::Circuit;
@@ -203,13 +203,33 @@ impl ValidatorsTree {
         nodes
     }
 
+    pub fn verify_merkle_proof(&self, validator: Validator, index: usize, proof: &[[Field; 4]]) -> Result<bool> {
+        if proof.len() != VALIDATORS_TREE_HEIGHT {
+            return Err(anyhow!("Invalid proof length."));
+        }
+
+        let mut idx = index;
+        let mut hash = Self::hash_validator(validator);
+        for sibling in proof {
+            if (idx & 1) == 0 {
+                hash = field_hash_two(hash, *sibling);
+            } else {
+                hash = field_hash_two(*sibling, hash);
+            }
+            idx = idx >> 1;
+        }
+
+        if hash != self.root() {
+            return Err(anyhow!("Invalid proof"));
+        }
+        Ok(true)
+    }
+
     fn fill_nodes(&mut self) {
         //fill in leave digests first
         {
             let leave_digests: Vec<[Field; 4]> = (0..self.validators.len()).into_par_iter().map(|i| {
-                let mut elements = self.validators[i].commitment_root.to_vec();
-                elements.push(Plonky2_Field::from_canonical_u64(self.validators[i].stake));
-                field_hash(&elements)
+                Self::hash_validator(self.validators[i].clone())
             }).collect();
             let leave_digests_start = self.validators.len() - 1;
             leave_digests.iter().enumerate().for_each(|(i, d)| {
@@ -228,6 +248,12 @@ impl ValidatorsTree {
                 self.nodes[j + start] = h.clone();
             });
         }
+    }
+
+    fn hash_validator(validator: Validator) -> [Field; 4] {
+        let mut elements = validator.commitment_root.to_vec();
+        elements.push(Plonky2_Field::from_canonical_u64(validator.stake));
+        field_hash(&elements)
     }
 }
 

@@ -2,13 +2,31 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{accounts::{initial_accounts_tree_root, AccountsTree}, circuits::{validators_state_circuit::ValidatorsStateCircuitData, Circuit}, validators::ValidatorsTree};
+use validator_circuits::{accounts::{initial_accounts_tree_root, Account, AccountsTree}, circuits::{validators_state_circuit::ValidatorsStateCircuitData, Circuit}, participation::initial_participation_rounds_root, validators::ValidatorsTree};
 use validator_circuits::circuits::validators_state_circuit::ValidatorsStateCircuit;
 
 pub fn benchmark_prove_validators_state(full: bool) {
     if full {
         log::warn!("Skipping wrapped proof generation as this is an internal proof only (used recursively in other proofs that need to be wrapped for EVM).");
     }
+
+    println!("accounts tree root test...");
+    let start = Instant::now();
+    let t = AccountsTree::new();
+    println!("(finished in {:?})", start.elapsed());
+    println!("initial_accounts_tree_root computed {:?}", t.root());
+    println!("initial_accounts_tree_root {:?}", initial_accounts_tree_root());
+    println!();
+
+    println!("accounts tree merkle proof test...");
+    let start = Instant::now();
+    let p = t.merkle_proof([12u8; 20]);
+    println!("(finished in {:?})", start.elapsed());
+    assert!(t.verify_merkle_proof(Account { address: [12u8; 20], validator_index: None }, &p).is_ok(), "Merkle proof failed verification.");
+    println!();
+
+
+
 
     //generate the circuits
     println!("Building Circuit... ");
@@ -25,12 +43,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     println!();
 
 
-    println!("tree root test...");
-    let start = Instant::now();
-    let r = initial_accounts_tree_root();
-    println!("(finished in {:?})", start.elapsed());
-    println!("initial_accounts_tree_root {:?}", r);
-    println!();
 
     //generate the initial proof
     //let round = ValidatorsRound {
