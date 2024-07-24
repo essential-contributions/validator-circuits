@@ -18,7 +18,7 @@ pub fn benchmark_prove_participation(full: bool) {
     let start = Instant::now();
     let participation_circuit = load_or_create_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
-    println!("");
+    println!();
 
     //data
     let validator_index = 53;

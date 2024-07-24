@@ -19,7 +19,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
     let mut participation_rounds_tree = ParticipationRoundsTree::new();
     let mut inputs_hash = [0u8; 32];
     println!("(finished in {:?})", start.elapsed());
-    println!("");
+    println!();
 
     //generate the initial proof
     let round = ParticipationRound {
@@ -45,7 +45,8 @@ pub fn benchmark_prove_participation_state(full: bool) {
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
-    println!("Proved participation update to {:?} (inputs hash: {})", proof.participation_rounds_tree_root(), to_hex(&proof.inputs_hash()));
+    println!("Proved participation state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
+    println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     participation_rounds_tree.update_round(round.clone());
     assert_eq!(proof.participation_rounds_tree_root(), participation_rounds_tree.root(), "Unexpected participation rounds tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, round);
@@ -76,7 +77,8 @@ pub fn benchmark_prove_participation_state(full: bool) {
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
-    println!("Proved participation update to {:?} (inputs hash: {})", proof.participation_rounds_tree_root(), to_hex(&proof.inputs_hash()));
+    println!("Proved participation state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
+    println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     participation_rounds_tree.update_round(round.clone());
     assert_eq!(proof.participation_rounds_tree_root(), participation_rounds_tree.root(), "Unexpected participation rounds tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, round);
@@ -107,7 +109,8 @@ pub fn benchmark_prove_participation_state(full: bool) {
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
-    println!("Proved participation update to {:?} (inputs hash: {})", proof.participation_rounds_tree_root(), to_hex(&proof.inputs_hash()));
+    println!("Proved participation state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
+    println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     participation_rounds_tree.update_round(round.clone());
     assert_eq!(proof.participation_rounds_tree_root(), participation_rounds_tree.root(), "Unexpected participation rounds tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, round);
@@ -138,7 +141,8 @@ pub fn benchmark_prove_participation_state(full: bool) {
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
-    println!("Proved participation update to {:?} (inputs hash: {})", proof.participation_rounds_tree_root(), to_hex(&proof.inputs_hash()));
+    println!("Proved participation state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
+    println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     participation_rounds_tree.update_round(round.clone());
     assert_eq!(proof.participation_rounds_tree_root(), participation_rounds_tree.root(), "Unexpected participation rounds tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, round);
@@ -169,7 +173,8 @@ pub fn benchmark_prove_participation_state(full: bool) {
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
-    println!("Proved participation update to {:?} (inputs hash: {})", proof.participation_rounds_tree_root(), to_hex(&proof.inputs_hash()));
+    println!("Proved participation state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
+    println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     participation_rounds_tree.update_round(round.clone());
     assert_eq!(proof.participation_rounds_tree_root(), participation_rounds_tree.root(), "Unexpected participation rounds tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, round);

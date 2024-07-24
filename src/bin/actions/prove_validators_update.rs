@@ -18,7 +18,7 @@ pub fn benchmark_prove_validators_update(full: bool) {
     let start = Instant::now();
     let validators_update_circuit = load_or_create_circuit::<ValidatorsUpdateCircuit>(VALIDATORS_UPDATE_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
-    println!("");
+    println!();
     
     //create a quick validator set
     println!("Generating Test Validator Set... ");
@@ -42,7 +42,7 @@ pub fn benchmark_prove_validators_update(full: bool) {
         new_root: validators.root().clone(),
         new_commitment: validator.commitment_root,
         new_stake: validator.stake,
-        merkle_proof: validators.validator_merkle_proof(validator_index),
+        merkle_proof: validators.merkle_proof(validator_index),
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     if validators_update_circuit.verify_proof(&proof).is_ok() {

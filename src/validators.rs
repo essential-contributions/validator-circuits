@@ -186,7 +186,7 @@ impl ValidatorsTree {
         self.fill_nodes();
     }
 
-    pub fn validator_merkle_proof(&self, index: usize) -> Vec<[Field; 4]> {
+    pub fn merkle_proof(&self, index: usize) -> Vec<[Field; 4]> {
         let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; VALIDATORS_TREE_HEIGHT];
         let mut node_index: usize = 0;
         let mut idx = index;

@@ -19,7 +19,7 @@ pub fn benchmark_prove_state_update(full: bool) {
     //let state_update_circuit = load_or_create_circuit::<StateUpdateCircuit>(STATE_UPDATE_CIRCUIT_DIR);
     let state_update_circuit = StateUpdateCircuit::new();
     println!("(finished in {:?})", start.elapsed());
-    println!("");
+    println!();
     
     //generate the initial proof
     println!("Generating Initial Proof...");
@@ -32,7 +32,7 @@ pub fn benchmark_prove_state_update(full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    println!("");
+    println!();
     
     //generate proof off the last proof
     println!("Generating 1st Round Proof...");
@@ -49,7 +49,7 @@ pub fn benchmark_prove_state_update(full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    println!("");
+    println!();
     
     //generate proof off the last proof
     println!("Generating 2nd Round Proof...");
@@ -66,7 +66,7 @@ pub fn benchmark_prove_state_update(full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    println!("");
+    println!();
     
     //generate proof off the last proof
     println!("Generating 3rd Round Proof...");
@@ -83,7 +83,7 @@ pub fn benchmark_prove_state_update(full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    println!("");
+    println!();
     
     //generate proof off the last proof
     println!("Generating 4th Round Proof...");
@@ -100,7 +100,7 @@ pub fn benchmark_prove_state_update(full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    println!("");
+    println!();
 
 
 

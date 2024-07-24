@@ -269,7 +269,7 @@ fn example_data() -> ValidatorsUpdateCircuitData {
     validator_set.set_validator(validator, validator_index);
 
     let new_root = validator_set.root().clone();
-    let merkle_proof = validator_set.validator_merkle_proof(validator_index);
+    let merkle_proof = validator_set.merkle_proof(validator_index);
 
     ValidatorsUpdateCircuitData {
         validator_index,

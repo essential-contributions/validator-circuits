@@ -9,7 +9,6 @@ use crate::{Field, MAX_VALIDATORS};
 use crate::Hash;
 
 const SPARSE_ACCOUNTS_TREE_HEIGHT: usize = 160;
-const ACCOUNTS_NULL_FIELD: u64 = 0xffffffff00000000;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: root and merkle proof generation can add more parallelism
@@ -229,10 +228,6 @@ impl AccountsTree {
 pub fn initial_accounts_tree_root() -> [Field; 4] {
     let accounts_tree = AccountsTree::new();
     accounts_tree.root()
-}
-
-fn field_hash(input: &[Field]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::hash_no_pad(input).elements
 }
 
 fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {

@@ -435,39 +435,25 @@ fn is_account_null(builder: &mut CircuitBuilder<Field, D>, account: &[Target], v
 
 #[derive(Clone)]
 pub struct ValidatorsStateCircuitData {
-    pub round_num: usize,
-    pub state_inputs_hash: [u8; 32],
-    pub participation_root: [Field; 4],
-    pub participation_count: u32,
+    pub index: usize,
+    pub stake: u32,
+    pub commitment: [Field; 4],
+    pub account: [u8; 20],
 
-    pub current_state_inputs_hash: [u8; 32],
-    pub current_participation_root: [Field; 4],
-    pub current_participation_count: u32,
-    pub participation_round_proof: Vec<[Field; 4]>,
+    pub validator_index: usize,
+    pub validator_stake: u32,
+    pub validator_commitment: [Field; 4],
+    pub validator_proof: Vec<[Field; 4]>,
+
+    pub from_account: [u8; 20],
+    pub from_acc_index: Option<usize>,
+    pub from_acc_proof: Vec<[Field; 4]>,
+
+    pub to_account: [u8; 20],
+    pub to_acc_index: Option<usize>,
+    pub to_acc_proof: Vec<[Field; 4]>,
     
     pub previous_proof: Option<ValidatorsStateProof>,
-
-    /*
-    index: Target,
-    stake: Target,
-    commitment: HashOutTarget,
-    account: Vec<Target>,
-    
-    validator_index: Target,
-    validator_stake: Target,
-    validator_commitment: HashOutTarget,
-    validator_proof: MerkleProofTarget,
-    from_account: Vec<Target>,
-    from_acc_index: Target,
-    from_acc_proof: MerkleProofTarget,
-    to_account: Vec<Target>,
-    to_acc_index: Target,
-    to_acc_proof: MerkleProofTarget,
-    
-    init_zero: BoolTarget,
-    verifier: VerifierCircuitTarget,
-    previous_proof: ProofWithPublicInputsTarget<D>,
-    */
 }
 
 fn generate_partial_witness(
@@ -478,21 +464,29 @@ fn generate_partial_witness(
 ) -> Result<PartialWitness<Field>> {
     let mut pw = PartialWitness::new();
 
-    pw.set_target(targets.round_num, Field::from_canonical_usize(data.round_num));
-    data.state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
-        let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
-        pw.set_target(targets.state_inputs_hash[i], value);
+    pw.set_target(targets.index, Field::from_canonical_usize(data.index));
+    pw.set_target(targets.stake, Field::from_canonical_u32(data.stake));
+    pw.set_hash_target(targets.commitment, HashOut::<Field> { elements: data.commitment });
+    data.account.chunks(4).enumerate().for_each(|(i, c)| {
+        pw.set_target(targets.account[i], Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])));
     });
-    pw.set_hash_target(targets.participation_root, HashOut::<Field> { elements: data.participation_root });
-    pw.set_target(targets.participation_count, Field::from_canonical_u32(data.participation_count));
-    
-    data.current_state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
-        let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
-        pw.set_target(targets.current_state_inputs_hash[i], value);
+
+    pw.set_target(targets.validator_index, Field::from_canonical_usize(data.validator_index));
+    pw.set_target(targets.validator_stake, Field::from_canonical_u32(data.validator_stake));
+    pw.set_hash_target(targets.validator_commitment, HashOut::<Field> { elements: data.validator_commitment });
+    pw.set_merkle_proof_target(targets.validator_proof.clone(), &data.validator_proof);
+
+    data.from_account.chunks(4).enumerate().for_each(|(i, c)| {
+        pw.set_target(targets.from_account[i], Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])));
     });
-    pw.set_hash_target(targets.current_participation_root, HashOut::<Field> { elements: data.current_participation_root });
-    pw.set_target(targets.current_participation_count, Field::from_canonical_u32(data.current_participation_count));
-    pw.set_merkle_proof_target(targets.participation_round_proof.clone(), &data.participation_round_proof);
+    pw.set_target(targets.from_acc_index, index_to_field(data.from_acc_index));
+    pw.set_merkle_proof_target(targets.from_acc_proof.clone(), &data.from_acc_proof);
+
+    data.to_account.chunks(4).enumerate().for_each(|(i, c)| {
+        pw.set_target(targets.to_account[i], Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])));
+    });
+    pw.set_target(targets.to_acc_index, index_to_field(data.to_acc_index));
+    pw.set_merkle_proof_target(targets.to_acc_proof.clone(), &data.to_acc_proof);
 
     pw.set_verifier_data_target(&targets.verifier, &circuit_data.verifier_only);
     match &data.previous_proof {
@@ -504,8 +498,17 @@ fn generate_partial_witness(
             //setup for using initial state (no previous proof)
             pw.set_bool_target(targets.init_zero, false);
             let initial_inputs_hash = [Field::ZERO; 8];
-            let initial_participation_rounds_root = initial_participation_rounds_root();
-            let initial_public_inputs = [&initial_inputs_hash[..], &initial_participation_rounds_root[..]].concat();
+            let initial_total_staked = Field::ZERO;
+            let initial_total_validators = Field::ZERO;
+            let initial_validators_tree_root = initial_validators_tree_root();
+            let initial_accounts_tree_root = initial_accounts_tree_root();
+            let initial_public_inputs = [
+                &initial_inputs_hash[..], 
+                &[initial_total_staked],
+                &[initial_total_validators],
+                &initial_validators_tree_root[..],
+                &initial_accounts_tree_root[..]
+            ].concat();
             let base_proof = cyclic_base_proof(
                 &circuit_data.common,
                 &circuit_data.verifier_only,
@@ -515,6 +518,13 @@ fn generate_partial_witness(
         },
     };
     Ok(pw)
+}
+
+fn index_to_field(index: Option<usize>) -> Field {
+    match index {
+        Some(index) => Field::from_canonical_usize(index),
+        None => Field::ZERO.sub_one(),
+    }
 }
 /*
 #[inline]

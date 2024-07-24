@@ -10,7 +10,7 @@ pub fn benchmark_sha256(_full: bool) {
     //let state_update_circuit = load_or_create_circuit::<StateUpdateCircuit>(STATE_UPDATE_CIRCUIT_DIR);
     let state_update_circuit = Sha256Circuit::new();
     println!("(finished in {:?})", start.elapsed());
-    println!("");
+    println!();
     
     //generate test proof
     println!("Generating Proof...");
@@ -30,7 +30,7 @@ pub fn benchmark_sha256(_full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    println!("");
+    println!();
     
 
 }
