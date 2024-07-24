@@ -20,7 +20,6 @@ pub const PARTICIPATION_BITS_BYTE_SIZE: usize = (AGGREGATION_PASS1_SIZE * AGGREG
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: store ParticipationBits in disk rather than memory
-//TODO: root and merkle proof generation can add more parallelism
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ParticipationBits {
@@ -63,57 +62,9 @@ impl ParticipationRoundsTree {
     }
 
     pub fn root(&self) -> [Field; 4] {
-        //compute initial intermediary nodes
-        let mut round_numbers: Vec<usize> = self.rounds.iter().map(|(k, _)| *k).collect();
-        round_numbers.sort();
-        let mut intermediary_nodes: Vec<(usize, [Field; 4])> = round_numbers.par_iter().map(|num| {
-            (*num, Self::hash_round(self.round(*num)))
-        }).collect();
-
-        //compute the initial default node
-        let mut default_node = Self::hash_round(ParticipationRound {
-            num: 0,
-            state_inputs_hash: [0u8; 32],
-            participation_root: empty_participation_root(),
-            participation_count: 0,
-            participation_bits: ParticipationBits {
-                bit_flags: Vec::<u8>::new(),
-            },
-        });
-
-        //compute intermediary nodes for each level of the tree
+        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
         for _ in 0..PARTICIPATION_ROUNDS_TREE_HEIGHT {
-            let mut next_level_intermediary_nodes: Vec<(usize, [Field; 4])> = Vec::new();
-            let mut skip_next = false;
-            for i in 0..intermediary_nodes.len() {
-                if skip_next {
-                    skip_next = false;
-                    continue;
-                }
-
-                let node = intermediary_nodes[i];
-                let mut parent_node = (node.0 >> 1, [Field::ZERO; 4]);
-                if (node.0 % 2) == 0 {
-                    if (i + 1) < intermediary_nodes.len() {
-                        let next_node = intermediary_nodes[i + 1];
-                        if next_node.0 == node.0 + 1 {
-                            parent_node.1 = field_hash_two(node.1, next_node.1);
-                            skip_next = true;
-                        } else {
-                            parent_node.1 = field_hash_two(node.1, default_node);
-                        }
-                    } else {
-                        parent_node.1 = field_hash_two(node.1, default_node);
-                    }
-                } else {
-                    parent_node.1 = field_hash_two(default_node, node.1);
-                }
-                next_level_intermediary_nodes.push(parent_node);
-            }
-
-            //move everything forward for next loop iteration
-            intermediary_nodes = next_level_intermediary_nodes;
-            default_node = field_hash_two(default_node, default_node);
+            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         match intermediary_nodes.get(0) {
@@ -128,22 +79,7 @@ impl ParticipationRoundsTree {
 
     pub fn merkle_proof(&self, num: usize) -> Vec<[Field; 4]> {
         //compute initial intermediary nodes
-        let mut round_numbers: Vec<usize> = self.rounds.iter().map(|(k, _)| *k).collect();
-        round_numbers.sort();
-        let mut intermediary_nodes: Vec<(usize, [Field; 4])> = round_numbers.par_iter().map(|num| {
-            (*num, Self::hash_round(self.round(*num)))
-        }).collect();
-
-        //compute the initial default node
-        let mut default_node = Self::hash_round(ParticipationRound {
-            num: 0,
-            state_inputs_hash: [0u8; 32],
-            participation_root: empty_participation_root(),
-            participation_count: 0,
-            participation_bits: ParticipationBits {
-                bit_flags: Vec::<u8>::new(),
-            },
-        });
+        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
 
         //build the merkle proof for each level in the tree
         let mut proof: Vec<[Field; 4]> = Vec::new();
@@ -158,38 +94,8 @@ impl ParticipationRoundsTree {
             proof.push(sibling);
             idx = idx >> 1;
 
-            //compute intermediary nodes for next level 
-            let mut next_level_intermediary_nodes: Vec<(usize, [Field; 4])> = Vec::new();
-            let mut skip_next = false;
-            for i in 0..intermediary_nodes.len() {
-                if skip_next {
-                    skip_next = false;
-                    continue;
-                }
-
-                let node = intermediary_nodes[i];
-                let mut parent_node = (node.0 >> 1, [Field::ZERO; 4]);
-                if (node.0 % 2) == 0 {
-                    if (i + 1) < intermediary_nodes.len() {
-                        let next_node = intermediary_nodes[i + 1];
-                        if next_node.0 == node.0 + 1 {
-                            parent_node.1 = field_hash_two(node.1, next_node.1);
-                            skip_next = true;
-                        } else {
-                            parent_node.1 = field_hash_two(node.1, default_node);
-                        }
-                    } else {
-                        parent_node.1 = field_hash_two(node.1, default_node);
-                    }
-                } else {
-                    parent_node.1 = field_hash_two(default_node, node.1);
-                }
-                next_level_intermediary_nodes.push(parent_node);
-            }
-
-            //move everything forward for next loop iteration
-            intermediary_nodes = next_level_intermediary_nodes;
-            default_node = field_hash_two(default_node, default_node);
+            //compute the next level intermediary nodes
+            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         proof
@@ -255,6 +161,69 @@ impl ParticipationRoundsTree {
             vec!(Field::from_canonical_u32(round.participation_count)),
         ].concat();
         field_hash(&fields_to_hash)
+    }
+
+    fn compute_first_level_intermediary_nodes(&self) -> (Vec<(usize, [Field; 4])>, [Field; 4]) {
+        let mut round_numbers: Vec<usize> = self.rounds.iter().map(|(k, _)| *k).collect();
+        round_numbers.sort();
+        let intermediary_nodes: Vec<(usize, [Field; 4])> = round_numbers.par_iter().map(|num| {
+            (*num, Self::hash_round(self.round(*num)))
+        }).collect();
+
+        let default_node = Self::hash_round(ParticipationRound {
+            num: 0,
+            state_inputs_hash: [0u8; 32],
+            participation_root: empty_participation_root(),
+            participation_count: 0,
+            participation_bits: ParticipationBits {
+                bit_flags: Vec::<u8>::new(),
+            },
+        });
+
+        (intermediary_nodes, default_node)
+    }
+
+    fn compute_intermediary_nodes(
+        intermediary_nodes: &[(usize, [Field; 4])], 
+        default_node: [Field; 4],
+    ) -> (Vec<(usize, [Field; 4])>, [Field; 4]) {
+        //arrange intermediary nodes into pairs (left, right)
+        let mut intermediary_node_pairs: Vec<(usize, (Option<usize>, Option<usize>))> = Vec::new();
+        let mut i = 0;
+        while i < intermediary_nodes.len() {
+            let node = intermediary_nodes[i];
+            let mut pair = (None, None);
+            if (node.0 % 2) == 0 {
+                pair.0 = Some(i);
+                if (i + 1) < intermediary_nodes.len() {
+                    let next_node = intermediary_nodes[i + 1];
+                    if next_node.0 == node.0 + 1 {
+                        pair.1 = Some(i + 1);
+                        i += 1; //skip the next node as it is part of the current pair
+                    }
+                }
+            } else {
+                pair.1 = Some(i);
+            }
+            intermediary_node_pairs.push((node.0 >> 1, pair));
+            i += 1;
+        }
+
+        //compute the next level intermediary nodes in parallel
+        let next_level_intermediary_nodes = intermediary_node_pairs.par_iter().map(|(addr, (left, right))| {
+            let left_sibling = match *left {
+                Some(left) => intermediary_nodes[left].1,
+                None => default_node,
+            };
+            let right_sibling = match *right {
+                Some(right) => intermediary_nodes[right].1,
+                None => default_node,
+            };
+            (*addr, (field_hash_two(left_sibling, right_sibling)))
+        }).collect();
+
+        let next_default_node = field_hash_two(default_node, default_node);
+        (next_level_intermediary_nodes, next_default_node)
     }
 }
 

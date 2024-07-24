@@ -9,9 +9,10 @@ use crate::{Field, MAX_VALIDATORS};
 use crate::Hash;
 
 const SPARSE_ACCOUNTS_TREE_HEIGHT: usize = 160;
+const NUM_CACHED_SUB_TREE_ROOTS: usize = 1024;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
-//TODO: root and merkle proof generation can add more parallelism
+//TODO: need to introduce some level of cache to speed up root and proof generation time
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Account {
@@ -49,49 +50,9 @@ impl AccountsTree {
     }
 
     pub fn root(&self) -> [Field; 4] {
-        //compute initial intermediary nodes
-        let mut account_addresses: Vec<[u8; 20]> = self.accounts.iter().map(|(k, _)| *k).collect();
-        account_addresses.sort();
-        let mut intermediary_nodes: Vec<([u8; 20], [Field; 4])> = account_addresses.par_iter().map(|address| {
-            (*address, Self::hash_account(self.account(*address)))
-        }).collect();
-
-        //compute the initial default node
-        let mut default_node = Self::hash_account(Account { address: [0u8; 20], validator_index: None });
-
-        //compute intermediary nodes for each level of the tree
+        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
         for _ in 0..SPARSE_ACCOUNTS_TREE_HEIGHT {
-            let mut next_level_intermediary_nodes: Vec<([u8; 20], [Field; 4])> = Vec::new();
-            let mut skip_next = false;
-            for i in 0..intermediary_nodes.len() {
-                if skip_next {
-                    skip_next = false;
-                    continue;
-                }
-
-                let node = intermediary_nodes[i];
-                let mut parent_node = (address_shr(node.0, 1), [Field::ZERO; 4]);
-                if (node.0[19] % 2) == 0 {
-                    if (i + 1) < intermediary_nodes.len() {
-                        let next_node = intermediary_nodes[i + 1];
-                        if next_node.0 == address_add(node.0, 1) {
-                            parent_node.1 = field_hash_two(node.1, next_node.1);
-                            skip_next = true;
-                        } else {
-                            parent_node.1 = field_hash_two(node.1, default_node);
-                        }
-                    } else {
-                        parent_node.1 = field_hash_two(node.1, default_node);
-                    }
-                } else {
-                    parent_node.1 = field_hash_two(default_node, node.1);
-                }
-                next_level_intermediary_nodes.push(parent_node);
-            }
-
-            //move everything forward for next loop iteration
-            intermediary_nodes = next_level_intermediary_nodes;
-            default_node = field_hash_two(default_node, default_node);
+            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         match intermediary_nodes.get(0) {
@@ -106,14 +67,7 @@ impl AccountsTree {
 
     pub fn merkle_proof(&self, address: [u8; 20]) -> Vec<[Field; 4]> {
         //compute initial intermediary nodes
-        let mut account_addresses: Vec<[u8; 20]> = self.accounts.iter().map(|(k, _)| *k).collect();
-        account_addresses.sort();
-        let mut intermediary_nodes: Vec<([u8; 20], [Field; 4])> = account_addresses.par_iter().map(|address| {
-            (*address, Self::hash_account(self.account(*address)))
-        }).collect();
-
-        //compute the initial default node
-        let mut default_node = Self::hash_account(Account { address: [0u8; 20], validator_index: None });
+        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
 
         //build the merkle proof for each level in the tree
         let mut proof: Vec<[Field; 4]> = Vec::new();
@@ -128,38 +82,8 @@ impl AccountsTree {
             proof.push(sibling);
             idx = address_shr(idx, 1);
 
-            //compute intermediary nodes for next level 
-            let mut next_level_intermediary_nodes: Vec<([u8; 20], [Field; 4])> = Vec::new();
-            let mut skip_next = false;
-            for i in 0..intermediary_nodes.len() {
-                if skip_next {
-                    skip_next = false;
-                    continue;
-                }
-
-                let node = intermediary_nodes[i];
-                let mut parent_node = (address_shr(node.0, 1), [Field::ZERO; 4]);
-                if (node.0[19] % 2) == 0 {
-                    if (i + 1) < intermediary_nodes.len() {
-                        let next_node = intermediary_nodes[i + 1];
-                        if next_node.0 == address_add(node.0, 1) {
-                            parent_node.1 = field_hash_two(node.1, next_node.1);
-                            skip_next = true;
-                        } else {
-                            parent_node.1 = field_hash_two(node.1, default_node);
-                        }
-                    } else {
-                        parent_node.1 = field_hash_two(node.1, default_node);
-                    }
-                } else {
-                    parent_node.1 = field_hash_two(default_node, node.1);
-                }
-                next_level_intermediary_nodes.push(parent_node);
-            }
-
-            //move everything forward for next loop iteration
-            intermediary_nodes = next_level_intermediary_nodes;
-            default_node = field_hash_two(default_node, default_node);
+            //compute the next level intermediary nodes
+            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         proof
@@ -222,6 +146,61 @@ impl AccountsTree {
             None => Field::ZERO.sub_one(),
         };
         [validator_index, Field::ZERO, Field::ZERO, Field::ZERO]
+    }
+
+    fn compute_first_level_intermediary_nodes(&self) -> (Vec<([u8; 20], [Field; 4])>, [Field; 4]) {
+        let mut account_addresses: Vec<[u8; 20]> = self.accounts.iter().map(|(k, _)| *k).collect();
+        account_addresses.sort();
+        let intermediary_nodes: Vec<([u8; 20], [Field; 4])> = account_addresses.par_iter().map(|address| {
+            (*address, Self::hash_account(self.account(*address)))
+        }).collect();
+
+        let default_node = Self::hash_account(Account { address: [0u8; 20], validator_index: None });
+
+        (intermediary_nodes, default_node)
+    }
+
+    fn compute_intermediary_nodes(
+        intermediary_nodes: &[([u8; 20], [Field; 4])], 
+        default_node: [Field; 4],
+    ) -> (Vec<([u8; 20], [Field; 4])>, [Field; 4]) {
+        //arrange intermediary nodes into pairs (left, right)
+        let mut intermediary_node_pairs: Vec<([u8; 20], (Option<usize>, Option<usize>))> = Vec::new();
+        let mut i = 0;
+        while i < intermediary_nodes.len() {
+            let node = intermediary_nodes[i];
+            let mut pair = (None, None);
+            if (node.0[19] % 2) == 0 {
+                pair.0 = Some(i);
+                if (i + 1) < intermediary_nodes.len() {
+                    let next_node = intermediary_nodes[i + 1];
+                    if next_node.0 == address_add(node.0, 1) {
+                        pair.1 = Some(i + 1);
+                        i += 1; //skip the next node as it is part of the current pair
+                    }
+                }
+            } else {
+                pair.1 = Some(i);
+            }
+            intermediary_node_pairs.push((address_shr(node.0, 1), pair));
+            i += 1;
+        }
+
+        //compute the next level intermediary nodes
+        let next_level_intermediary_nodes = intermediary_node_pairs.par_iter().map(|(addr, (left, right))| {
+            let left_sibling = match *left {
+                Some(left) => intermediary_nodes[left].1,
+                None => default_node,
+            };
+            let right_sibling = match *right {
+                Some(right) => intermediary_nodes[right].1,
+                None => default_node,
+            };
+            (*addr, (field_hash_two(left_sibling, right_sibling)))
+        }).collect();
+
+        let next_default_node = field_hash_two(default_node, default_node);
+        (next_level_intermediary_nodes, next_default_node)
     }
 }
 
