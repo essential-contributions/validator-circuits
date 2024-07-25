@@ -1,18 +1,19 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::{create_dir_all, File}, io::{BufReader, Read, Write}, path::PathBuf};
 
 use plonky2::field::types::{Field as Plonky2_Field, Field64};
-use plonky2::{hash::hash_types::HashOut, plonk::config::Hasher as Plonky2_Hasher};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
-use crate::{Field, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
-use crate::Hash;
+use crate::{bytes_to_fields, field_hash_two, fields_to_bytes, Field, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 
 const SPARSE_ACCOUNTS_TREE_HEIGHT: usize = 160;
 
 const SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT: usize = 10;
 const SPARSE_ACCOUNTS_COMPUTED_TREE_HEIGHT: usize = SPARSE_ACCOUNTS_TREE_HEIGHT - SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT;
+
+const ACCOUNTS_OUTPUT_FOLDER: &str = "data";
+const ACCOUNTS_OUTPUT_FILE: &str = "accounts.bin";
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 
@@ -23,9 +24,15 @@ pub struct Account {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AccountData {
+    pub address: [u8; 20],
+    pub validator_index: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AccountsTree {
     nodes: Vec<[Field; 4]>,
-    accounts: HashMap<[u8; 20], Account>,
+    accounts: HashMap<[u8; 20], AccountData>,
 }
 
 impl AccountsTree {
@@ -34,11 +41,16 @@ impl AccountsTree {
     }
 
     pub fn from_accounts(accounts: &[Account]) -> Self {
-        //create the accounts map
         let mut accounts_map = HashMap::new();
         for account in accounts {
-            accounts_map.insert(account.address, account.clone());
+            if account.validator_index.is_some() {
+                accounts_map.insert(account.address, AccountData {
+                    address: account.address,
+                    validator_index: account.validator_index.unwrap(),
+                });
+            }
         }
+        assert_eq!(accounts_map.len(), MAX_VALIDATORS, "An account for every validator index is required when calling from_accounts.");
 
         //create the tree
         let num_nodes = (1 << (SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT + 1)) - 1;
@@ -54,6 +66,55 @@ impl AccountsTree {
         tree.fill_nodes(&computed_node_roots);
 
         tree
+    }
+
+    pub fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
+        let num_nodes = (1 << (SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT + 1)) - 1;
+        let num_nodes_bytes = 32 * num_nodes;
+        let num_accounts_bytes = (20 + 4) * MAX_VALIDATORS;
+        if bytes.len() != num_accounts_bytes + num_nodes_bytes {
+            return Err(anyhow!("Invalid bytes"));
+        }
+
+        let mut accounts_map = HashMap::new();
+        for i in 0..MAX_VALIDATORS {
+            let mut address = [0u8; 20];
+            address.iter_mut().enumerate().for_each(|(j, b)| *b = bytes[(i * (20 + 4)) + j]);
+            let mut validator_index_raw = [0u8; 4];
+            validator_index_raw.iter_mut().enumerate().for_each(|(j, b)| *b = bytes[(i * (20 + 4)) + 20 + j]);
+
+            accounts_map.insert(address, AccountData {
+                address,
+                validator_index: u32::from_be_bytes(validator_index_raw),
+            });
+        }
+        let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; num_nodes];
+        nodes.iter_mut().enumerate().for_each(|(i, n)| {
+            let j = num_accounts_bytes + (i * 32);
+            *n = bytes_to_fields(&bytes[j..(j + 32)]);
+        });
+
+        Ok(Self { accounts: accounts_map, nodes })
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let num_accounts_bytes = (20 + 4) * MAX_VALIDATORS;
+        let num_nodes_bytes = 32 * ((1 << (SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT + 1)) - 1);
+        let mut bytes: Vec<u8> = vec![0; num_accounts_bytes + num_nodes_bytes];
+
+        self.accounts.iter().enumerate().for_each(|(i, (_, a))| {
+            a.address.iter().enumerate().for_each(|(j, b)| bytes[(i * (20 + 4)) + j] = *b);
+            a.validator_index.to_be_bytes().iter().enumerate().for_each(|(j, b)| {
+                bytes[(i * (20 + 4)) + 20 + j] = *b;
+            });
+        });
+        self.nodes.iter().enumerate().for_each(|(i, n)| {
+            fields_to_bytes(n).iter().enumerate().for_each(|(j, b)| {
+                bytes[num_accounts_bytes + (i * 32) + j] = *b;
+            });
+        });
+
+        Ok(bytes)
     }
 
     pub fn root(&self) -> [Field; 4] {
@@ -126,67 +187,89 @@ impl AccountsTree {
 
     pub fn account(&self, address: [u8; 20]) -> Account {
         match self.accounts.get(&address) {
-            Some(account) => account.clone(),
+            Some(a) => Account { address: a.address, validator_index: Some(a.validator_index) },
             None => Account { address, validator_index: None },
         }
     }
 
     pub fn account_with_index(&self, validator_index: u32) -> Option<Account> {
-        let account_entry = self.accounts.iter().find(|(_, v) | {
-            if v.validator_index.is_some() {
-                return v.validator_index.unwrap() == validator_index;
-            }
-            return false;
+        let account_entry = self.accounts.iter().find(|(_, a) | {
+            return a.validator_index == validator_index;
         });
         match account_entry {
-            Some((_, account)) => {
-                Some(account.clone())
+            Some((_, a)) => {
+                Some(Account { address: a.address, validator_index: Some(a.validator_index) })
             },
             None => None,
         }
     }
 
     pub fn set_account(&mut self, account: Account) {
+        let default_nodes = Self::compute_default_nodes();
+        let mut computed_node_roots: Vec<(usize, [Field; 4])> = Vec::new();
         match account.validator_index {
             Some(validator_index) => {
                 match self.account_with_index(validator_index) {
                     Some(account_with_index) => {
+                        //remove the account that currently holds the same validator index
                         self.accounts.remove(&account_with_index.address);
+                        let memory_tree_index = Self::address_memory_tree_leaf_index(account_with_index.address);
+                        computed_node_roots.push((
+                            memory_tree_index,
+                            self.computed_nodes_root(memory_tree_index, &default_nodes)
+                        ));
                     },
                     None => {},
                 }
-                self.accounts.insert(account.address, account);
+                //insert the new account
+                self.accounts.insert(account.address, AccountData {
+                    address: account.address,
+                    validator_index: validator_index,
+                });
+                let memory_tree_index = Self::address_memory_tree_leaf_index(account.address);
+                computed_node_roots.push((
+                    memory_tree_index,
+                    self.computed_nodes_root(memory_tree_index, &default_nodes)
+                ));
             },
             None => {
                 let account_data = self.account(account.address);
                 match account_data.validator_index {
                     Some(validator_index) => {
-                        let mut null_account_address = [0u8; 20];
-                        null_account_address[0..4].copy_from_slice(&validator_index.to_be_bytes());
-                        self.accounts.insert(null_account_address, Account {
+                        //insert the null account to have ownership of the validator index
+                        let null_account_address = Self::null_account(validator_index as usize);
+                        self.accounts.insert(null_account_address, AccountData {
                             address: null_account_address,
-                            validator_index: Some(validator_index),
+                            validator_index: validator_index,
                         });
+                        let memory_tree_index = Self::address_memory_tree_leaf_index(null_account_address);
+                        computed_node_roots.push((
+                            memory_tree_index,
+                            self.computed_nodes_root(memory_tree_index, &default_nodes)
+                        ));
                     },
                     None => {},
                 }
+                //remove the account that no longer holds a validator index
                 self.accounts.remove(&account.address);
+                let memory_tree_index = Self::address_memory_tree_leaf_index(account.address);
+                computed_node_roots.push((
+                    memory_tree_index,
+                    self.computed_nodes_root(memory_tree_index, &default_nodes)
+                ));
             }
         }
 
-
-        //TODO: need to recompute nodes in memory for both the removal and insert
-
+        //recompute the nodes in memory
+        self.fill_nodes(&computed_node_roots);
     }
 
     pub fn default_accounts() -> Vec<Account> {
         let mut default_accounts = Vec::new();
-        for i in 0..(MAX_VALIDATORS as u32) {
-            let mut address = [0u8; 20];
-            address[0..4].copy_from_slice(&(i << (32 - VALIDATORS_TREE_HEIGHT)).to_be_bytes());
+        for i in 0..MAX_VALIDATORS {
             default_accounts.push(Account {
-                address,
-                validator_index: Some(i),
+                address: Self::null_account(i),
+                validator_index: Some(i as u32),
             });
         }
         default_accounts
@@ -300,6 +383,13 @@ impl AccountsTree {
         let top_u32 = u32::from_be_bytes([addr[0], addr[1], addr[2], addr[3]]);
         (top_u32 >> ((32 - VALIDATORS_TREE_HEIGHT) + SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT)) as usize
     }
+
+    fn null_account(validator_index: usize) -> [u8; 20] {
+        let validator_index_bytes = ((validator_index as u32) << (32 - VALIDATORS_TREE_HEIGHT)).to_be_bytes();
+        let mut address = [0u8; 20];
+        address[0..4].copy_from_slice(&validator_index_bytes);
+        address
+    }
 }
 
 pub fn initial_accounts_tree_root() -> [Field; 4] {
@@ -329,10 +419,6 @@ pub fn initial_accounts_tree_root() -> [Field; 4] {
         Field::from_canonical_u64(7379642696541209614),
         Field::from_canonical_u64(13886610048497901282),
     ]
-}
-
-fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
 }
 
 fn address_add(mut addr: [u8; 20], value: u32) -> [u8; 20] {
@@ -398,4 +484,33 @@ fn address_shr(mut addr: [u8; 20], shift: usize) -> [u8; 20] {
         }
     }
     addr
+}
+
+pub fn save_accounts(accounts_tree: &AccountsTree) -> Result<()> {
+    let bytes = accounts_tree.to_bytes()?;
+
+    let mut path = PathBuf::from(ACCOUNTS_OUTPUT_FOLDER);
+    path.push(ACCOUNTS_OUTPUT_FILE);
+
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent)?;
+    }
+
+    let mut file = File::create(&path)?;
+    file.write_all(&bytes)?;
+    file.flush()?;
+
+    Ok(())
+}
+
+pub fn load_accounts() -> Result<AccountsTree> {
+    let mut path = PathBuf::from(ACCOUNTS_OUTPUT_FOLDER);
+    path.push(ACCOUNTS_OUTPUT_FILE);
+
+    let file = File::open(&path)?;
+    let mut reader = BufReader::with_capacity(32 * 1024, file);
+    let mut bytes: Vec<u8> = Vec::new();
+    reader.read_to_end(&mut bytes)?;
+
+    Ok(AccountsTree::from_bytes(&bytes)?)
 }

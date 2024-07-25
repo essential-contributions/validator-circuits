@@ -309,8 +309,6 @@ pub fn load_commitment() -> Result<Commitment> {
     let mut reader = BufReader::with_capacity(32 * 1024, file);
     let mut bytes: Vec<u8> = Vec::new();
     reader.read_to_end(&mut bytes)?;
-
-    let commitment = Commitment::from_bytes(&bytes)?;
     
-    Ok(commitment)
+    Ok(Commitment::from_bytes(&bytes)?)
 }

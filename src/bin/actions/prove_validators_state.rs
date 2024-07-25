@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{accounts::{initial_accounts_tree_root, Account, AccountsTree}, circuits::{validators_state_circuit::ValidatorsStateCircuitData, Circuit}, participation::initial_participation_rounds_root, validators::ValidatorsTree};
+use validator_circuits::{accounts::{initial_accounts_tree_root, load_accounts, save_accounts, Account, AccountsTree}, circuits::{validators_state_circuit::ValidatorsStateCircuitData, Circuit}, participation::initial_participation_rounds_root, validators::ValidatorsTree};
 use validator_circuits::circuits::validators_state_circuit::ValidatorsStateCircuit;
 
 pub fn benchmark_prove_validators_state(full: bool) {
@@ -10,78 +10,34 @@ pub fn benchmark_prove_validators_state(full: bool) {
         log::warn!("Skipping wrapped proof generation as this is an internal proof only (used recursively in other proofs that need to be wrapped for EVM).");
     }
 
-    println!("accounts tree root test...");
-    let start = Instant::now();
-    let mut t = AccountsTree::new();
-    println!("(finished in {:?})", start.elapsed());
-    println!("initial_accounts_tree_root computed {:?}", t.root());
-    println!("initial_accounts_tree_root {:?}", initial_accounts_tree_root());
-    println!();
-
-    println!("accounts tree merkle proof test...");
-    let start = Instant::now();
-    let p = t.merkle_proof([12u8; 20]);
-    println!("(finished in {:?})", start.elapsed());
-    assert!(t.verify_merkle_proof(Account { address: [12u8; 20], validator_index: None }, &p).is_ok(), "Merkle proof failed verification.");
-    println!();
-
-    println!("accounts tree update test...");
-    let start = Instant::now();
-    let acc = t.account_with_index(1111).unwrap();
-    t.set_account(Account { address: [7u8; 20], validator_index: Some(1111) });
-    println!("(finished in {:?})", start.elapsed());
-    println!();
-
-    println!("accounts tree merkle proof test2...");
-    let start = Instant::now();
-    let p = t.merkle_proof([7u8; 20]);
-    println!("(finished in {:?})", start.elapsed());
-    assert!(t.verify_merkle_proof(Account { address: [7u8; 20], validator_index: Some(1111) }, &p).is_ok(), "Merkle proof failed verification.");
-    println!();
-
-    println!("accounts tree merkle proof test3...");
-    let start = Instant::now();
-    let p = t.merkle_proof(acc.address);
-    println!("(finished in {:?})", start.elapsed());
-    assert!(t.verify_merkle_proof(Account { address: acc.address, validator_index: None }, &p).is_ok(), "Merkle proof failed verification.");
-    println!();
-
-    println!("accounts tree update test...");
-    let start = Instant::now();
-    t.set_account(Account { address: [7u8; 20], validator_index: None });
-    println!("(finished in {:?})", start.elapsed());
-    println!();
-
-    println!("accounts tree merkle proof test2...");
-    let start = Instant::now();
-    let p = t.merkle_proof([7u8; 20]);
-    println!("(finished in {:?})", start.elapsed());
-    assert!(t.verify_merkle_proof(Account { address: [7u8; 20], validator_index: None }, &p).is_ok(), "Merkle proof failed verification.");
-    println!();
-
-    println!("accounts tree merkle proof test3...");
-    let start = Instant::now();
-    let p = t.merkle_proof(acc.address);
-    println!("(finished in {:?})", start.elapsed());
-    assert!(t.verify_merkle_proof(Account { address: acc.address, validator_index: Some(1111) }, &p).is_ok(), "Merkle proof failed verification.");
-    println!();
-
-
-
-
     //generate the circuits
     println!("Building Circuit... ");
     let start = Instant::now();
     //TODO
     //let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
     let validators_state_circuit = ValidatorsStateCircuit::new();
+    println!("(finished in {:?})", start.elapsed());
+    println!();
+
+    //build stake tracking structures
     let mut total_staked = 0;
     let mut total_validators = 0;
     let mut validators_tree = ValidatorsTree::new();
-    let mut accounts_tree = AccountsTree::new();
+    let mut accounts_tree = match load_accounts() {
+        Ok(t) => t,
+        Err(_) => {
+            let start = Instant::now();
+            println!("Building Accounts Tree...");
+            let t = AccountsTree::new();
+            println!("(finished in {:?})", start.elapsed());
+            println!();
+            if save_accounts(&t).is_err() {
+                log::warn!("Failed to save accounts tree to file.");
+            }
+            t
+        },
+    };
     let mut inputs_hash = [0u8; 32];
-    println!("(finished in {:?})", start.elapsed());
-    println!();
 
 
 
