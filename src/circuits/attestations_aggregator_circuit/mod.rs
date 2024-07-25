@@ -152,7 +152,7 @@ pub enum ValidatorSecondaryGroupData {
 }
 #[derive(Clone)]
 pub struct ValidatorData {
-    pub stake: u64,
+    pub stake: u32,
     pub commitment_root: [Field; 4],
     pub reveal: Option<ValidatorRevealData>,
 }

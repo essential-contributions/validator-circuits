@@ -14,7 +14,7 @@ pub fn benchmark_prove_participation(full: bool) {
     }
 
     //generate the circuits
-    println!("Building Circuit... ");
+    println!("Building Participation Circuit... ");
     let start = Instant::now();
     let participation_circuit = load_or_create_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());

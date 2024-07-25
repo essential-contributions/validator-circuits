@@ -15,7 +15,7 @@ use crate::Field;
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Validator {
     pub commitment_root: [Field; 4],
-    pub stake: u64,
+    pub stake: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -66,8 +66,8 @@ impl ValidatorsTree {
         VALIDATORS_TREE_HEIGHT
     }
 
-    pub fn validator(&self, index: usize) -> &Validator {
-        &self.validators[index]
+    pub fn validator(&self, index: usize) -> Validator {
+        self.validators[index].clone()
     }
 
     pub fn prove_attestations(&self, circuit: &AttestationsAggregatorCircuit, reveals: &Vec<ValidatorCommitmentReveal>) -> Result<AttestationsAggregatorProof> {
@@ -178,7 +178,7 @@ impl ValidatorsTree {
         todo!();
     }
 
-    pub fn set_validator(&mut self, validator: Validator, index: usize) {
+    pub fn set_validator(&mut self, index: usize, validator: Validator) {
         self.validators[index] = validator;
         self.fill_nodes();
     }
@@ -249,7 +249,7 @@ impl ValidatorsTree {
 
     fn hash_validator(validator: Validator) -> [Field; 4] {
         let mut elements = validator.commitment_root.to_vec();
-        elements.push(Field::from_canonical_u64(validator.stake));
+        elements.push(Field::from_canonical_u32(validator.stake));
         field_hash(&elements)
     }
 }

@@ -11,7 +11,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
     }
 
     //generate the circuits
-    println!("Building Circuit... ");
+    println!("Building Participation State Circuit... ");
     let start = Instant::now();
     //TODO
     //let participation_state_circuit = load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);

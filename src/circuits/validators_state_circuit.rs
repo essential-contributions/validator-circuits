@@ -240,8 +240,8 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsStateCi
     );
 
     //Determine what kind of operation this is and start new targets to help build a new state
-    let is_stake_operation = builder.is_equal(stake, zero);
-    let is_unstake_operation = builder.not(is_stake_operation);
+    let is_unstake_operation = builder.is_equal(stake, zero);
+    let is_stake_operation = builder.not(is_unstake_operation);
     let mut new_total_staked = current_total_staked;
     let mut new_total_validators = current_total_validators;
     let mut new_validator_stake = validator_stake;
@@ -266,16 +266,16 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsStateCi
         let stake_increase = builder.greater_than(stake, validator_stake, 32);
         let same_account = builder.is_equal(from_acc_index, to_acc_index);
         let to_acc_index_is_null = builder.is_equal(to_acc_index, null);
-        let same_acc_or_to_acc_index_null = builder.or(same_account, to_acc_index_is_null);
         let from_acc_is_null = is_account_null(builder, &from_account, index);
         let validators_at_max = builder.is_equal(current_total_validators, max_validators);
         let from_acc_is_null_or_max_validators = builder.or(from_acc_is_null, validators_at_max);
-        let is_valid_stake_op = builder.and_many(&[
+        let terms = [
             is_stake_operation,
             stake_increase,
-            from_acc_is_null_or_max_validators,
-            same_acc_or_to_acc_index_null,
-        ]);
+            builder.or(same_account, from_acc_is_null_or_max_validators),
+            builder.or(same_account, to_acc_index_is_null),
+        ];
+        let is_valid_stake_op = builder.and_many(&terms);
 
         //Compute the theoretically updated values
         let stake_delta = builder.sub(stake, validator_stake);

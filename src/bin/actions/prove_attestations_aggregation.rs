@@ -14,7 +14,7 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
     }
 
     //generate the circuits
-    println!("Building Circuit... ");
+    println!("Building Atestation Aggregation Circuit(s)... ");
     let start = Instant::now();
     let attestations_circuit = load_or_create_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());

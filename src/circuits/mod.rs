@@ -2,9 +2,6 @@ pub mod validators_state_circuit;
 pub mod participation_state_circuit;
 pub mod attestations_aggregator_circuit;
 pub mod participation_circuit;
-pub mod state_update_circuit;
-pub mod validators_update_circuit;
-pub mod sha256_circuit;
 mod utils;
 
 use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
@@ -25,8 +22,6 @@ pub const VALIDATORS_STATE_CIRCUIT_DIR: &str = "validators_state";
 pub const PARTICIPATION_STATE_CIRCUIT_DIR: &str = "participation_state";
 pub const ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR: &str = "attestations_aggregator";
 pub const PARTICIPATION_CIRCUIT_DIR: &str = "participation";
-pub const VALIDATORS_UPDATE_CIRCUIT_DIR: &str = "validators_update";
-pub const STATE_UPDATE_CIRCUIT_DIR: &str = "state_update";
 
 pub trait Circuit {
     type Data;

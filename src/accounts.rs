@@ -13,20 +13,17 @@ const SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT: usize = 10;
 const SPARSE_ACCOUNTS_COMPUTED_TREE_HEIGHT: usize = SPARSE_ACCOUNTS_TREE_HEIGHT - SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT;
 
 const ACCOUNTS_OUTPUT_FOLDER: &str = "data";
-const ACCOUNTS_OUTPUT_FILE: &str = "accounts.bin";
-
-//TODO: support from_bytes, to_bytes and save/load (see commitment)
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Account {
     pub address: [u8; 20],
-    pub validator_index: Option<u32>,
+    pub validator_index: Option<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AccountData {
     pub address: [u8; 20],
-    pub validator_index: u32,
+    pub validator_index: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -85,7 +82,7 @@ impl AccountsTree {
 
             accounts_map.insert(address, AccountData {
                 address,
-                validator_index: u32::from_be_bytes(validator_index_raw),
+                validator_index: u32::from_be_bytes(validator_index_raw) as usize,
             });
         }
         let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; num_nodes];
@@ -192,7 +189,7 @@ impl AccountsTree {
         }
     }
 
-    pub fn account_with_index(&self, validator_index: u32) -> Option<Account> {
+    pub fn account_with_index(&self, validator_index: usize) -> Option<Account> {
         let account_entry = self.accounts.iter().find(|(_, a) | {
             return a.validator_index == validator_index;
         });
@@ -237,7 +234,7 @@ impl AccountsTree {
                 match account_data.validator_index {
                     Some(validator_index) => {
                         //insert the null account to have ownership of the validator index
-                        let null_account_address = Self::null_account(validator_index as usize);
+                        let null_account_address = null_account_address(validator_index as usize);
                         self.accounts.insert(null_account_address, AccountData {
                             address: null_account_address,
                             validator_index: validator_index,
@@ -268,8 +265,8 @@ impl AccountsTree {
         let mut default_accounts = Vec::new();
         for i in 0..MAX_VALIDATORS {
             default_accounts.push(Account {
-                address: Self::null_account(i),
-                validator_index: Some(i as u32),
+                address: null_account_address(i),
+                validator_index: Some(i),
             });
         }
         default_accounts
@@ -309,7 +306,7 @@ impl AccountsTree {
     
     fn hash_account(account: Account) -> [Field; 4] {
         let validator_index = match account.validator_index {
-            Some(validator_index) => Field::from_canonical_u32(validator_index),
+            Some(validator_index) => Field::from_canonical_usize(validator_index),
             None => Field::ZERO.sub_one(),
         };
         [validator_index, Field::ZERO, Field::ZERO, Field::ZERO]
@@ -383,13 +380,6 @@ impl AccountsTree {
         let top_u32 = u32::from_be_bytes([addr[0], addr[1], addr[2], addr[3]]);
         (top_u32 >> ((32 - VALIDATORS_TREE_HEIGHT) + SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT)) as usize
     }
-
-    fn null_account(validator_index: usize) -> [u8; 20] {
-        let validator_index_bytes = ((validator_index as u32) << (32 - VALIDATORS_TREE_HEIGHT)).to_be_bytes();
-        let mut address = [0u8; 20];
-        address[0..4].copy_from_slice(&validator_index_bytes);
-        address
-    }
 }
 
 pub fn initial_accounts_tree_root() -> [Field; 4] {
@@ -419,6 +409,13 @@ pub fn initial_accounts_tree_root() -> [Field; 4] {
         Field::from_canonical_u64(7379642696541209614),
         Field::from_canonical_u64(13886610048497901282),
     ]
+}
+
+pub fn null_account_address(validator_index: usize) -> [u8; 20] {
+    let validator_index_bytes = ((validator_index as u32) << (32 - VALIDATORS_TREE_HEIGHT)).to_be_bytes();
+    let mut address = [0u8; 20];
+    address[0..4].copy_from_slice(&validator_index_bytes);
+    address
 }
 
 fn address_add(mut addr: [u8; 20], value: u32) -> [u8; 20] {
@@ -486,11 +483,11 @@ fn address_shr(mut addr: [u8; 20], shift: usize) -> [u8; 20] {
     addr
 }
 
-pub fn save_accounts(accounts_tree: &AccountsTree) -> Result<()> {
+pub fn save_accounts(accounts_tree: &AccountsTree, filename: &str) -> Result<()> {
     let bytes = accounts_tree.to_bytes()?;
 
     let mut path = PathBuf::from(ACCOUNTS_OUTPUT_FOLDER);
-    path.push(ACCOUNTS_OUTPUT_FILE);
+    path.push(filename);
 
     if let Some(parent) = path.parent() {
         create_dir_all(parent)?;
@@ -503,9 +500,9 @@ pub fn save_accounts(accounts_tree: &AccountsTree) -> Result<()> {
     Ok(())
 }
 
-pub fn load_accounts() -> Result<AccountsTree> {
+pub fn load_accounts(filename: &str) -> Result<AccountsTree> {
     let mut path = PathBuf::from(ACCOUNTS_OUTPUT_FOLDER);
-    path.push(ACCOUNTS_OUTPUT_FILE);
+    path.push(filename);
 
     let file = File::open(&path)?;
     let mut reader = BufReader::with_capacity(32 * 1024, file);
