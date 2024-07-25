@@ -3,19 +3,18 @@ use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 
 use blake3::Hasher as Blake3_Hasher;
-use plonky2::{field::types::Field as Plonky2_Field, hash::hash_types::HashOut};
-use plonky2::plonk::config::Hasher as Plonky2_Hasher;
+use plonky2::field::types::Field as Plonky2_Field;
 use rand::Rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
-use crate::{Field, Hash, VALIDATOR_COMMITMENT_TREE_HEIGHT};
+use crate::{bytes_to_fields, field_hash, field_hash_two, fields_to_bytes, Field, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 
 const COMMITMENT_COMPUTED_TREE_HEIGHT: usize = 14;
 const COMMITMENT_MEMORY_TREE_HEIGHT: usize = VALIDATOR_COMMITMENT_TREE_HEIGHT - COMMITMENT_COMPUTED_TREE_HEIGHT;
 
-const COMMITMENT_OUTPUT_FOLDER: &str = "commitment";
+const COMMITMENT_OUTPUT_FOLDER: &str = "data";
 const COMMITMENT_OUTPUT_FILE: &str = "secret.bin";
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -217,50 +216,6 @@ fn blake3_hash(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-fn field_hash(input: &[Field]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::hash_no_pad(input).elements
-}
-
-fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
-}
-
-fn bytes_to_fields(bytes: &[u8]) -> [Field; 4] {
-    let mut chunk0: [u8; 8] = [0u8; 8];
-    chunk0.copy_from_slice(&bytes[0..8]);
-    let mut chunk1: [u8; 8] = [0u8; 8];
-    chunk1.copy_from_slice(&bytes[8..16]);
-    let mut chunk2: [u8; 8] = [0u8; 8];
-    chunk2.copy_from_slice(&bytes[16..24]);
-    let mut chunk3: [u8; 8] = [0u8; 8];
-    chunk3.copy_from_slice(&bytes[24..32]);
-    
-    [
-        Plonky2_Field::from_canonical_u64(u64::from_be_bytes(chunk0)),
-        Plonky2_Field::from_canonical_u64(u64::from_be_bytes(chunk1)),
-        Plonky2_Field::from_canonical_u64(u64::from_be_bytes(chunk2)),
-        Plonky2_Field::from_canonical_u64(u64::from_be_bytes(chunk3)),
-    ]
-}
-
-fn fields_to_bytes(fields: &[Field; 4]) -> [u8; 32] {
-    let mut bytes = [0u8; 32];
-    fields[0].0.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
-        bytes[i] = *b;
-    });
-    fields[1].0.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
-        bytes[8 + i] = *b;
-    });
-    fields[2].0.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
-        bytes[16 + i] = *b;
-    });
-    fields[3].0.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
-        bytes[24 + i] = *b;
-    });
-
-    bytes
-}
-
 // The max number of unique commitments when generating examples (index is always modulo this value)
 pub const EXAMPLE_COMMITMENTS_REPEAT: usize = 2000;
 
@@ -289,10 +244,10 @@ pub fn example_commitment_proof(validator_index: usize) -> CommitmentReveal {
 // Generates an empty commitment proof
 pub fn empty_commitment() -> CommitmentReveal {
     let reveal = [
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
+        Field::from_canonical_usize(0),
+        Field::from_canonical_usize(0),
+        Field::from_canonical_usize(0),
+        Field::from_canonical_usize(0),
     ];
     let mut node = field_hash(&reveal);
     let mut proof: Vec<[Field; 4]> = vec![];
@@ -307,10 +262,10 @@ pub fn empty_commitment() -> CommitmentReveal {
 // Generates an empty commitment root
 pub fn empty_commitment_root() -> [Field; 4] {
     let reveal = [
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
-        Plonky2_Field::from_canonical_usize(0),
+        Field::from_canonical_usize(0),
+        Field::from_canonical_usize(0),
+        Field::from_canonical_usize(0),
+        Field::from_canonical_usize(0),
     ];
     let mut node = field_hash(&reveal);
     for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
@@ -322,10 +277,10 @@ pub fn empty_commitment_root() -> [Field; 4] {
 fn generate_secret_from_seed(seed: usize) -> [Field; 4] {
     let seed = seed % EXAMPLE_COMMITMENTS_REPEAT;
     [
-        Plonky2_Field::from_canonical_usize(seed + 10),
-        Plonky2_Field::from_canonical_usize(seed + 11),
-        Plonky2_Field::from_canonical_usize(seed + 12),
-        Plonky2_Field::from_canonical_usize(seed + 13),
+        Field::from_canonical_usize(seed + 10),
+        Field::from_canonical_usize(seed + 11),
+        Field::from_canonical_usize(seed + 12),
+        Field::from_canonical_usize(seed + 13),
     ]
 }
 

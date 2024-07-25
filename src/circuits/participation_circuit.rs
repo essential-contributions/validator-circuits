@@ -117,7 +117,7 @@ impl Proof for ParticipationProof {
 
 fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationCircuitTargets {
     //Global targets
-    let agg_pass1_size = builder.constant(Plonky2_Field::from_canonical_usize(AGGREGATION_PASS1_SIZE));
+    let agg_pass1_size = builder.constant(Field::from_canonical_usize(AGGREGATION_PASS1_SIZE));
 
     //Break participation into bits
     let mut participation_bits_fields: Vec<Target> = Vec::new();
@@ -200,10 +200,10 @@ fn generate_partial_witness(targets: &ParticipationCircuitTargets, data: &Partic
     let validator_field_index = data.validator_index % AGGREGATION_PASS1_SIZE;
 
     let mut pw = PartialWitness::new();
-    pw.set_target(targets.validator_field_index, Plonky2_Field::from_canonical_usize(validator_field_index));
+    pw.set_target(targets.validator_field_index, Field::from_canonical_usize(validator_field_index));
     pw.set_target_arr(&targets.participation_bits_fields, &participation_root_merkle_data.leaf_fields);
     pw.set_target_arr(&targets.participation_root.elements, &participation_root_merkle_data.root);
-    pw.set_target(targets.participation_root_index, Plonky2_Field::from_canonical_usize(participation_root_index));
+    pw.set_target(targets.participation_root_index, Field::from_canonical_usize(participation_root_index));
     pw.set_merkle_proof_target(targets.participation_root_merkle_proof.clone(), &participation_root_merkle_data.proof);
 
     Ok(pw)

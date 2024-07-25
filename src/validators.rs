@@ -1,6 +1,4 @@
 use plonky2::field::types::Field as Plonky2_Field;
-use plonky2::hash::hash_types::HashOut;
-use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 use anyhow::{anyhow, Result};
@@ -8,9 +6,8 @@ use anyhow::{anyhow, Result};
 use crate::circuits::attestations_aggregator_circuit::{AttestationsAggregatorCircuit, AttestationsAggregatorCircuitData, AttestationsAggregatorProof, ValidatorData, ValidatorPrimaryGroupData, ValidatorRevealData, ValidatorSecondaryGroupData, ATTESTATION_AGGREGATION_PASS1_SIZE, ATTESTATION_AGGREGATION_PASS2_SIZE, ATTESTATION_AGGREGATION_PASS3_SIZE};
 use crate::circuits::Circuit;
 use crate::commitment::{example_commitment_root, EXAMPLE_COMMITMENTS_REPEAT};
-use crate::{AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
+use crate::{field_hash, field_hash_two, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
-use crate::Hash;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: implement multi-threading for manual verification
@@ -252,7 +249,7 @@ impl ValidatorsTree {
 
     fn hash_validator(validator: Validator) -> [Field; 4] {
         let mut elements = validator.commitment_root.to_vec();
-        elements.push(Plonky2_Field::from_canonical_u64(validator.stake));
+        elements.push(Field::from_canonical_u64(validator.stake));
         field_hash(&elements)
     }
 }
@@ -271,12 +268,4 @@ pub fn example_validator_set() -> ValidatorsTree {
     }).collect();
 
     ValidatorsTree::from_validators(validators)
-}
-
-fn field_hash(input: &[Field]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::hash_no_pad(input).elements
-}
-
-fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
 }

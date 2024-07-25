@@ -1,15 +1,12 @@
 use std::collections::HashMap;
 
 use plonky2::field::types::Field as Plonky2_Field;
-use plonky2::hash::hash_types::HashOut;
-use plonky2::plonk::config::Hasher as Plonky2_Hasher;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
-use crate::{AGGREGATION_PASS1_SIZE, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT};
+use crate::{field_hash, field_hash_two, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT};
 use crate::Field;
-use crate::Hash;
 
 pub const PARTICIPATION_TREE_SIZE: usize = AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE;
 pub const PARTICIPATION_TREE_HEIGHT: usize = AGGREGATION_PASS2_SUB_TREE_HEIGHT + AGGREGATION_PASS3_SUB_TREE_HEIGHT;
@@ -283,7 +280,7 @@ pub fn leaf_fields(participation: Vec<bool>) -> Vec<Field> {
         }
         participation_bits_u64.push(field_u64);
     }
-    let fields: Vec<Field> = participation_bits_u64.iter().map(|f| Plonky2_Field::from_canonical_u64(*f)).collect();
+    let fields: Vec<Field> = participation_bits_u64.iter().map(|f| Field::from_canonical_u64(*f)).collect();
     fields
 }
 
@@ -352,7 +349,7 @@ fn participation_fields(participation_bits: &Vec<u8>, group_index: usize) -> Vec
         }
         participation_bits_u64.push(field_u64);
     }
-    let fields: Vec<Field> = participation_bits_u64.iter().map(|f| Plonky2_Field::from_canonical_u64(*f)).collect();
+    let fields: Vec<Field> = participation_bits_u64.iter().map(|f| Field::from_canonical_u64(*f)).collect();
     fields
 }
 
@@ -361,14 +358,6 @@ fn bit_from_field(participation_bits: &Vec<u8>, index: usize) -> bool {
         Some(byte) => byte & (128u8 >> (index % 8)) > 0,
         None => false,
     }
-}
-
-fn field_hash(input: &[Field]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::hash_no_pad(input).elements
-}
-
-fn field_hash_two(left: [Field; 4], right: [Field; 4]) -> [Field; 4] {
-    <Hash as Plonky2_Hasher<Field>>::two_to_one(HashOut {elements: left}, HashOut {elements: right}).elements
 }
 
 const fn div_ceil(x: usize, y: usize) -> usize {

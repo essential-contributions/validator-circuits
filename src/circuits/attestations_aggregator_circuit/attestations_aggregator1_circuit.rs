@@ -272,10 +272,10 @@ fn generate_partial_witness(targets: &AttsAgg1Targets, data: &AttestationsAggreg
 
     //create partial witness
     let mut pw = PartialWitness::new();
-    pw.set_target(targets.block_slot, Plonky2_Field::from_canonical_u64(data.block_slot as u64));
+    pw.set_target(targets.block_slot, Field::from_canonical_u64(data.block_slot as u64));
 
     for (t, v) in targets.validators.iter().zip(validators.iter()) {
-        pw.set_target(t.stake, Plonky2_Field::from_canonical_u64(v.stake));
+        pw.set_target(t.stake, Field::from_canonical_u64(v.stake));
         pw.set_hash_target(t.commitment_root, HashOut::<Field> { elements: v.commitment_root });
         pw.set_target_arr(&t.reveal, &v.reveal.clone().unwrap().reveal);
         pw.set_merkle_proof_target(t.reveal_proof.clone(), &v.reveal.clone().unwrap().reveal_proof);

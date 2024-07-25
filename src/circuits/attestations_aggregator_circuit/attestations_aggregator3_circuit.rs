@@ -291,7 +291,7 @@ fn generate_partial_witness(targets: &AttsAgg3Targets, data: &AttestationsAggreg
 
     //create partial witness
     let mut pw = PartialWitness::new();
-    pw.set_target(targets.block_slot, Plonky2_Field::from_canonical_u64(data.block_slot as u64));
+    pw.set_target(targets.block_slot, Field::from_canonical_u64(data.block_slot as u64));
     pw.set_verifier_data_target(&targets.atts_agg2_verifier, &atts_agg2_circuit_data.verifier_only);
 
     for (t, v) in targets.atts_agg2_data.iter().zip(data.agg2_data.clone()) {

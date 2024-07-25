@@ -204,13 +204,13 @@ fn generate_partial_witness(targets: &ValidatorsUpdateCircuitTargets, data: &Val
     }
 
     let mut pw = PartialWitness::new();
-    pw.set_target(targets.index, Plonky2_Field::from_canonical_usize(data.validator_index));
+    pw.set_target(targets.index, Field::from_canonical_usize(data.validator_index));
     pw.set_target_arr(&targets.previous_root.elements, &data.previous_root);
     pw.set_target_arr(&targets.previous_commitment.elements, &data.previous_commitment);
-    pw.set_target(targets.previous_stake, Plonky2_Field::from_canonical_u64(data.previous_stake));
+    pw.set_target(targets.previous_stake, Field::from_canonical_u64(data.previous_stake));
     pw.set_target_arr(&targets.new_root.elements, &data.new_root);
     pw.set_target_arr(&targets.new_commitment.elements, &data.new_commitment);
-    pw.set_target(targets.new_stake, Plonky2_Field::from_canonical_u64(data.new_stake));
+    pw.set_target(targets.new_stake, Field::from_canonical_u64(data.new_stake));
     pw.set_merkle_proof_target(targets.merkle_proof.clone(), &data.merkle_proof);
 
     Ok(pw)

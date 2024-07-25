@@ -12,7 +12,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
 
     println!("accounts tree root test...");
     let start = Instant::now();
-    let t = AccountsTree::new();
+    let mut t = AccountsTree::new();
     println!("(finished in {:?})", start.elapsed());
     println!("initial_accounts_tree_root computed {:?}", t.root());
     println!("initial_accounts_tree_root {:?}", initial_accounts_tree_root());
@@ -23,6 +23,47 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let p = t.merkle_proof([12u8; 20]);
     println!("(finished in {:?})", start.elapsed());
     assert!(t.verify_merkle_proof(Account { address: [12u8; 20], validator_index: None }, &p).is_ok(), "Merkle proof failed verification.");
+    println!();
+
+    println!("accounts tree update test...");
+    let start = Instant::now();
+    let acc = t.account_with_index(1111).unwrap();
+    t.set_account(Account { address: [7u8; 20], validator_index: Some(1111) });
+    println!("(finished in {:?})", start.elapsed());
+    println!();
+
+    println!("accounts tree merkle proof test2...");
+    let start = Instant::now();
+    let p = t.merkle_proof([7u8; 20]);
+    println!("(finished in {:?})", start.elapsed());
+    assert!(t.verify_merkle_proof(Account { address: [7u8; 20], validator_index: Some(1111) }, &p).is_ok(), "Merkle proof failed verification.");
+    println!();
+
+    println!("accounts tree merkle proof test3...");
+    let start = Instant::now();
+    let p = t.merkle_proof(acc.address);
+    println!("(finished in {:?})", start.elapsed());
+    assert!(t.verify_merkle_proof(Account { address: acc.address, validator_index: None }, &p).is_ok(), "Merkle proof failed verification.");
+    println!();
+
+    println!("accounts tree update test...");
+    let start = Instant::now();
+    t.set_account(Account { address: [7u8; 20], validator_index: None });
+    println!("(finished in {:?})", start.elapsed());
+    println!();
+
+    println!("accounts tree merkle proof test2...");
+    let start = Instant::now();
+    let p = t.merkle_proof([7u8; 20]);
+    println!("(finished in {:?})", start.elapsed());
+    assert!(t.verify_merkle_proof(Account { address: [7u8; 20], validator_index: None }, &p).is_ok(), "Merkle proof failed verification.");
+    println!();
+
+    println!("accounts tree merkle proof test3...");
+    let start = Instant::now();
+    let p = t.merkle_proof(acc.address);
+    println!("(finished in {:?})", start.elapsed());
+    assert!(t.verify_merkle_proof(Account { address: acc.address, validator_index: Some(1111) }, &p).is_ok(), "Merkle proof failed verification.");
     println!();
 
 
