@@ -72,9 +72,9 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
     
     fn is_equal_many(&mut self, x: &[Target], y: &[Target]) -> BoolTarget {
         debug_assert_eq!(x.len(), y.len(), "lengths do not match for is equal many");
-        let zero = self.zero();
+        let one = self.one();
         BoolTarget::new_unsafe(x.iter().zip(y).fold(
-            zero, 
+            one, 
             |acc, (x, y)|{
                 let eq = self.is_equal(*x, *y);
                 self.mul(acc, eq.target)
