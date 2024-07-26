@@ -2,20 +2,18 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{circuits::{participation_state_circuit::ParticipationStateCircuitData, Circuit}, participation::{ParticipationBits, ParticipationRound, ParticipationRoundsTree}};
+use validator_circuits::{circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, save_proof, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR}, participation::{ParticipationBits, ParticipationRound, ParticipationRoundsTree}};
 use validator_circuits::circuits::participation_state_circuit::ParticipationStateCircuit;
 
 pub fn benchmark_prove_participation_state(full: bool) {
     if full {
-        log::warn!("Skipping wrapped proof generation as this is an internal proof only (used recursively in other proofs that need to be wrapped for EVM).");
+        log::warn!("Skipping wrapped proof generation as state is an internal proof only (used recursively in other proofs).");
     }
 
     //generate the circuits
     println!("Building Participation State Circuit... ");
     let start = Instant::now();
-    //TODO
-    //let participation_state_circuit = load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
-    let participation_state_circuit = ParticipationStateCircuit::new();
+    let participation_state_circuit = load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
     let mut participation_rounds_tree = ParticipationRoundsTree::new();
     let mut inputs_hash = [0u8; 32];
     println!("(finished in {:?})", start.elapsed());
@@ -181,8 +179,8 @@ pub fn benchmark_prove_participation_state(full: bool) {
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
     println!();
 
-    //TODO
-    //save_proof(&proof.proof(), PARTICIPATION_STATE_CIRCUIT_DIR);
+    //save the last round
+    save_proof(&proof.proof(), PARTICIPATION_STATE_CIRCUIT_DIR);
 }
 
 fn next_inputs_hash(previous_hash: [u8; 32], round_update: ParticipationRound) -> [u8; 32] {

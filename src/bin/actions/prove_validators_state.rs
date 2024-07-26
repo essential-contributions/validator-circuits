@@ -2,22 +2,20 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field as Plonky2_Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, circuits::{validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit}, validators::{Validator, ValidatorsTree}, Field};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, circuits::{load_or_create_circuit, save_proof, validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, VALIDATORS_STATE_CIRCUIT_DIR}, validators::{Validator, ValidatorsTree}, Field};
 use validator_circuits::circuits::validators_state_circuit::ValidatorsStateCircuit;
 
 const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
 
 pub fn benchmark_prove_validators_state(full: bool) {
     if full {
-        log::warn!("Skipping wrapped proof generation as this is an internal proof only (used recursively in other proofs that need to be wrapped for EVM).");
+        log::warn!("Skipping wrapped proof generation as state is an internal proof only (used recursively in other proofs).");
     }
 
     //generate the circuits
     println!("Building Validators State Circuit... ");
     let start = Instant::now();
-    //TODO
-    //let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
-    let validators_state_circuit = ValidatorsStateCircuit::new();
+    let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -338,8 +336,8 @@ pub fn benchmark_prove_validators_state(full: bool) {
     println!("accounts_tree_root - {:?}", proof.accounts_tree_root());
     println!();
     
-    //TODO
-    //save_proof(&proof.proof(), VALIDATORS_STATE_CIRCUIT_DIR);
+    //save the last round
+    save_proof(&proof.proof(), VALIDATORS_STATE_CIRCUIT_DIR);
 }
 
 fn generate_account_address(seed: u64) -> [u8; 20] {

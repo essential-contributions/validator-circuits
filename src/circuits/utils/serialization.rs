@@ -1,11 +1,8 @@
 use std::{collections::HashSet, marker::PhantomData};
 use plonky2::{
-    field::extension::Extendable, 
-    gadgets::{
-        arithmetic_extension::QuotientGeneratorExtension, 
-        split_join::WireSplitGenerator
-    }, 
-    gates::{
+    field::extension::Extendable, gadgets::{
+        arithmetic::EqualityGenerator, arithmetic_extension::QuotientGeneratorExtension, range_check::LowHighGenerator, split_base::BaseSumGenerator, split_join::WireSplitGenerator
+    }, gates::{
         arithmetic_base::ArithmeticBaseGenerator, 
         arithmetic_extension::ArithmeticExtensionGenerator, 
         base_sum::BaseSplitGenerator, 
@@ -17,20 +14,16 @@ use plonky2::{
         random_access::RandomAccessGenerator, 
         reducing::ReducingGenerator, 
         reducing_extension::ReducingGenerator as ReducingExtensionGenerator
-    }, 
-    hash::hash_types::RichField, 
-    iop::generator::{
+    }, hash::hash_types::RichField, iop::generator::{
         ConstantGenerator, 
         RandomValueGenerator
-    }, 
-    plonk::{
+    }, plonk::{
         circuit_data::CircuitData, 
         config::{
             AlgebraicHasher, 
             GenericConfig
         }
-    }, 
-    util::serialization::{
+    }, recursion::dummy_circuit::DummyProofGenerator, util::serialization::{
         Buffer, DefaultGateSerializer, Read, WitnessGeneratorSerializer
     }
 };
@@ -50,13 +43,17 @@ where
     C::Hasher: AlgebraicHasher<F>,
 {
     impl_generator_serializer! {
-        CustomGeneratorSerializer,
+        CustomGeneratorSerializer, 
+        DummyProofGenerator<F, C, D>, 
+        EqualityGenerator, 
         ArithmeticBaseGenerator<F, D>,
         ArithmeticExtensionGenerator<F, D>,
         BaseSplitGenerator<2>,
+        BaseSumGenerator<2>,
         ConstantGenerator<F>,
         ExponentiationGenerator<F, D>,
         InterpolationGenerator<F, D>,
+        LowHighGenerator,
         MulExtensionGenerator<F, D>,
         PoseidonGenerator<F, D>,
         PoseidonMdsGenerator<D>,

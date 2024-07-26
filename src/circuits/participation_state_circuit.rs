@@ -9,14 +9,16 @@ use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
 use plonky2::recursion::dummy_circuit::cyclic_base_proof;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
 use crate::participation::initial_participation_rounds_root;
 use crate::{Config, Field, D, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
 use super::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
-use super::{Circuit, Proof};
+use super::serialization::{deserialize_circuit, serialize_circuit};
+use super::{Circuit, Proof, Serializeable};
 
 pub const PIS_PARTICIPATION_STATE_INPUTS_HASH: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 pub const PIS_PARTICIPATION_ROUNDS_TREE_ROOT: [usize; 4] = [8, 9, 10, 11];
@@ -62,8 +64,7 @@ impl Circuit for ParticipationStateCircuit {
     }
 
     fn example_proof(&self) -> Self::Proof {
-        //TODO
-        todo!()
+        ParticipationStateProof { proof: initial_proof(&self.circuit_data) }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -79,7 +80,7 @@ impl Circuit for ParticipationStateCircuit {
         return &self.circuit_data;
     }
 }
-/*
+
 impl Serializeable for ParticipationStateCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = serialize_circuit(&self.circuit_data)?;
@@ -98,7 +99,6 @@ impl Serializeable for ParticipationStateCircuit {
         Ok(Self { circuit_data, targets: targets.unwrap() })
     }
 }
-*/
 
 #[derive(Clone)]
 pub struct ParticipationStateProof {
@@ -283,55 +283,71 @@ fn generate_partial_witness(
         },
         None => {
             //setup for using initial state (no previous proof)
+            let base_proof = initial_proof(circuit_data);
             pw.set_bool_target(targets.init_zero, false);
-            let initial_inputs_hash = [Field::ZERO; 8];
-            let initial_participation_rounds_root = initial_participation_rounds_root();
-            let initial_public_inputs = [&initial_inputs_hash[..], &initial_participation_rounds_root[..]].concat();
-            let base_proof = cyclic_base_proof(
-                &circuit_data.common,
-                &circuit_data.verifier_only,
-                initial_public_inputs.into_iter().enumerate().collect(),
-            );
             pw.set_proof_with_pis_target::<Config, D>(&targets.previous_proof, &base_proof);
         },
     };
     Ok(pw)
 }
-/*
+
+fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPublicInputs<Field, Config, D> {
+    let initial_inputs_hash = [Field::ZERO; 8];
+    let initial_participation_rounds_root = initial_participation_rounds_root();
+    let initial_public_inputs = [&initial_inputs_hash[..], &initial_participation_rounds_root[..]].concat();
+    cyclic_base_proof(
+        &circuit_data.common,
+        &circuit_data.verifier_only,
+        initial_public_inputs.into_iter().enumerate().collect(),
+    )
+}
+
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ParticipationStateCircuitTargets) -> IoResult<()> {
-    buffer.write_target(targets.index)?;
-    buffer.write_target_hash(&targets.previous_root)?;
-    buffer.write_target_hash(&targets.previous_commitment)?;
-    buffer.write_target(targets.previous_stake)?;
-    buffer.write_target_hash(&targets.new_root)?;
-    buffer.write_target_hash(&targets.new_commitment)?;
-    buffer.write_target(targets.new_stake)?;
-    buffer.write_target_merkle_proof(&targets.merkle_proof)?;
+    buffer.write_target(targets.round_num)?;
+    buffer.write_target_vec(&targets.state_inputs_hash)?;
+    buffer.write_target_hash(&targets.participation_root)?;
+    buffer.write_target(targets.participation_count)?;
+    
+    buffer.write_target_vec(&targets.current_state_inputs_hash)?;
+    buffer.write_target_hash(&targets.current_participation_root)?;
+    buffer.write_target(targets.current_participation_count)?;
+    buffer.write_target_merkle_proof(&targets.participation_round_proof)?;
+
+    buffer.write_target_bool(targets.init_zero)?;
+    buffer.write_target_verifier_circuit(&targets.verifier)?;
+    buffer.write_target_proof_with_public_inputs(&targets.previous_proof)?;
 
     Ok(())
 }
 
 #[inline]
 fn read_targets(buffer: &mut Buffer) -> IoResult<ParticipationStateCircuitTargets> {
-    let index = buffer.read_target()?;
-    let previous_root = buffer.read_target_hash()?;
-    let previous_commitment = buffer.read_target_hash()?;
-    let previous_stake = buffer.read_target()?;
-    let new_root = buffer.read_target_hash()?;
-    let new_commitment = buffer.read_target_hash()?;
-    let new_stake = buffer.read_target()?;
-    let merkle_proof = buffer.read_target_merkle_proof()?;
+    let round_num = buffer.read_target()?;
+    let state_inputs_hash = buffer.read_target_vec()?;
+    let participation_root = buffer.read_target_hash()?;
+    let participation_count = buffer.read_target()?;
+
+    let current_state_inputs_hash = buffer.read_target_vec()?;
+    let current_participation_root = buffer.read_target_hash()?;
+    let current_participation_count = buffer.read_target()?;
+    let participation_round_proof = buffer.read_target_merkle_proof()?;
+    
+    let init_zero = buffer.read_target_bool()?;
+    let verifier = buffer.read_target_verifier_circuit()?;
+    let previous_proof = buffer.read_target_proof_with_public_inputs()?;
 
     Ok(ParticipationStateCircuitTargets {
-        index,
-        previous_root,
-        previous_commitment,
-        previous_stake,
-        new_root,
-        new_commitment,
-        new_stake,
-        merkle_proof,
+        round_num,
+        state_inputs_hash,
+        participation_root,
+        participation_count,
+        current_state_inputs_hash,
+        current_participation_root,
+        current_participation_count,
+        participation_round_proof,
+        init_zero,
+        verifier,
+        previous_proof,
     })
 }
-*/

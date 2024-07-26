@@ -1,6 +1,6 @@
 use clap::{arg, command, Parser};
 use env_logger::{Builder, Env};
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, bn128_wrapper_clear_data_and_proof, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestations_aggregator_circuit::AttestationsAggregatorCircuit, circuit_data_exists, circuit_proof_exists, clear_data_and_proof, load_or_create_circuit, load_or_create_example_proof, participation_circuit::ParticipationCircuit, Circuit, Serializeable, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists, groth16_wrapper_clear_data_and_proof}};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, bn128_wrapper_clear_data_and_proof, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestations_aggregator_circuit::AttestationsAggregatorCircuit, circuit_data_exists, circuit_proof_exists, clear_data_and_proof, load_or_create_circuit, load_or_create_example_proof, participation_circuit::ParticipationCircuit, participation_state_circuit::ParticipationStateCircuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Serializeable, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, PARTICIPATION_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, groth16_wrapper::{create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists, groth16_wrapper_clear_data_and_proof}};
 use jemallocator::Jemalloc;
 
 #[global_allocator]
@@ -26,23 +26,26 @@ fn main() {
     match args.circuit {
         Some(circuit_name) => {
             if circuit_name.eq("state")  {
-                //TODO
+                build_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR, args.full, args.clear, true);
+                build_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR, args.full, args.clear, true);
             } else if circuit_name.eq("attestations")  {
-                build_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full, args.clear);
+                build_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full, args.clear, false);
             } else if circuit_name.eq("participation")  {
-                build_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR, args.full, args.clear);
+                build_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR, args.full, args.clear, false);
             } else {
                 log::error!("Invalid circuit name [{}]", circuit_name);
             }
         },
         None => {
-            build_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full, args.clear);
-            build_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR, args.full, args.clear);
+            build_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR, args.full, args.clear, true);
+            build_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR, args.full, args.clear, true);
+            build_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full, args.clear, false);
+            build_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR, args.full, args.clear, false);
         },
     }
 }
 
-pub fn build_circuit<C>(dir: &str, full: bool, clear: bool)
+pub fn build_circuit<C>(dir: &str, full: bool, clear: bool, not_wrappable: bool)
 where
     C: Circuit + Serializeable,
 {
@@ -56,10 +59,10 @@ where
     //check current build artifacts
     let no_data = !circuit_data_exists(dir);
     let no_proof = !circuit_proof_exists(dir);
-    let no_bn128_wrapper_data = !full || !bn128_wrapper_circuit_data_exists(dir);
-    let no_bn128_wrapper_proof = !full || !bn128_wrapper_circuit_proof_exists(dir);
-    let no_groth16_wrapper_data = !full || !groth16_wrapper_circuit_data_exists(dir);
-    let no_groth16_wrapper_proof = !full || !groth16_wrapper_circuit_proof_exists(dir);
+    let no_bn128_wrapper_data = full && !not_wrappable && !bn128_wrapper_circuit_data_exists(dir);
+    let no_bn128_wrapper_proof = full && !not_wrappable && !bn128_wrapper_circuit_proof_exists(dir);
+    let no_groth16_wrapper_data = full && !not_wrappable && !groth16_wrapper_circuit_data_exists(dir);
+    let no_groth16_wrapper_proof = full && !not_wrappable && !groth16_wrapper_circuit_proof_exists(dir);
     if no_data || no_proof || no_bn128_wrapper_data || no_bn128_wrapper_proof {
 
         //base circuit
@@ -77,6 +80,11 @@ where
             log::info!("Loading example proof [/{}]", dir);
         }
         let example_proof = load_or_create_example_proof(&circuit, dir);
+
+        //log that circuits are not for wrapping
+        if full && not_wrappable {
+            log::info!("Skipping wrapped proof generation for internal proof (only used recursively in other proofs).");
+        }
 
         //bn128 wrapper
         if no_bn128_wrapper_data || no_bn128_wrapper_proof {

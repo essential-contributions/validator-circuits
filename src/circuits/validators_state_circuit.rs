@@ -9,7 +9,8 @@ use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
 use plonky2::recursion::dummy_circuit::cyclic_base_proof;
-use anyhow::Result;
+use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use anyhow::{anyhow, Result};
 
 use crate::accounts::initial_accounts_tree_root;
 use crate::validators::initial_validators_tree_root;
@@ -17,7 +18,8 @@ use crate::{Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
 use super::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
-use super::{Circuit, Proof};
+use super::serialization::{deserialize_circuit, serialize_circuit};
+use super::{Circuit, Proof, Serializeable};
 
 pub const PIS_VALIDATORS_STATE_INPUTS_HASH: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 pub const PIS_VALIDATORS_STATE_TOTAL_STAKED: usize = 8;
@@ -73,8 +75,7 @@ impl Circuit for ValidatorsStateCircuit {
     }
 
     fn example_proof(&self) -> Self::Proof {
-        //TODO
-        todo!()
+        ValidatorsStateProof { proof: initial_proof(&self.circuit_data) }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -90,7 +91,7 @@ impl Circuit for ValidatorsStateCircuit {
         return &self.circuit_data;
     }
 }
-/*
+
 impl Serializeable for ValidatorsStateCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = serialize_circuit(&self.circuit_data)?;
@@ -109,7 +110,6 @@ impl Serializeable for ValidatorsStateCircuit {
         Ok(Self { circuit_data, targets: targets.unwrap() })
     }
 }
-*/
 
 #[derive(Clone)]
 pub struct ValidatorsStateProof {
@@ -498,28 +498,32 @@ fn generate_partial_witness(
         },
         None => {
             //setup for using initial state (no previous proof)
+            let base_proof = initial_proof(circuit_data);
             pw.set_bool_target(targets.init_zero, false);
-            let initial_inputs_hash = [Field::ZERO; 8];
-            let initial_total_staked = Field::ZERO;
-            let initial_total_validators = Field::ZERO;
-            let initial_validators_tree_root = initial_validators_tree_root();
-            let initial_accounts_tree_root = initial_accounts_tree_root();
-            let initial_public_inputs = [
-                &initial_inputs_hash[..], 
-                &[initial_total_staked],
-                &[initial_total_validators],
-                &initial_validators_tree_root[..],
-                &initial_accounts_tree_root[..]
-            ].concat();
-            let base_proof = cyclic_base_proof(
-                &circuit_data.common,
-                &circuit_data.verifier_only,
-                initial_public_inputs.into_iter().enumerate().collect(),
-            );
             pw.set_proof_with_pis_target::<Config, D>(&targets.previous_proof, &base_proof);
         },
     };
     Ok(pw)
+}
+
+fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPublicInputs<Field, Config, D> {
+    let initial_inputs_hash = [Field::ZERO; 8];
+    let initial_total_staked = Field::ZERO;
+    let initial_total_validators = Field::ZERO;
+    let initial_validators_tree_root = initial_validators_tree_root();
+    let initial_accounts_tree_root = initial_accounts_tree_root();
+    let initial_public_inputs = [
+        &initial_inputs_hash[..], 
+        &[initial_total_staked],
+        &[initial_total_validators],
+        &initial_validators_tree_root[..],
+        &initial_accounts_tree_root[..]
+    ].concat();
+    cyclic_base_proof(
+        &circuit_data.common,
+        &circuit_data.verifier_only,
+        initial_public_inputs.into_iter().enumerate().collect(),
+    )
 }
 
 fn index_to_field(index: Option<usize>) -> Field {
@@ -528,17 +532,30 @@ fn index_to_field(index: Option<usize>) -> Field {
         None => Field::ZERO.sub_one(),
     }
 }
-/*
+
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorsStateCircuitTargets) -> IoResult<()> {
     buffer.write_target(targets.index)?;
-    buffer.write_target_hash(&targets.previous_root)?;
-    buffer.write_target_hash(&targets.previous_commitment)?;
-    buffer.write_target(targets.previous_stake)?;
-    buffer.write_target_hash(&targets.new_root)?;
-    buffer.write_target_hash(&targets.new_commitment)?;
-    buffer.write_target(targets.new_stake)?;
-    buffer.write_target_merkle_proof(&targets.merkle_proof)?;
+    buffer.write_target(targets.stake)?;
+    buffer.write_target_hash(&targets.commitment)?;
+    buffer.write_target_vec(&targets.account)?;
+    
+    buffer.write_target(targets.validator_index)?;
+    buffer.write_target(targets.validator_stake)?;
+    buffer.write_target_hash(&targets.validator_commitment)?;
+    buffer.write_target_merkle_proof(&targets.validator_proof)?;
+
+    buffer.write_target_vec(&targets.from_account)?;
+    buffer.write_target(targets.from_acc_index)?;
+    buffer.write_target_merkle_proof(&targets.from_acc_proof)?;
+
+    buffer.write_target_vec(&targets.to_account)?;
+    buffer.write_target(targets.to_acc_index)?;
+    buffer.write_target_merkle_proof(&targets.to_acc_proof)?;
+
+    buffer.write_target_bool(targets.init_zero)?;
+    buffer.write_target_verifier_circuit(&targets.verifier)?;
+    buffer.write_target_proof_with_public_inputs(&targets.previous_proof)?;
 
     Ok(())
 }
@@ -546,23 +563,44 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorsStateCircuitTargets) 
 #[inline]
 fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorsStateCircuitTargets> {
     let index = buffer.read_target()?;
-    let previous_root = buffer.read_target_hash()?;
-    let previous_commitment = buffer.read_target_hash()?;
-    let previous_stake = buffer.read_target()?;
-    let new_root = buffer.read_target_hash()?;
-    let new_commitment = buffer.read_target_hash()?;
-    let new_stake = buffer.read_target()?;
-    let merkle_proof = buffer.read_target_merkle_proof()?;
+    let stake = buffer.read_target()?;
+    let commitment = buffer.read_target_hash()?;
+    let account = buffer.read_target_vec()?;
+    
+    let validator_index = buffer.read_target()?;
+    let validator_stake = buffer.read_target()?;
+    let validator_commitment = buffer.read_target_hash()?;
+    let validator_proof = buffer.read_target_merkle_proof()?;
+
+    let from_account = buffer.read_target_vec()?;
+    let from_acc_index = buffer.read_target()?;
+    let from_acc_proof = buffer.read_target_merkle_proof()?;
+
+    let to_account = buffer.read_target_vec()?;
+    let to_acc_index = buffer.read_target()?;
+    let to_acc_proof = buffer.read_target_merkle_proof()?;
+    
+    let init_zero = buffer.read_target_bool()?;
+    let verifier = buffer.read_target_verifier_circuit()?;
+    let previous_proof = buffer.read_target_proof_with_public_inputs()?;
 
     Ok(ValidatorsStateCircuitTargets {
         index,
-        previous_root,
-        previous_commitment,
-        previous_stake,
-        new_root,
-        new_commitment,
-        new_stake,
-        merkle_proof,
+        stake,
+        commitment,
+        account,
+        validator_index,
+        validator_stake,
+        validator_commitment,
+        validator_proof,
+        from_account,
+        from_acc_index,
+        from_acc_proof,
+        to_account,
+        to_acc_index,
+        to_acc_proof,
+        init_zero,
+        verifier,
+        previous_proof,
     })
 }
-*/

@@ -16,7 +16,7 @@ These circuits and proofs are intended to maintain a small rollup that can be up
 ## Building
 The circuits should be built/compiled ahead of time in order to speed up the benchmarking. This is especially relevant when benchmarking with full wrapping to groth16. Please make sure you have both Rust [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) and [Go (1.19+)](https://go.dev/doc/install) installed. It can take around 30 minutes to finish building since the groth16 circuits need to go through the full generation routine with mock trusted setup ceremony and everything.
 ```
- RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin cbuild -- --full
+RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin cbuild -- --full
 ```
 
 Exclude the `--full` flag if you want to skip the groth16 stuff. 
