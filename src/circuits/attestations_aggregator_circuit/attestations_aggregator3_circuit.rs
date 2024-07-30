@@ -11,8 +11,7 @@ use anyhow::{anyhow, Result};
 
 use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::participation::empty_participation_sub_root;
-use crate::validators::example_validator_set;
-use crate::{Config, Field, Hash, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D};
+use crate::{Config, Field, Hash, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D};
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
 use super::{AttestationsAggregator2Circuit, AttestationsAggregator2Proof, Circuit, Proof, Serializeable, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_NUM_PARTICIPANTS, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_TOTAL_STAKE, PIS_AGG2_VALIDATORS_SUB_ROOT};
 
@@ -61,14 +60,6 @@ impl Circuit for AttestationsAggregator3Circuit {
         Ok(AttestationsAggregator3Proof { proof })
     }
 
-    fn example_proof(&self) -> Self::Proof {
-        log::warn!("AttestationsAggregator3Circuit: use 'example_proof_continuation' instead of 'example_proof' for faster response");
-        let prev_circuit = AttestationsAggregator2Circuit::new();
-        let data = example_data(&prev_circuit.example_proof());
-        let pw = generate_partial_witness(&self.targets, &data, prev_circuit.circuit_data()).unwrap();
-        let proof = self.circuit_data.prove(pw).unwrap();
-        AttestationsAggregator3Proof { proof }
-    }
 
     fn verify_proof(&self, proof: &AttestationsAggregator3Proof) -> Result<()> {
         self.circuit_data.verify(proof.proof.clone())
@@ -76,6 +67,14 @@ impl Circuit for AttestationsAggregator3Circuit {
     
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
+    }
+
+    fn is_wrappable() -> bool {
+        false
+    }
+
+    fn wrappable_example_proof(&self) -> Option<Self::Proof> {
+        None
     }
 }
 impl AttestationsAggregator3Circuit {
@@ -92,13 +91,6 @@ impl AttestationsAggregator3Circuit {
         let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationsAggregator3Proof { proof })
-    }
-
-    pub fn example_proof_continuation(&self, prev_circuit: &AttestationsAggregator2Circuit, prev_proof: &<AttestationsAggregator2Circuit as Circuit>::Proof) -> AttestationsAggregator3Proof {
-        let data = example_data(prev_proof);
-        let pw = generate_partial_witness(&self.targets, &data, prev_circuit.circuit_data()).unwrap();
-        let proof = self.circuit_data.prove(pw).unwrap();
-        AttestationsAggregator3Proof { proof }
     }
 }
 impl Serializeable for AttestationsAggregator3Circuit {
@@ -347,29 +339,5 @@ fn build_empty_participation_sub_root(builder: &mut CircuitBuilder<Field, D>) ->
     let root = empty_participation_sub_root(AGGREGATION_PASS2_SUB_TREE_HEIGHT);
     HashOutTarget {
         elements: root.map(|f| { builder.constant(f) }),
-    }
-}
-
-fn example_data(agg2_proof: &AttestationsAggregator2Proof) -> AttestationsAggregator3Data {
-    let validator_set = example_validator_set();
-    let agg2_data: Vec<AttestationsAggregator3Agg2Data> = (0..ATTESTATION_AGGREGATION_PASS3_SIZE).map(|i| {
-        let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT + AGGREGATION_PASS2_SUB_TREE_HEIGHT;
-        let validators_sub_root = validator_set.sub_root(height, i);
-        if i == 0 {
-            AttestationsAggregator3Agg2Data {
-                validators_sub_root,
-                agg2_proof: Some(agg2_proof.clone()),
-            }
-        } else {
-            AttestationsAggregator3Agg2Data {
-                validators_sub_root,
-                agg2_proof: None,
-            }
-        }
-    }).collect();
-
-    AttestationsAggregator3Data {
-        block_slot: 100,
-        agg2_data,
     }
 }

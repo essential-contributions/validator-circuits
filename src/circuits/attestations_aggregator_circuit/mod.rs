@@ -11,7 +11,7 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use anyhow::{anyhow, Result};
 use plonky2::util::serialization::Write;
 
-use crate::{Config, Field, D};
+use crate::{commitment::example_commitment_proof, validators::example_validator_set, Config, Field, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, D};
 use super::{Circuit, Proof, Serializeable};
 
 //TODO: implement multi-threading for proof generation
@@ -43,22 +43,34 @@ impl Circuit for AttestationsAggregatorCircuit {
         generate_proof_from_data(&self, data)
     }
 
-    fn example_proof(&self) -> Self::Proof {
-        log::info!("Generating example sub proof for secondary group");
-        let proof1 = self.attestations_aggregator1.example_proof();
-        log::info!("Generating example sub proof for primary group");
-        let proof2 = self.attestations_aggregator2.example_proof_continuation(&self.attestations_aggregator1, &proof1);
-        log::info!("Generating final aggregate example proof");
-        let proof3 = self.attestations_aggregator3.example_proof_continuation(&self.attestations_aggregator2, &proof2);
-        AttestationsAggregatorProof { proof: proof3 }
-    }
-
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
         self.attestations_aggregator3.verify_proof(&proof.proof)
     }
 
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.attestations_aggregator3.circuit_data();
+    }
+
+    fn is_wrappable() -> bool {
+        true
+    }
+
+    fn wrappable_example_proof(&self) -> Option<Self::Proof> {
+        log::info!("Generating example sub proof for secondary group");
+        let proof1 = self.attestations_aggregator1.generate_proof(
+            &example_data_agg1(),
+        ).unwrap();
+        log::info!("Generating example sub proof for primary group");
+        let proof2 = self.attestations_aggregator2.generate_proof_continuation(
+            &example_data_agg2(&proof1), 
+            &self.attestations_aggregator1,
+        ).unwrap();
+        log::info!("Generating final aggregate example proof");
+        let proof3 = self.attestations_aggregator3.generate_proof_continuation(
+            &example_data_agg3(&proof2), 
+            &self.attestations_aggregator2,
+        ).unwrap();
+        Some(AttestationsAggregatorProof { proof: proof3 })
     }
 }
 impl Serializeable for AttestationsAggregatorCircuit {
@@ -252,4 +264,81 @@ fn write_all(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
         return Err(anyhow!("Failed to serialize circuits"));
     }
     Ok(result.unwrap())
+}
+
+fn example_data_agg1() -> AttestationsAggregator1Data {
+    let num_attestations = 500;
+    let validator_set = example_validator_set();
+    let validators: Vec<AttestationsAggregator1ValidatorData> = (0..ATTESTATION_AGGREGATION_PASS1_SIZE).map(|i| {
+        let validator = validator_set.validator(i);
+        if i < num_attestations {
+            let commitment_proof = example_commitment_proof(i);
+            AttestationsAggregator1ValidatorData {
+                stake: validator.stake,
+                commitment_root: validator.commitment_root,
+                reveal: Some(AttestationsAggregator1RevealData {
+                    reveal: commitment_proof.reveal,
+                    reveal_proof: commitment_proof.proof,
+                }),
+            }
+        } else {
+            AttestationsAggregator1ValidatorData {
+                stake: validator.stake,
+                commitment_root: validator.commitment_root,
+                reveal: None,
+            }
+        }
+    }).collect();
+
+    AttestationsAggregator1Data {
+        block_slot: 100,
+        validators,
+    }
+}
+
+fn example_data_agg2(agg1_proof: &AttestationsAggregator1Proof) -> AttestationsAggregator2Data {
+    let validator_set = example_validator_set();
+    let agg1_data: Vec<AttestationsAggregator2Agg1Data> = (0..ATTESTATION_AGGREGATION_PASS2_SIZE).map(|i| {
+        let validators_sub_root = validator_set.sub_root(AGGREGATION_PASS1_SUB_TREE_HEIGHT, i);
+        if i == 0 {
+            AttestationsAggregator2Agg1Data {
+                validators_sub_root,
+                agg1_proof: Some(agg1_proof.clone()),
+            }
+        } else {
+            AttestationsAggregator2Agg1Data {
+                validators_sub_root,
+                agg1_proof: None,
+            }
+        }
+    }).collect();
+
+    AttestationsAggregator2Data {
+        block_slot: 100,
+        agg1_data,
+    }
+}
+
+fn example_data_agg3(agg2_proof: &AttestationsAggregator2Proof) -> AttestationsAggregator3Data {
+    let validator_set = example_validator_set();
+    let agg2_data: Vec<AttestationsAggregator3Agg2Data> = (0..ATTESTATION_AGGREGATION_PASS3_SIZE).map(|i| {
+        let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT + AGGREGATION_PASS2_SUB_TREE_HEIGHT;
+        let validators_sub_root = validator_set.sub_root(height, i);
+        if i == 0 {
+            AttestationsAggregator3Agg2Data {
+                validators_sub_root,
+                agg2_proof: Some(agg2_proof.clone()),
+            }
+        } else {
+            AttestationsAggregator3Agg2Data {
+                validators_sub_root,
+                agg2_proof: None,
+            }
+        }
+    }).collect();
+
+    AttestationsAggregator3Data {
+        block_slot: 100,
+        agg2_data,
+    }
 }

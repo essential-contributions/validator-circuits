@@ -12,9 +12,8 @@ use anyhow::{anyhow, Result};
 
 use crate::circuits::extensions::{CircuitBuilderExtended, PartialWitnessExtended};
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use crate::commitment::{empty_commitment, empty_commitment_root, example_commitment_proof};
+use crate::commitment::{empty_commitment, empty_commitment_root};
 use crate::participation::{leaf_fields, PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF};
-use crate::validators::example_validator_set;
 use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 use crate::Hash;
 
@@ -62,19 +61,20 @@ impl Circuit for AttestationsAggregator1Circuit {
         Ok(AttestationsAggregator1Proof { proof })
     }
 
-    fn example_proof(&self) -> Self::Proof {
-        let data = example_data();
-        let pw = generate_partial_witness(&self.targets, &data).unwrap();
-        let proof = self.circuit_data.prove(pw).unwrap();
-        AttestationsAggregator1Proof { proof }
-    }
-
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
         self.circuit_data.verify(proof.proof.clone())
     }
 
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
+    }
+
+    fn is_wrappable() -> bool {
+        false
+    }
+
+    fn wrappable_example_proof(&self) -> Option<Self::Proof> {
+        None
     }
 }
 impl Serializeable for AttestationsAggregator1Circuit {
@@ -321,35 +321,5 @@ fn build_skip_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
     let root = empty_commitment_root();
     HashOutTarget {
         elements: root.map(|f| { builder.constant(f) }),
-    }
-}
-
-fn example_data() -> AttestationsAggregator1Data {
-    let num_attestations = 500;
-    let validator_set = example_validator_set();
-    let validators: Vec<AttestationsAggregator1ValidatorData> = (0..ATTESTATION_AGGREGATION_PASS1_SIZE).map(|i| {
-        let validator = validator_set.validator(i);
-        if i < num_attestations {
-            let commitment_proof = example_commitment_proof(i);
-            AttestationsAggregator1ValidatorData {
-                stake: validator.stake,
-                commitment_root: validator.commitment_root,
-                reveal: Some(AttestationsAggregator1RevealData {
-                    reveal: commitment_proof.reveal,
-                    reveal_proof: commitment_proof.proof,
-                }),
-            }
-        } else {
-            AttestationsAggregator1ValidatorData {
-                stake: validator.stake,
-                commitment_root: validator.commitment_root,
-                reveal: None,
-            }
-        }
-    }).collect();
-
-    AttestationsAggregator1Data {
-        block_slot: 100,
-        validators,
     }
 }

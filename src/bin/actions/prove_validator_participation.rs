@@ -1,22 +1,21 @@
 use std::time::Instant;
 
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, participation_circuit::ParticipationCircuit, save_proof, Circuit, Proof, PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, MAX_VALIDATORS};
-use validator_circuits::circuits::participation_circuit::ParticipationCircuitData;
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, Circuit, Proof, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, MAX_VALIDATORS};
 
 pub fn benchmark_validator_prove_participation(full: bool) {
     //make sure circuits have been built
     if full {
-        if !bn128_wrapper_circuit_data_exists(PARTICIPATION_CIRCUIT_DIR) || !groth16_wrapper_circuit_data_exists(PARTICIPATION_CIRCUIT_DIR) {
+        if !bn128_wrapper_circuit_data_exists(VALIDATOR_PARTICIPATION_CIRCUIT_DIR) || !groth16_wrapper_circuit_data_exists(VALIDATOR_PARTICIPATION_CIRCUIT_DIR) {
             log::error!("Cannot generate full wrapped proof until circuits are built.");
             log::error!("Please run the build util and try again. [cargo run --release --bin cbuild -- --full]");
             panic!();
         }
     }
-
+/*
     //generate the circuits
     println!("Building Participation Circuit... ");
     let start = Instant::now();
-    let participation_circuit = load_or_create_circuit::<ParticipationCircuit>(PARTICIPATION_CIRCUIT_DIR);
+    let participation_circuit = load_or_create_circuit::<ParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -43,7 +42,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    save_proof(&proof.proof(), PARTICIPATION_CIRCUIT_DIR);
+    save_proof(&proof.proof(), VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
     println!();
 
     if full {
@@ -53,7 +52,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         //wrap proof to bn128
         println!("Building BN128 Wrapper Circuit... ");
         let start = Instant::now();
-        let bn128_wrapper = load_or_create_bn128_wrapper_circuit(inner_circuit, PARTICIPATION_CIRCUIT_DIR);
+        let bn128_wrapper = load_or_create_bn128_wrapper_circuit(inner_circuit, VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
         println!("(finished in {:?})", start.elapsed());
         println!();
 
@@ -67,18 +66,19 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             log::error!("BN128 wrapped proof failed verification.");
             return;
         }
-        save_bn128_wrapper_proof(&proof, PARTICIPATION_CIRCUIT_DIR);
+        save_bn128_wrapper_proof(&proof, VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
         println!();
 
         //wrap proof to groth16
         println!("Generating Groth16 Wrapper Proof...");
         let start = Instant::now();
-        let proof = generate_groth16_wrapper_proof(PARTICIPATION_CIRCUIT_DIR).unwrap();
+        let proof = generate_groth16_wrapper_proof(VALIDATOR_PARTICIPATION_CIRCUIT_DIR).unwrap();
         println!("Proved with Groth16 wrapper!");
         println!("(finished in {:?})", start.elapsed());
         println!();
         println!("{}", proof);
     }
+    */
 }
 
 fn participation_bit_field(to: usize) -> Vec<u8> {

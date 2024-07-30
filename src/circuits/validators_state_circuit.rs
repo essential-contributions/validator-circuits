@@ -73,10 +73,6 @@ impl Circuit for ValidatorsStateCircuit {
         Ok(ValidatorsStateProof { proof })
     }
 
-    fn example_proof(&self) -> Self::Proof {
-        ValidatorsStateProof { proof: initial_proof(&self.circuit_data) }
-    }
-
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
         check_cyclic_proof_verifier_data(
             &proof.proof,
@@ -88,6 +84,14 @@ impl Circuit for ValidatorsStateCircuit {
 
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
+    }
+
+    fn is_wrappable() -> bool {
+        false
+    }
+
+    fn wrappable_example_proof(&self) -> Option<Self::Proof> {
+        None
     }
 }
 

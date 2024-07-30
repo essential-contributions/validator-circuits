@@ -29,13 +29,11 @@ pub trait Circuit {
 
     fn new() -> Self;
     fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof>;
-    fn example_proof(&self) -> Self::Proof;
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()>;
     fn circuit_data(&self) -> &CircuitData<Field, Config, D>;
-}
 
-pub trait Proof {
-    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D>;
+    fn is_wrappable() -> bool;
+    fn wrappable_example_proof(&self) -> Option<Self::Proof>;
 }
 
 pub trait Serializeable {
@@ -43,6 +41,10 @@ pub trait Serializeable {
     fn from_bytes(bytes: &Vec<u8>) -> Result<Self> 
     where 
         Self: Sized;
+}
+
+pub trait Proof {
+    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D>;
 }
 
 pub fn load_or_create_circuit<C>(dir: &str) -> C 
@@ -89,9 +91,9 @@ where
             Err(e) => log::error!("{}", e),
         };
     }
-    let proof = circuit.example_proof().proof().clone();
-    save_proof(&proof, dir);
-    proof
+    let proof = circuit.wrappable_example_proof().expect("Circuit is not wrappable");
+    save_proof(&proof.proof().clone(), dir);
+    proof.proof().clone()
 }
 
 pub fn save_circuit<C>(circuit: &C, dir: &str) 
