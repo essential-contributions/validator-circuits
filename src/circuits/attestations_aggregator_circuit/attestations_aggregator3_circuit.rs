@@ -13,7 +13,6 @@ use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::participation::empty_participation_sub_root;
 use crate::validators::example_validator_set;
 use crate::{Config, Field, Hash, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D};
-use crate::circuits::ContinuationCircuit;
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
 use super::{AttestationsAggregator2Circuit, AttestationsAggregator2Proof, Circuit, Proof, Serializeable, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_NUM_PARTICIPANTS, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_TOTAL_STAKE, PIS_AGG2_VALIDATORS_SUB_ROOT};
 
@@ -79,10 +78,8 @@ impl Circuit for AttestationsAggregator3Circuit {
         return &self.circuit_data;
     }
 }
-impl ContinuationCircuit for AttestationsAggregator3Circuit {
-    type PrevCircuit = AttestationsAggregator2Circuit;
-
-    fn new_continuation(prev_circuit: &Self::PrevCircuit) -> Self {
+impl AttestationsAggregator3Circuit {
+    pub fn new_continuation(prev_circuit: &AttestationsAggregator2Circuit) -> Self {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder, prev_circuit.circuit_data());
@@ -91,13 +88,13 @@ impl ContinuationCircuit for AttestationsAggregator3Circuit {
         Self { circuit_data, targets }
     }
     
-    fn generate_proof_continuation(&self, data: &Self::Data, prev_circuit: &Self::PrevCircuit) -> Result<Self::Proof> {
+    pub fn generate_proof_continuation(&self, data: &AttestationsAggregator3Data, prev_circuit: &AttestationsAggregator2Circuit) -> Result<AttestationsAggregator3Proof> {
         let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationsAggregator3Proof { proof })
     }
 
-    fn example_proof_continuation(&self, prev_circuit: &Self::PrevCircuit, prev_proof: &<Self::PrevCircuit as Circuit>::Proof) -> Self::Proof {
+    pub fn example_proof_continuation(&self, prev_circuit: &AttestationsAggregator2Circuit, prev_proof: &<AttestationsAggregator2Circuit as Circuit>::Proof) -> AttestationsAggregator3Proof {
         let data = example_data(prev_proof);
         let pw = generate_partial_witness(&self.targets, &data, prev_circuit.circuit_data()).unwrap();
         let proof = self.circuit_data.prove(pw).unwrap();

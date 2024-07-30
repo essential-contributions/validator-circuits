@@ -12,7 +12,7 @@ use anyhow::{anyhow, Result};
 use plonky2::util::serialization::Write;
 
 use crate::{Config, Field, D};
-use super::{Circuit, ContinuationCircuit, Proof, Serializeable};
+use super::{Circuit, Proof, Serializeable};
 
 //TODO: implement multi-threading for proof generation
 

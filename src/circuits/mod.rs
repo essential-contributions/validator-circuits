@@ -34,14 +34,6 @@ pub trait Circuit {
     fn circuit_data(&self) -> &CircuitData<Field, Config, D>;
 }
 
-pub trait ContinuationCircuit: Circuit {
-    type PrevCircuit: Circuit;
-
-    fn new_continuation(prev_circuit: &Self::PrevCircuit) -> Self;
-    fn generate_proof_continuation(&self, data: &Self::Data, prev_circuit: &Self::PrevCircuit) -> Result<Self::Proof>;
-    fn example_proof_continuation(&self, prev_circuit: &Self::PrevCircuit, prev_proof: &<Self::PrevCircuit as Circuit>::Proof) -> Self::Proof;
-}
-
 pub trait Proof {
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D>;
 }
