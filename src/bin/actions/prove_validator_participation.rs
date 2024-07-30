@@ -3,7 +3,7 @@ use std::time::Instant;
 use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, participation_circuit::ParticipationCircuit, save_proof, Circuit, Proof, PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, MAX_VALIDATORS};
 use validator_circuits::circuits::participation_circuit::ParticipationCircuitData;
 
-pub fn benchmark_prove_participation(full: bool) {
+pub fn benchmark_validator_prove_participation(full: bool) {
     //make sure circuits have been built
     if full {
         if !bn128_wrapper_circuit_data_exists(PARTICIPATION_CIRCUIT_DIR) || !groth16_wrapper_circuit_data_exists(PARTICIPATION_CIRCUIT_DIR) {

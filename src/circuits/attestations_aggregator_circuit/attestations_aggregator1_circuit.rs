@@ -10,7 +10,7 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
-use crate::circuits::extensions::PartialWitnessExtended;
+use crate::circuits::extensions::{CircuitBuilderExtended, PartialWitnessExtended};
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
 use crate::commitment::{empty_commitment, empty_commitment_root, example_commitment_proof};
 use crate::participation::{leaf_fields, PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF};
@@ -160,22 +160,8 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
 
     // Verify each validator reveal
     for not_skip in participation_bits {
-        let skip = builder.not(not_skip);
         let commitment_root = builder.add_virtual_hash();
         let stake = builder.add_virtual_target();
-
-        // Determine commitment root vs skip root
-        let maybe_skip_root1 = builder.mul(skip.target, skip_root.elements[0]);
-        let maybe_skip_root2 = builder.mul(skip.target, skip_root.elements[1]);
-        let maybe_skip_root3 = builder.mul(skip.target, skip_root.elements[2]);
-        let maybe_skip_root4 = builder.mul(skip.target, skip_root.elements[3]);
-        let root1 = builder.mul_add(not_skip.target, commitment_root.elements[0], maybe_skip_root1);
-        let root2 = builder.mul_add(not_skip.target, commitment_root.elements[1], maybe_skip_root2);
-        let root3 = builder.mul_add(not_skip.target, commitment_root.elements[2], maybe_skip_root3);
-        let root4 = builder.mul_add(not_skip.target, commitment_root.elements[3], maybe_skip_root4);
-        let merkle_root = HashOutTarget {
-            elements: [root1, root2, root3, root4],
-        };
 
         // Commitment tree
         let reveal = builder.add_virtual_targets(4);
@@ -183,6 +169,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
         let reveal_proof = MerkleProofTarget {
             siblings: builder.add_virtual_hashes(VALIDATOR_COMMITMENT_TREE_HEIGHT),
         };
+        let merkle_root = builder.select_hash(not_skip, commitment_root, skip_root);
         builder.verify_merkle_proof::<Hash>(
             reveal_hash, 
             &block_slot_bits, 

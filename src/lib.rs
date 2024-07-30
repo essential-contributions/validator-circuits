@@ -19,6 +19,7 @@ pub type Config = PoseidonGoldilocksConfig;
 pub const VALIDATORS_TREE_HEIGHT: usize = 20; //1048576
 pub const VALIDATOR_COMMITMENT_TREE_HEIGHT: usize = 28; //102 years
 pub const PARTICIPATION_ROUNDS_TREE_HEIGHT: usize = 21; //102 years
+pub const ACCOUNTS_TREE_HEIGHT: usize = 160;
 pub const PARTICIPATION_ROUNDS_PER_STATE_EPOCH: usize = 64;
 pub const AGGREGATION_PASS1_SIZE: usize = 1024;
 pub const AGGREGATION_PASS2_SIZE: usize = 32;

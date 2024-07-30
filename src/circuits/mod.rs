@@ -1,7 +1,7 @@
 pub mod validators_state_circuit;
 pub mod participation_state_circuit;
 pub mod attestations_aggregator_circuit;
-pub mod participation_circuit;
+pub mod validator_participation_circuit;
 mod utils;
 
 use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
@@ -20,8 +20,8 @@ pub const PROOF_FILENAME: &str = "proof_with_public_inputs.json";
 
 pub const VALIDATORS_STATE_CIRCUIT_DIR: &str = "validators_state";
 pub const PARTICIPATION_STATE_CIRCUIT_DIR: &str = "participation_state";
+pub const VALIDATOR_PARTICIPATION_CIRCUIT_DIR: &str = "validator_participation";
 pub const ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR: &str = "attestations_aggregator";
-pub const PARTICIPATION_CIRCUIT_DIR: &str = "participation";
 
 pub trait Circuit {
     type Data;

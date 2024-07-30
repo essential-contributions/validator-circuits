@@ -14,7 +14,7 @@ use anyhow::{anyhow, Result};
 
 use crate::accounts::initial_accounts_tree_root;
 use crate::validators::initial_validators_tree_root;
-use crate::{Config, Field, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
+use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
 use super::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
@@ -28,7 +28,6 @@ pub const PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT: [usize; 4] = [10, 11, 12, 1
 pub const PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT: [usize; 4] = [14, 15, 16, 17];
 
 const MAX_GATES: usize = 1 << 14;
-const ACCOUNTS_TREE_HEIGHT: usize = 160;
 
 pub struct ValidatorsStateCircuit {
     circuit_data: CircuitData<Field, Config, D>,
@@ -462,31 +461,24 @@ fn generate_partial_witness(
     circuit_data: &CircuitData<Field, Config, D>, 
     targets: &ValidatorsStateCircuitTargets, 
     data: &ValidatorsStateCircuitData,
-    
 ) -> Result<PartialWitness<Field>> {
     let mut pw = PartialWitness::new();
 
     pw.set_target(targets.index, Field::from_canonical_usize(data.index));
     pw.set_target(targets.stake, Field::from_canonical_u32(data.stake));
     pw.set_hash_target(targets.commitment, HashOut::<Field> { elements: data.commitment });
-    data.account.chunks(4).enumerate().for_each(|(i, c)| {
-        pw.set_target(targets.account[i], Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])));
-    });
+    pw.set_target_arr(&targets.account, &account_to_fields(data.account));
 
     pw.set_target(targets.validator_index, Field::from_canonical_usize(data.validator_index));
     pw.set_target(targets.validator_stake, Field::from_canonical_u32(data.validator_stake));
     pw.set_hash_target(targets.validator_commitment, HashOut::<Field> { elements: data.validator_commitment });
     pw.set_merkle_proof_target(targets.validator_proof.clone(), &data.validator_proof);
 
-    data.from_account.chunks(4).enumerate().for_each(|(i, c)| {
-        pw.set_target(targets.from_account[i], Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])));
-    });
+    pw.set_target_arr(&targets.from_account, &account_to_fields(data.from_account));
     pw.set_target(targets.from_acc_index, index_to_field(data.from_acc_index));
     pw.set_merkle_proof_target(targets.from_acc_proof.clone(), &data.from_acc_proof);
 
-    data.to_account.chunks(4).enumerate().for_each(|(i, c)| {
-        pw.set_target(targets.to_account[i], Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])));
-    });
+    pw.set_target_arr(&targets.to_account, &account_to_fields(data.to_account));
     pw.set_target(targets.to_acc_index, index_to_field(data.to_acc_index));
     pw.set_merkle_proof_target(targets.to_acc_proof.clone(), &data.to_acc_proof);
 
@@ -531,6 +523,14 @@ fn index_to_field(index: Option<usize>) -> Field {
         Some(index) => Field::from_canonical_usize(index),
         None => Field::ZERO.sub_one(),
     }
+}
+
+fn account_to_fields(account: [u8; 20]) -> [Field; 5] {
+    let mut account_fields = [Field::ZERO; 5];
+    account.chunks(4).enumerate().for_each(|(i, c)| {
+        account_fields[i] = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
+    });
+    account_fields
 }
 
 #[inline]

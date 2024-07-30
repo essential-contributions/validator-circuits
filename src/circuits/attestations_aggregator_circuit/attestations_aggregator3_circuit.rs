@@ -9,6 +9,7 @@ use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
+use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::participation::empty_participation_sub_root;
 use crate::validators::example_validator_set;
 use crate::{Config, Field, Hash, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D};
@@ -180,37 +181,32 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_circuit_da
     for _ in 0..ATTESTATION_AGGREGATION_PASS3_SIZE {
         let validators_sub_root = builder.add_virtual_hash();
         let has_participation = builder.add_virtual_bool_target_safe();
-        let no_participation = builder.not(has_participation);
         let proof_target = builder.add_virtual_proof_with_pis(&atts_agg2_circuit_data.common);
 
         // Verify proof if has participation
         builder.verify_proof::<Config>(&proof_target, &atts_agg2_verifier, &atts_agg2_circuit_data.common);
 
         // Determine applicable validator node
-        let maybe_pi_validators_root1 = builder.mul(has_participation.target, proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[0]]);
-        let maybe_pi_validators_root2 = builder.mul(has_participation.target, proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[1]]);
-        let maybe_pi_validators_root3 = builder.mul(has_participation.target, proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[2]]);
-        let maybe_pi_validators_root4 = builder.mul(has_participation.target, proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[3]]);
-        let validators_sub_root1 = builder.mul_add(no_participation.target, validators_sub_root.elements[0], maybe_pi_validators_root1);
-        let validators_sub_root2 = builder.mul_add(no_participation.target, validators_sub_root.elements[1], maybe_pi_validators_root2);
-        let validators_sub_root3 = builder.mul_add(no_participation.target, validators_sub_root.elements[2], maybe_pi_validators_root3);
-        let validators_sub_root4 = builder.mul_add(no_participation.target, validators_sub_root.elements[3], maybe_pi_validators_root4);
-        validator_nodes.push(HashOutTarget {
-            elements: [validators_sub_root1, validators_sub_root2, validators_sub_root3, validators_sub_root4],
-        });
+        let proof_validators_sub_root = HashOutTarget {
+            elements: [
+                proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[0]],
+                proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[1]],
+                proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[2]],
+                proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[3]]
+            ]
+        };
+        validator_nodes.push(builder.select_hash(has_participation, proof_validators_sub_root, validators_sub_root));
 
         // Determine applicable participation node
-        let maybe_pi_participation_root1 = builder.mul(has_participation.target, proof_target.public_inputs[PIS_AGG2_PARTICIPATION_SUB_ROOT[0]]);
-        let maybe_pi_participation_root2 = builder.mul(has_participation.target, proof_target.public_inputs[PIS_AGG2_PARTICIPATION_SUB_ROOT[1]]);
-        let maybe_pi_participation_root3 = builder.mul(has_participation.target, proof_target.public_inputs[PIS_AGG2_PARTICIPATION_SUB_ROOT[2]]);
-        let maybe_pi_participation_root4 = builder.mul(has_participation.target, proof_target.public_inputs[PIS_AGG2_PARTICIPATION_SUB_ROOT[3]]);
-        let participation_sub_root1 = builder.mul_add(no_participation.target, empty_participation_root.elements[0], maybe_pi_participation_root1);
-        let participation_sub_root2 = builder.mul_add(no_participation.target, empty_participation_root.elements[1], maybe_pi_participation_root2);
-        let participation_sub_root3 = builder.mul_add(no_participation.target, empty_participation_root.elements[2], maybe_pi_participation_root3);
-        let participation_sub_root4 = builder.mul_add(no_participation.target, empty_participation_root.elements[3], maybe_pi_participation_root4);
-        participation_nodes.push(HashOutTarget {
-            elements: [participation_sub_root1, participation_sub_root2, participation_sub_root3, participation_sub_root4],
-        });
+        let proof_participation_sub_root = HashOutTarget {
+            elements: [
+                proof_target.public_inputs[PIS_AGG2_PARTICIPATION_SUB_ROOT[0]],
+                proof_target.public_inputs[PIS_AGG2_PARTICIPATION_SUB_ROOT[1]],
+                proof_target.public_inputs[PIS_AGG2_PARTICIPATION_SUB_ROOT[2]],
+                proof_target.public_inputs[PIS_AGG2_PARTICIPATION_SUB_ROOT[3]]
+            ]
+        };
+        participation_nodes.push(builder.select_hash(has_participation, proof_participation_sub_root, empty_participation_root));
 
         // Make sure each agg2 data has the same block_slot
         builder.connect(proof_target.public_inputs[PIS_AGG2_BLOCK_SLOT], block_slot);
