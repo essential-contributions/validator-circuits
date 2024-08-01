@@ -269,3 +269,21 @@ pub fn example_validator_set() -> ValidatorsTree {
 
     ValidatorsTree::from_validators(validators)
 }
+
+pub fn empty_validators_tree_root() -> [Field; 4] {
+    let mut node = field_hash(&[Field::ZERO; 5]);
+    for _ in 0..VALIDATORS_TREE_HEIGHT {
+        node = field_hash_two(node.clone(), node.clone());
+    }
+    node
+}
+
+pub fn empty_validators_tree_proof() -> Vec<[Field; 4]> {
+    let mut proof = Vec::new();
+    let mut node = field_hash(&[Field::ZERO; 5]);
+    for _ in 0..VALIDATORS_TREE_HEIGHT {
+        proof.push(node);
+        node = field_hash_two(node.clone(), node.clone());
+    }
+    proof
+}

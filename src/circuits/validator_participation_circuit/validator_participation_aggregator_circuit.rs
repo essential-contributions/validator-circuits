@@ -14,10 +14,11 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
 use crate::circuits::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof, PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT, PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED};
+use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof, PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT, PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED, PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT};
 use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, VALIDATORS_STATE_CIRCUIT_DIR};
 use crate::participation::{empty_participation_root, participation_merkle_data, PARTICIPANTS_PER_FIELD, PARTICIPATION_BITS_BYTE_SIZE, PARTICIPATION_FIELDS_PER_LEAF, PARTICIPATION_TREE_HEIGHT};
-use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT};
+use crate::validators::{empty_validators_tree_proof, empty_validators_tree_root};
+use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
 pub const PIS_PR_TREE_ROOT: [usize; 4] = [0, 1, 2, 3];
@@ -50,6 +51,9 @@ struct ValidatorParticipationAggCircuitTargets {
     validator_index: Target,
     validator_bit_index: Target,
     validator_field_index: Target,
+    validator_stake: Target,
+    validator_commitment: HashOutTarget,
+    validator_stake_proof: MerkleProofTarget,
     account_validator_index_proof: MerkleProofTarget,
 
     participation_rounds_targets: Vec<ValidatorParticipationRoundTargets>,
@@ -207,6 +211,7 @@ impl Proof for ValidatorParticipationAggProof {
 
 fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_data: &CommonCircuitData<Field, D>) -> ValidatorParticipationAggCircuitTargets {
     let empty_participation_root = build_empty_participation_root(builder);
+    let empty_stake_validators_root = build_empty_stake_root(builder);
     let agg_pass1_size = builder.constant(Field::from_canonical_usize(AGGREGATION_PASS1_SIZE));
     let null = builder.constant(Field::ZERO.sub_one());
     let zero = builder.zero();
@@ -250,6 +255,9 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     let validators_state_accounts_tree_root = HashOutTarget::try_from(
         &validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT[0]..(PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT[3] + 1)]
     ).unwrap();
+    let validators_state_validators_tree_root = HashOutTarget::try_from(
+        &validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT[0]..(PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT[3] + 1)]
+    ).unwrap();
     let total_staked = validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_TOTAL_STAKED];
     
     //Verify the validator index
@@ -273,8 +281,33 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     let expected_validator_index = builder.mul_add(validator_field_index, agg_pass1_size, validator_bit_index);
     let validator_index_deconstruction_is_valid = builder.is_equal(validator_index, expected_validator_index);
     builder.assert_true_if(validator_index_is_not_null, &[validator_index_deconstruction_is_valid]);
+    let validator_field_index_is_zero = builder.is_equal(validator_field_index, zero);
+    let validator_bit_index_is_zero = builder.is_equal(validator_bit_index, zero);
+    builder.assert_true_if(validator_index_is_null, &[validator_field_index_is_zero, validator_bit_index_is_zero]);
 
-    //TODO: Verify the stake amount
+    //Verify the stake amount
+    let validator_stake = builder.add_virtual_target();
+    let validator_commitment = builder.add_virtual_hash();
+    let validator_hash = builder.hash_n_to_hash_no_pad::<Hash>([
+        &validator_commitment.elements[..], 
+        &[validator_stake],
+    ].concat());
+    let validator_stake_proof = MerkleProofTarget {
+        siblings: builder.add_virtual_hashes(VALIDATORS_TREE_HEIGHT),
+    };
+    let validator_stake_index = builder.mul(validator_index, validator_index_is_not_null.target);
+    let validator_stake_index_bits = builder.split_le(validator_stake_index, VALIDATORS_TREE_HEIGHT);
+    let validator_stake_merkle_root = builder.select_hash(
+        validator_index_is_null, 
+        empty_stake_validators_root, 
+        validators_state_validators_tree_root
+    );
+    builder.verify_merkle_proof::<Hash>(
+        validator_hash.elements.to_vec(), 
+        &validator_stake_index_bits, 
+        validator_stake_merkle_root,
+        &validator_stake_proof,
+    );
 
     //Start tracking the new withdraw values
     let mut new_withdraw_max = current_withdraw_max;
@@ -356,11 +389,11 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
             //Verify merkle proof to the participation root unless explicitly skipped
             let participation_sub_root = builder.hash_n_to_hash_no_pad::<Hash>(participation_bits_fields.clone());
             let validator_field_index_bits = builder.split_le(validator_field_index, PARTICIPATION_TREE_HEIGHT);
-            let merkle_root = builder.select_hash(skip_participation, empty_participation_root, participation_root);
+            let participation_merkle_root = builder.select_hash(skip_participation, empty_participation_root, participation_root);
             builder.verify_merkle_proof::<Hash>(
                 participation_sub_root.elements.to_vec(), 
                 &validator_field_index_bits, 
-                merkle_root,
+                participation_merkle_root,
                 &participation_proof,
             );
         }
@@ -460,6 +493,9 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
         validator_index,
         validator_bit_index,
         validator_field_index,
+        validator_stake,
+        validator_commitment,
+        validator_stake_proof,
         account_validator_index_proof,
     
         participation_rounds_targets,
@@ -472,13 +508,20 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
 
 #[derive(Clone)]
 pub struct ValidatorParticipationAggCircuitData {
-    pub validator_index: Option<usize>,
-    pub account_validator_index_proof: Vec<[Field; 4]>,
+    pub validator: Option<ValidatorParticipationValidatorData>,
+    pub account_validator_proof: Vec<[Field; 4]>,
     pub validators_state_proof: ValidatorsStateProof,
 
     pub participation_rounds: Vec<ValidatorPartAggRoundData>,
 
     pub previous_data: ValidatorPartAggPrevData,
+}
+#[derive(Clone)]
+pub struct ValidatorParticipationValidatorData {
+    pub index: usize,
+    pub stake: u32,
+    pub commitment: [Field; 4],
+    pub proof: Vec<[Field; 4]>,
 }
 #[derive(Clone)]
 pub struct ValidatorPartAggRoundData {
@@ -508,7 +551,11 @@ fn generate_partial_witness(
     circuit_data: &CircuitData<Field, Config, D>, 
     validators_state_verifier: &VerifierOnlyCircuitData<Config, D>
 ) -> Result<PartialWitness<Field>> {
-    assert!(data.validator_index.is_none() || data.validator_index.unwrap() < MAX_VALIDATORS, "Invalid validator index (max: {})", MAX_VALIDATORS);
+    let validator_index = match &data.validator {
+        Some(v) => Some(v.index),
+        None => None,
+    };
+    assert!(validator_index.is_none() || validator_index.unwrap() < MAX_VALIDATORS, "Invalid validator index (max: {})", MAX_VALIDATORS);
     assert_eq!(data.participation_rounds.len(), PARTICIPATION_ROUNDS_PER_STATE_EPOCH, "Incorrect number of rounds data (expected: {})", PARTICIPATION_ROUNDS_PER_STATE_EPOCH);
     let mut pw = PartialWitness::new();
 
@@ -517,22 +564,28 @@ fn generate_partial_witness(
     pw.set_proof_with_pis_target(&targets.validators_state_proof, data.validators_state_proof.proof());
 
     //account validator index
-    match data.validator_index {
-        Some(validator_index) => {
-            let validator_field_index = validator_index / AGGREGATION_PASS1_SIZE;
-            let validator_bit_index = validator_index % AGGREGATION_PASS1_SIZE;
-            pw.set_target(targets.validator_index, Field::from_canonical_usize(validator_index));
+    match &data.validator {
+        Some(validator) => {
+            let validator_field_index = validator.index / AGGREGATION_PASS1_SIZE;
+            let validator_bit_index = validator.index % AGGREGATION_PASS1_SIZE;
+            pw.set_target(targets.validator_index, Field::from_canonical_usize(validator.index));
             pw.set_target(targets.validator_field_index, Field::from_canonical_usize(validator_field_index));
             pw.set_target(targets.validator_bit_index, Field::from_canonical_usize(validator_bit_index));
+            pw.set_target(targets.validator_stake, Field::from_canonical_u32(validator.stake));
+            pw.set_hash_target(targets.validator_commitment, HashOut::<Field> { elements: validator.commitment });
+            pw.set_merkle_proof_target(targets.validator_stake_proof.clone(), &validator.proof);
         },
         None => {
             //fill in with null data
             pw.set_target(targets.validator_index, Field::ZERO.sub_one());
             pw.set_target(targets.validator_field_index, Field::ZERO);
             pw.set_target(targets.validator_bit_index, Field::ZERO);
+            pw.set_target(targets.validator_stake, Field::ZERO);
+            pw.set_hash_target(targets.validator_commitment, HashOut::<Field> { elements: [Field::ZERO; 4] });
+            pw.set_merkle_proof_target(targets.validator_stake_proof.clone(), &empty_validators_tree_proof());
         },
     }
-    pw.set_merkle_proof_target(targets.account_validator_index_proof.clone(), &data.account_validator_index_proof);
+    pw.set_merkle_proof_target(targets.account_validator_index_proof.clone(), &data.account_validator_proof);
 
     //participation rounds targets
     targets.participation_rounds_targets.iter().zip(data.participation_rounds.clone()).for_each(|(t, d)| {
@@ -540,8 +593,8 @@ fn generate_partial_witness(
         pw.set_target(t.participation_count, Field::from_canonical_u32(d.participation_count));
         pw.set_merkle_proof_target(t.participation_round_proof.clone(), &d.participation_round_proof);
 
-        if data.validator_index.is_some() && d.participation_bits.is_some() {
-            let validator_index = data.validator_index.unwrap();
+        if validator_index.is_some() && d.participation_bits.is_some() {
+            let validator_index = validator_index.unwrap();
             let participation_bits = d.participation_bits.unwrap();
             let participation_merkle_data = participation_merkle_data(&participation_bits, validator_index);
             assert_eq!(participation_merkle_data.root, d.participation_root, "Root caluclated from participation bits is different from given root");
@@ -570,7 +623,6 @@ fn generate_partial_witness(
             let base_proof = initial_proof(circuit_data, start_data);
             pw.set_bool_target(targets.init_zero, false);
             pw.set_proof_with_pis_target::<Config, D>(&targets.previous_proof, &base_proof);
-
         },
         ValidatorPartAggPrevData::Continue(previous_proof) => {
             pw.set_bool_target(targets.init_zero, true);
@@ -651,6 +703,13 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCircui
 
 fn build_empty_participation_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
     let root = empty_participation_root();
+    HashOutTarget {
+        elements: root.map(|f| { builder.constant(f) }),
+    }
+}
+
+fn build_empty_stake_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
+    let root = empty_validators_tree_root();
     HashOutTarget {
         elements: root.map(|f| { builder.constant(f) }),
     }

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, save_proof_for_wrapping, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationBits, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, save_proof_for_wrapping, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData, ValidatorParticipationValidatorData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationBits, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
 const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
 const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
@@ -75,8 +75,8 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         }
     }).collect();
     let data = ValidatorParticipationAggCircuitData {
-        validator_index: None,
-        account_validator_index_proof: accounts_tree.merkle_proof(bad_account),
+        validator: None,
+        account_validator_proof: accounts_tree.merkle_proof(bad_account),
         validators_state_proof: validators_state_proof.clone(),
         participation_rounds,
         previous_data: ValidatorPartAggPrevData::Start(ValidatorPartAggStartData {
@@ -114,9 +114,15 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             participation_bits: Some(round.participation_bits.bit_flags),
         }
     }).collect();
+    let validator = validators_tree.validator(validator_indexes[0]);
     let data = ValidatorParticipationAggCircuitData {
-        validator_index: Some(validator_indexes[0]),
-        account_validator_index_proof: accounts_tree.merkle_proof(accounts[0]),
+        validator: Some(ValidatorParticipationValidatorData {
+            index: validator_indexes[0],
+            stake: validator.stake,
+            commitment: validator.commitment_root,
+            proof: validators_tree.merkle_proof(validator_indexes[0]),
+        }),
+        account_validator_proof: accounts_tree.merkle_proof(accounts[0]),
         validators_state_proof: validators_state_proof.clone(),
         participation_rounds,
         previous_data: ValidatorPartAggPrevData::Start(ValidatorPartAggStartData {
@@ -126,6 +132,46 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             param_rf: 1122,
             param_st: 3344,
         }),
+    };
+    let proof = participation_agg_circuit.generate_proof(&data).unwrap();
+    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    println!("(finished in {:?})", start.elapsed());
+    println!("pr_tree_root - {:?}", proof.pr_tree_root());
+    println!("account_address - {:?}", proof.account_address());
+    println!("from_epoch - {:?}", proof.from_epoch());
+    println!("to_epoch - {:?}", proof.to_epoch());
+    println!("withdraw_max - {:?}", proof.withdraw_max());
+    println!("withdraw_unearned - {:?}", proof.withdraw_unearned());
+    println!("param_rf - {:?}", proof.param_rf());
+    println!("parma_st - {:?}", proof.parma_st());
+    println!();
+
+    //build proofs for participation
+    println!("Generating Proof (epoch 1)...");
+    let start: Instant = Instant::now();
+    let epoch = 1;
+    let participation_rounds = (0..PARTICIPATION_ROUNDS_PER_STATE_EPOCH).map(|n| {
+        let round_num = (epoch * PARTICIPATION_ROUNDS_PER_STATE_EPOCH) + n;
+        let round = participation_rounds_tree.round(round_num);
+        ValidatorPartAggRoundData {
+            participation_root: round.participation_root,
+            participation_count: round.participation_count,
+            participation_round_proof: participation_rounds_tree.merkle_proof(round_num),
+            participation_bits: Some(round.participation_bits.bit_flags),
+        }
+    }).collect();
+    let validator = validators_tree.validator(validator_indexes[0]);
+    let data = ValidatorParticipationAggCircuitData {
+        validator: Some(ValidatorParticipationValidatorData {
+            index: validator_indexes[0],
+            stake: validator.stake,
+            commitment: validator.commitment_root,
+            proof: validators_tree.merkle_proof(validator_indexes[0]),
+        }),
+        account_validator_proof: accounts_tree.merkle_proof(accounts[0]),
+        validators_state_proof: validators_state_proof.clone(),
+        participation_rounds,
+        previous_data: ValidatorPartAggPrevData::Continue(proof),
     };
     let proof = participation_agg_circuit.generate_proof(&data).unwrap();
     assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
@@ -290,7 +336,18 @@ fn build_participation_state(
     }
 
     let participation_state_proof = match load_proof(&BENCHMARKING_DATA_DIR, PARTICIPATION_STATE_OUTPUT_FILE) {
-        Ok(proof) => ParticipationStateProof::from_proof(proof),
+        Ok(proof) => {
+            for num in rounds {
+                participation_rounds_tree.update_round(ParticipationRound {
+                    num: *num,
+                    state_inputs_hash,
+                    participation_root: participation_root(&bit_flags),
+                    participation_count: validator_indexes.len() as u32,
+                    participation_bits: ParticipationBits { bit_flags: bit_flags.clone() },
+                });
+            }
+            ParticipationStateProof::from_proof(proof)
+        },
         Err(_) => {
             let mut previous_proof: Option<ParticipationStateProof> = None;
             for num in rounds {
