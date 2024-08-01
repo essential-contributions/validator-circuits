@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, Circuit, Proof, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR}, commitment::{example_commitment_proof, EXAMPLE_COMMITMENTS_REPEAT}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::{example_validator_set, ValidatorCommitmentReveal}, Field, MAX_VALIDATORS};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, Circuit, Proof, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR}, commitment::example_commitment_proof, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::{example_validator_set, ValidatorCommitmentReveal}, Field, MAX_VALIDATORS};
 use validator_circuits::circuits::attestations_aggregator_circuit::AttestationsAggregatorCircuit;
 
 pub fn benchmark_prove_attestations_aggregation(full: bool) {
@@ -31,7 +31,7 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
     let block_slot = 100;
     let num_attestations = 1000;
     let reveals: Vec<ValidatorCommitmentReveal> = (0..num_attestations).map(|i| {
-        let commitment_reveal = example_commitment_proof(i % EXAMPLE_COMMITMENTS_REPEAT);
+        let commitment_reveal = example_commitment_proof(i);
         ValidatorCommitmentReveal {
             validator_index: i,
             block_slot,

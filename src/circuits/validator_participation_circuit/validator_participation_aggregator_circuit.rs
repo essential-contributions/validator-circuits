@@ -4,7 +4,7 @@ use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::field::types::{Field as Plonky2_Field, Field64, PrimeField64};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierCircuitTarget};
+use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, CommonCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use anyhow::{anyhow, Result};
@@ -14,8 +14,8 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
 use crate::circuits::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use crate::circuits::validators_state_circuit::{ValidatorsStateProof, PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT, PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED};
-use crate::circuits::{Circuit, Proof, Serializeable};
+use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof, PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT, PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED};
+use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, VALIDATORS_STATE_CIRCUIT_DIR};
 use crate::participation::{empty_participation_root, participation_merkle_data, PARTICIPANTS_PER_FIELD, PARTICIPATION_BITS_BYTE_SIZE, PARTICIPATION_FIELDS_PER_LEAF, PARTICIPATION_TREE_HEIGHT};
 use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT};
 use crate::Hash;
@@ -29,11 +29,13 @@ pub const PIS_WITHDRAW_UNEARNED: usize = 12;
 pub const PIS_PARAM_RF: usize = 13;
 pub const PIS_PARAM_ST: usize = 14;
 
-const MAX_GATES: usize = 1 << 12;
+const MAX_GATES: usize = 1 << 15;
 
 pub struct ValidatorParticipationAggCircuit {
     circuit_data: CircuitData<Field, Config, D>,
     targets: ValidatorParticipationAggCircuitTargets,
+
+    validators_state_verifier: VerifierOnlyCircuitData<Config, D>,
 }
 struct ValidatorParticipationAggCircuitTargets {
     init_pr_tree_root: HashOutTarget,
@@ -70,28 +72,27 @@ impl Circuit for ValidatorParticipationAggCircuit {
     type Proof = ValidatorParticipationAggProof;
     
     fn new() -> Self {
+        let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+        let validators_state_common_data = &validators_state_circuit.circuit_data().common;
+        let validators_state_verifier = validators_state_circuit.circuit_data().verifier_only.clone();
+
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
-        let targets = generate_circuit(&mut builder);
+        let targets = generate_circuit(&mut builder, validators_state_common_data);
         let circuit_data = builder.build::<Config>();
 
-        Self { circuit_data, targets }
+        Self { circuit_data, targets, validators_state_verifier }
     }
     
     fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
-        let pw = generate_partial_witness(&self.targets, data)?;
+        let pw = generate_partial_witness(
+            &self.targets, 
+            data, 
+            &self.circuit_data, 
+            &self.validators_state_verifier,
+        )?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ValidatorParticipationAggProof { proof })
-    }
-
-    fn example_proof(&self) -> Self::Proof {
-        let data = ValidatorParticipationAggCircuitData {
-            participation_bits: vec![0u8; PARTICIPATION_BITS_BYTE_SIZE],
-            validator_index: 0,
-        };
-        let pw = generate_partial_witness(&self.targets, &data).unwrap();
-        let proof = self.circuit_data.prove(pw).unwrap();
-        ValidatorParticipationAggProof { proof }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -106,14 +107,27 @@ impl Circuit for ValidatorParticipationAggCircuit {
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
     }
+
+    fn is_wrappable() -> bool {
+        false
+    }
+
+    fn wrappable_example_proof(&self) -> Option<Self::Proof> {
+        None
+    }
 }
-/*
 impl Serializeable for ValidatorParticipationAggCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = serialize_circuit(&self.circuit_data)?;
         if write_targets(&mut buffer, &self.targets).is_err() {
             return Err(anyhow!("Failed to serialize circuit targets"));
         }
+        let validators_state_verifier_bytes = self.validators_state_verifier.to_bytes();
+        if validators_state_verifier_bytes.is_err() {
+            return Err(anyhow!("Failed to serialize sub circuit verifier"));
+        }
+        buffer.write_all(&validators_state_verifier_bytes.unwrap()).expect("Buffer write failure");
+
         Ok(buffer)
     }
 
@@ -123,10 +137,18 @@ impl Serializeable for ValidatorParticipationAggCircuit {
         if targets.is_err() {
             return Err(anyhow!("Failed to deserialize circuit targets"));
         }
-        Ok(Self { circuit_data, targets: targets.unwrap() })
+        let validators_state_verifier = VerifierOnlyCircuitData::<Config, D>::from_bytes(buffer.unread_bytes().to_vec());
+        if validators_state_verifier.is_err() {
+            return Err(anyhow!("Failed to deserialize sub circuit verifier"));
+        }
+
+        Ok(Self { 
+            circuit_data, 
+            targets: targets.unwrap(), 
+            validators_state_verifier: validators_state_verifier.unwrap() 
+        })
     }
 }
-*/
 
 #[derive(Clone)]
 pub struct ValidatorParticipationAggProof {
@@ -179,7 +201,7 @@ impl Proof for ValidatorParticipationAggProof {
     }
 }
 
-fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_circuit_data: &CircuitData<Field, Config, D>) -> ValidatorParticipationAggCircuitTargets {
+fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_data: &CommonCircuitData<Field, D>) -> ValidatorParticipationAggCircuitTargets {
     let empty_participation_root = build_empty_participation_root(builder);
     let agg_pass1_size = builder.constant(Field::from_canonical_usize(AGGREGATION_PASS1_SIZE));
     let null = builder.constant(Field::ZERO.sub_one());
@@ -206,11 +228,11 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_circuit_da
 
     //Verify the validators state proof
     let validators_state_verifier = VerifierCircuitTarget {
-        constants_sigmas_cap: builder.add_virtual_cap(val_state_circuit_data.common.config.fri_config.cap_height),
+        constants_sigmas_cap: builder.add_virtual_cap(val_state_common_data.config.fri_config.cap_height),
         circuit_digest: builder.add_virtual_hash(),
     };
-    let validators_state_proof = builder.add_virtual_proof_with_pis(&val_state_circuit_data.common);
-    builder.verify_proof::<Config>(&validators_state_proof, &validators_state_verifier, &val_state_circuit_data.common);
+    let validators_state_proof = builder.add_virtual_proof_with_pis(val_state_common_data);
+    builder.verify_proof::<Config>(&validators_state_proof, &validators_state_verifier, val_state_common_data);
     let validators_state_inputs_hash = vec![
         validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_INPUTS_HASH[0]],
         validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_INPUTS_HASH[1]],
@@ -222,7 +244,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_circuit_da
         validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_INPUTS_HASH[7]],
     ];
     let validators_state_accounts_tree_root = HashOutTarget::try_from(
-        &validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT[0]..PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT[3]]
+        &validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT[0]..(PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT[3] + 1)]
     ).unwrap();
     let total_staked = validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_TOTAL_STAKED];
     
@@ -248,6 +270,8 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_circuit_da
     let validator_index_deconstruction_is_valid = builder.is_equal(validator_index, expected_validator_index);
     builder.assert_true_if(validator_index_is_not_null, &[validator_index_deconstruction_is_valid]);
 
+    //TODO: Verify the stake amount
+
     //Start tracking the new withdraw values
     let mut new_withdraw_max = current_withdraw_max;
     let mut new_withdraw_unearned = current_withdraw_unearned;
@@ -256,11 +280,18 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_circuit_da
     let epoch = current_to_epoch;
     let mut participation_rounds_targets: Vec<ValidatorParticipationRoundTargets> = Vec::new();
     for i in 0..PARTICIPATION_ROUNDS_PER_STATE_EPOCH {
-        //Verify participation round
+        //Participation round data
         let participation_root = builder.add_virtual_hash();
         let participation_count = builder.add_virtual_target();
+        let round_has_no_participation = builder.is_equal(participation_count, zero);
+        let round_has_participation = builder.not(round_has_no_participation);
+
+        //Verify participation round
+        let round_validators_state_inputs_hash: Vec<Target> = validators_state_inputs_hash.iter().map(|t| {
+            builder.mul(round_has_participation.target, *t)
+        }).collect();
         let participation_round_hash = builder.hash_n_to_hash_no_pad::<Hash>([
-            &validators_state_inputs_hash[..], 
+            &round_validators_state_inputs_hash[..], 
             &participation_root.elements[..], 
             &[participation_count],
         ].concat());
@@ -331,10 +362,9 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_circuit_da
         }
 
         //Compute total max withdraw value
-        let round_has_no_participation = builder.is_equal(participation_count, zero);
-        let round_has_participation = builder.not(round_has_no_participation);
         //TODO: better compute amount based on things like total_staked
         let amount = builder.mul(round_has_participation.target, one);
+        //TODO: amount = round has to have participation and account needs to be a validator
         new_withdraw_max = builder.add(new_withdraw_max, amount);
 
         //Compute unearned withdraw value
@@ -389,10 +419,8 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_circuit_da
     builder.connect_hashes(current_pr_tree_root, inner_proof_pr_tree_root_or_init);
 
     //Connect the current account address with inner proof or initial value
-    inner_proof_account_address.iter().zip(current_account_address).for_each(|(inner_proof, prev)| {
-        let inner_proof_or_init = builder.mul(*inner_proof, init_zero.target);
-        builder.connect(prev, inner_proof_or_init);
-    });
+    let inner_proof_account_address_or_init = builder.select_many(init_zero, &inner_proof_account_address, &init_account_address);
+    builder.connect_many(&current_account_address, &inner_proof_account_address_or_init);
 
     //Connect the other public inputs
     let inner_proof_from_epoch_or_init = builder.select(init_zero, inner_proof_from_epoch, init_epoch);
@@ -438,41 +466,6 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_circuit_da
     }
 }
 
-
-/*
-
-struct ValidatorParticipationAggCircuitTargets {
-    init_pr_tree_root: HashOutTarget,
-    init_account_address: Vec<Target>,
-    init_epoch: Target,
-    init_param_rf: Target,
-    init_param_st: Target,
-
-    validators_state_verifier: VerifierCircuitTarget,
-    validators_state_proof: ProofWithPublicInputsTarget<D>,
-
-    validator_index: Target,
-    validator_bit_index: Target,
-    validator_field_index: Target,
-    account_validator_index_proof: MerkleProofTarget,
-
-    participation_rounds_targets: Vec<ValidatorParticipationRoundTargets>,
-    
-    init_zero: BoolTarget,
-    verifier: VerifierCircuitTarget,
-    previous_proof: ProofWithPublicInputsTarget<D>,
-}
-struct ValidatorParticipationRoundTargets {
-    participation_root: HashOutTarget,
-    participation_count: Target,
-    participation_round_proof: MerkleProofTarget,
-
-    skip_participation: BoolTarget,
-    participation_bits_fields: Vec<Target>,
-    participation_proof: MerkleProofTarget,
-}
-    
-*/
 #[derive(Clone)]
 pub struct ValidatorParticipationAggCircuitData {
     pub validator_index: Option<usize>,
@@ -509,14 +502,14 @@ fn generate_partial_witness(
     targets: &ValidatorParticipationAggCircuitTargets, 
     data: &ValidatorParticipationAggCircuitData, 
     circuit_data: &CircuitData<Field, Config, D>, 
-    validators_state_circuit_data: &CircuitData<Field, Config, D>
+    validators_state_verifier: &VerifierOnlyCircuitData<Config, D>
 ) -> Result<PartialWitness<Field>> {
     assert!(data.validator_index.is_none() || data.validator_index.unwrap() < MAX_VALIDATORS, "Invalid validator index (max: {})", MAX_VALIDATORS);
     assert_eq!(data.participation_rounds.len(), PARTICIPATION_ROUNDS_PER_STATE_EPOCH, "Incorrect number of rounds data (expected: {})", PARTICIPATION_ROUNDS_PER_STATE_EPOCH);
     let mut pw = PartialWitness::new();
 
     //validators state proof
-    pw.set_verifier_data_target(&targets.validators_state_verifier, &validators_state_circuit_data.verifier_only);
+    pw.set_verifier_data_target(&targets.validators_state_verifier, validators_state_verifier);
     pw.set_proof_with_pis_target(&targets.validators_state_proof, data.validators_state_proof.proof());
 
     //account validator index
@@ -554,7 +547,7 @@ fn generate_partial_witness(
         } else {
             //fill in with empty participation data
             let participation_merkle_data = participation_merkle_data(&vec![], 0);
-            pw.set_bool_target(t.skip_participation, false);
+            pw.set_bool_target(t.skip_participation, true);
             pw.set_target_arr(&t.participation_bits_fields, &participation_merkle_data.leaf_fields);
             pw.set_merkle_proof_target(t.participation_proof.clone(), &participation_merkle_data.proof);
         }
@@ -617,9 +610,11 @@ fn account_to_fields(account: [u8; 20]) -> [Field; 5] {
     });
     account_fields
 }
-/*
+
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCircuitTargets) -> IoResult<()> {
+    todo!()
+    /*
     buffer.write_target(targets.validator_bit_index)?;
     buffer.write_target_vec(&targets.participation_bits_fields)?;
     buffer.write_target_hash(&targets.participation_root)?;
@@ -627,10 +622,13 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCircui
     buffer.write_target_merkle_proof(&targets.participation_root_merkle_proof)?;
 
     Ok(())
+    */
 }
 
 #[inline]
 fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCircuitTargets> {
+    todo!()
+    /*
     let validator_bit_index = buffer.read_target()?;
     let participation_bits_fields = buffer.read_target_vec()?;
     let participation_root = buffer.read_target_hash()?;
@@ -644,8 +642,8 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCircui
         validator_field_index,
         participation_root_merkle_proof,
     })
+    */
 }
-*/
 
 fn build_empty_participation_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
     let root = empty_participation_root();

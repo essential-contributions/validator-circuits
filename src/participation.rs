@@ -15,7 +15,6 @@ pub const PARTICIPANTS_PER_FIELD: usize = 62;
 pub const PARTICIPATION_FIELDS_PER_LEAF: usize = div_ceil(AGGREGATION_PASS1_SIZE, PARTICIPANTS_PER_FIELD);
 pub const PARTICIPATION_BITS_BYTE_SIZE: usize = (AGGREGATION_PASS1_SIZE * AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE) / 8;
 
-
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: store ParticipationBits in disk rather than memory
 
@@ -44,6 +43,7 @@ pub struct ParticipationRoundData {
 pub struct ParticipationRoundsTree {
     state_inputs_hashes: HashMap<usize, [u8; 32]>,
     rounds: HashMap<usize, ParticipationRoundData>,
+    default_round_data: ParticipationRoundData,
 }
 
 impl ParticipationRoundsTree {
@@ -52,7 +52,18 @@ impl ParticipationRoundsTree {
     }
 
     pub fn from_rounds(rounds: &[ParticipationRound]) -> Self {
-        let mut rounds_tree = Self { state_inputs_hashes: HashMap::new(), rounds: HashMap::new() };
+        let default_round_data = ParticipationRoundData {
+            participation_root: empty_participation_root(),
+            participation_count: 0,
+            participation_bits: ParticipationBits {
+                bit_flags: Vec::<u8>::new(),
+            },
+        };
+        let mut rounds_tree = Self { 
+            state_inputs_hashes: HashMap::new(), 
+            rounds: HashMap::new(),
+            default_round_data,
+        };
         for round in rounds {
             rounds_tree.update_round(round.clone());
         }
@@ -137,11 +148,9 @@ impl ParticipationRoundsTree {
             None => ParticipationRound {
                 num,
                 state_inputs_hash: [0u8; 32],
-                participation_root: empty_participation_root(),
-                participation_count: 0,
-                participation_bits: ParticipationBits {
-                    bit_flags: Vec::<u8>::new(),
-                }
+                participation_root: self.default_round_data.participation_root,
+                participation_count: self.default_round_data.participation_count,
+                participation_bits: self.default_round_data.participation_bits.clone(),
             },
         }
     }
@@ -193,11 +202,9 @@ impl ParticipationRoundsTree {
         let default_node = Self::hash_round(ParticipationRound {
             num: 0,
             state_inputs_hash: [0u8; 32],
-            participation_root: empty_participation_root(),
-            participation_count: 0,
-            participation_bits: ParticipationBits {
-                bit_flags: Vec::<u8>::new(),
-            },
+            participation_root: self.default_round_data.participation_root,
+            participation_count: self.default_round_data.participation_count,
+            participation_bits: self.default_round_data.participation_bits.clone(),
         });
 
         (intermediary_nodes, default_node)

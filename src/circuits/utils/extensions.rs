@@ -31,6 +31,9 @@ pub trait CircuitBuilderExtended {
     /// Selects between arrays `x` or `y` based on `b`, i.e., this returns `if b { x } else { y }`.
     fn select_many(&mut self, b: BoolTarget, x: &[Target], y: &[Target]) -> Vec<Target>;
 
+    /// Uses Plonk's permutation argument to require that two series of elements be equal.
+    fn connect_many(&mut self, x: &[Target], y: &[Target]);
+
     /// Asserts the provided [`BoolTarget`]s are true if `b` is also true.
     fn assert_true_if(&mut self, b: BoolTarget, a: &[BoolTarget]);
 
@@ -129,6 +132,13 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
         x.iter().zip(y).map(|(x, y)| {
             self.select(b, *x, *y)
         }).collect()
+    }
+
+    fn connect_many(&mut self, x: &[Target], y: &[Target]) {
+        debug_assert_eq!(x.len(), y.len(), "lengths do not match for select many");
+        for (x, y) in x.iter().zip(y) {
+            self.connect(*x, *y);
+        }
     }
 
     fn assert_true_if(&mut self, b: BoolTarget, a: &[BoolTarget]) {

@@ -1,6 +1,8 @@
 use std::time::Instant;
 
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, Circuit, Proof, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, MAX_VALIDATORS};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationBits, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+
+const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
 
 pub fn benchmark_validator_prove_participation(full: bool) {
     //make sure circuits have been built
@@ -11,14 +13,133 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             panic!();
         }
     }
-/*
+
     //generate the circuits
-    println!("Building Participation Circuit... ");
+    println!("Building Validator Participation Circuit...");
     let start = Instant::now();
-    let participation_circuit = load_or_create_circuit::<ParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
+    let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+    let participation_state_circuit = load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
+    //let validator_participation_circuit = load_or_create_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
+    let participation_agg_circuit = ValidatorParticipationAggCircuit::new();//////
     println!("(finished in {:?})", start.elapsed());
     println!();
 
+    //build proof for validator state
+    println!("Building Validators State Data and Proof...");
+    let start = Instant::now();
+    let accounts = [[11u8; 20], [22u8; 20]];
+    let validator_indexes = [10, 22];
+    let stakes = [64, 128];
+    let (validators_tree, 
+        accounts_tree, 
+        validators_state_proof,
+    ) = build_validators_state(
+        &validators_state_circuit,
+        &accounts,
+        &validator_indexes,
+        &stakes,
+    );
+    println!("(finished in {:?})", start.elapsed());
+    println!();
+
+    //build proof for participation state
+    println!("Building Participation State Data and Proof...");
+    let start = Instant::now();
+    let (participation_rounds_tree, 
+        participation_state_proof,
+    ) = build_participation_state(
+        &participation_state_circuit,
+        &validator_indexes,
+        validators_state_proof.inputs_hash(),
+        &[32, 48, 67, 100],
+    );
+    println!("(finished in {:?})", start.elapsed());
+    println!();
+
+    //build proofs for participation
+    println!("Generating Proof (account with no participation)...");
+    let start: Instant = Instant::now();
+    let bad_account = [13u8; 20];
+    let epoch = 0;
+    let participation_rounds = (0..PARTICIPATION_ROUNDS_PER_STATE_EPOCH).map(|n| {
+        let round_num = (epoch * PARTICIPATION_ROUNDS_PER_STATE_EPOCH) + n;
+        let round = participation_rounds_tree.round(round_num);
+        ValidatorPartAggRoundData {
+            participation_root: round.participation_root,
+            participation_count: round.participation_count,
+            participation_round_proof: participation_rounds_tree.merkle_proof(round_num),
+            participation_bits: Some(round.participation_bits.bit_flags),
+        }
+    }).collect();
+    let data = ValidatorParticipationAggCircuitData {
+        validator_index: None,
+        account_validator_index_proof: accounts_tree.merkle_proof(bad_account),
+        validators_state_proof: validators_state_proof.clone(),
+        participation_rounds,
+        previous_data: ValidatorPartAggPrevData::Start(ValidatorPartAggStartData {
+            pr_tree_root: participation_rounds_tree.root(),
+            account: bad_account,
+            epoch: epoch as u32,
+            param_rf: 1122,
+            param_st: 3344,
+        }),
+    };
+    let proof = participation_agg_circuit.generate_proof(&data).unwrap();
+    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    println!("(finished in {:?})", start.elapsed());
+    println!("pr_tree_root - {:?}", proof.pr_tree_root());
+    println!("account_address - {:?}", proof.account_address());
+    println!("from_epoch - {:?}", proof.from_epoch());
+    println!("to_epoch - {:?}", proof.to_epoch());
+    println!("withdraw_max - {:?}", proof.withdraw_max());
+    println!("withdraw_unearned - {:?}", proof.withdraw_unearned());
+    println!("param_rf - {:?}", proof.param_rf());
+    println!("parma_st - {:?}", proof.parma_st());
+    println!();
+
+    //build proofs for participation
+    println!("Generating Proof (epoch 0)...");
+    let start: Instant = Instant::now();
+    let epoch = 0;
+    let participation_rounds = (0..PARTICIPATION_ROUNDS_PER_STATE_EPOCH).map(|n| {
+        let round_num = (epoch * PARTICIPATION_ROUNDS_PER_STATE_EPOCH) + n;
+        let round = participation_rounds_tree.round(round_num);
+        ValidatorPartAggRoundData {
+            participation_root: round.participation_root,
+            participation_count: round.participation_count,
+            participation_round_proof: participation_rounds_tree.merkle_proof(round_num),
+            participation_bits: Some(round.participation_bits.bit_flags),
+        }
+    }).collect();
+    let data = ValidatorParticipationAggCircuitData {
+        validator_index: Some(validator_indexes[0]),
+        account_validator_index_proof: accounts_tree.merkle_proof(accounts[0]),
+        validators_state_proof: validators_state_proof.clone(),
+        participation_rounds,
+        previous_data: ValidatorPartAggPrevData::Start(ValidatorPartAggStartData {
+            pr_tree_root: participation_rounds_tree.root(),
+            account: accounts[0],
+            epoch: epoch as u32,
+            param_rf: 1122,
+            param_st: 3344,
+        }),
+    };
+    let proof = participation_agg_circuit.generate_proof(&data).unwrap();
+    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    println!("(finished in {:?})", start.elapsed());
+    println!("pr_tree_root - {:?}", proof.pr_tree_root());
+    println!("account_address - {:?}", proof.account_address());
+    println!("from_epoch - {:?}", proof.from_epoch());
+    println!("to_epoch - {:?}", proof.to_epoch());
+    println!("withdraw_max - {:?}", proof.withdraw_max());
+    println!("withdraw_unearned - {:?}", proof.withdraw_unearned());
+    println!("param_rf - {:?}", proof.param_rf());
+    println!("parma_st - {:?}", proof.parma_st());
+    println!();
+
+    
+
+/*
     //data
     let validator_index = 53;
     let mut participation_bits = participation_bit_field(0);
@@ -81,17 +202,138 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     */
 }
 
-fn participation_bit_field(to: usize) -> Vec<u8> {
-    let mut bytes: Vec<u8> = vec![0u8; MAX_VALIDATORS / 8];
+fn build_validators_state(
+    validators_state_circuit: &ValidatorsStateCircuit,
+    accounts: &[[u8; 20]],
+    validator_indexes: &[usize],
+    stakes: &[u32],
+) -> (
+    ValidatorsTree, //validators_tree
+    AccountsTree, //accounts_tree
+    ValidatorsStateProof //validators_state_proof
+) {
+    let mut validators_tree = ValidatorsTree::new();
 
-    let full_bytes = to / 8;
-    for i in 0..full_bytes {
-        bytes[i] = 0xff;
-    }
-    if to % 8 > 0 {
-        let remainder = to - (full_bytes * 8);
-        bytes[full_bytes] = 0xff << (8 - remainder);
-    }
+    println!("  building accounts tree");
+    let mut accounts_tree = match load_accounts(INITIAL_ACCOUNTS_OUTPUT_FILE) {
+        Ok(tree) => tree,
+        Err(_) => {
+            let tree = AccountsTree::new();
+            if save_accounts(&tree, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
+                log::warn!("Failed to save accounts tree to file.");
+            }
+            tree
+        },
+    };
 
-    bytes
+    let mut previous_proof: Option<ValidatorsStateProof> = None;
+    for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
+        println!("  building proof");
+        let commitment = example_commitment_root(validator_index);
+        let data = compile_data_for_validators_state_circuit(
+            &accounts_tree,
+            &validators_tree,
+            validator_index,
+            stake,
+            commitment,
+            account,
+            null_account_address(validator_index),
+            account,
+            previous_proof,
+        );
+        let proof = validators_state_circuit.generate_proof(&data).unwrap();
+        assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+        validators_tree.set_validator(validator_index, Validator { commitment_root: commitment, stake });
+        accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
+        previous_proof = Some(proof);
+    }
+    
+    (
+        validators_tree, //validators_tree
+        accounts_tree, //accounts_tree
+        previous_proof.unwrap(), //validators_state_proof
+    )
+}
+
+fn build_participation_state(
+    participation_state_circuit: &ParticipationStateCircuit,
+    validator_indexes: &[usize],
+    state_inputs_hash: [u8; 32],
+    rounds: &[usize],
+) -> (
+    ParticipationRoundsTree, //participation_rounds_tree
+    ParticipationStateProof //participation_state_proof
+) {
+    let mut participation_rounds_tree = ParticipationRoundsTree::new();
+    let mut bit_flags: Vec<u8> = vec![0u8; PARTICIPATION_BITS_BYTE_SIZE];
+    for validator_index in validator_indexes {
+        bit_flags[validator_index / 8] += 0x80 >> (validator_index % 8);
+    }
+    
+    let mut previous_proof: Option<ParticipationStateProof> = None;
+    for num in rounds {
+        println!("  building proof");
+        let round = ParticipationRound {
+            num: *num,
+            state_inputs_hash,
+            participation_root: participation_root(&bit_flags),
+            participation_count: validator_indexes.len() as u32,
+            participation_bits: ParticipationBits { bit_flags: bit_flags.clone() },
+        };
+        let current_round_data = participation_rounds_tree.round(round.num);
+        let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
+            round_num: round.num,
+            state_inputs_hash: round.state_inputs_hash,
+            participation_root: round.participation_root,
+            participation_count: round.participation_count,
+            current_state_inputs_hash: current_round_data.state_inputs_hash,
+            current_participation_root: current_round_data.participation_root,
+            current_participation_count: current_round_data.participation_count,
+            participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
+            previous_proof,
+        }).unwrap();
+        assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
+        participation_rounds_tree.update_round(round.clone());
+        previous_proof = Some(proof);
+    }
+    
+    (
+        participation_rounds_tree, //accounts_tree
+        previous_proof.unwrap(), //participation_state_proof
+    )
+}
+
+fn compile_data_for_validators_state_circuit(
+    accounts_tree: &AccountsTree,
+    validators_tree: &ValidatorsTree,
+    index: usize,
+    stake: u32,
+    commitment: [Field; 4],
+    account: [u8; 20],
+    from_account: [u8; 20],
+    to_account: [u8; 20],
+    previous_proof: Option<ValidatorsStateProof>,
+) -> ValidatorsStateCircuitData {
+    let curr_validator = validators_tree.validator(index);
+    ValidatorsStateCircuitData {
+        index,
+        stake,
+        commitment,
+        account,
+
+        validator_index: index,
+        validator_stake: curr_validator.stake,
+        validator_commitment: curr_validator.commitment_root,
+        validator_proof: validators_tree.merkle_proof(index),
+
+        from_account,
+        from_acc_index: accounts_tree.account(from_account).validator_index,
+        from_acc_proof: accounts_tree.merkle_proof(from_account),
+
+        to_account,
+        to_acc_index: accounts_tree.account(to_account).validator_index,
+        to_acc_proof: accounts_tree.merkle_proof(to_account),
+
+        previous_proof,
+    }
 }
