@@ -2,9 +2,10 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field as Plonky2_Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, circuits::{load_or_create_circuit, save_proof, validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, VALIDATORS_STATE_CIRCUIT_DIR}, validators::{Validator, ValidatorsTree}, Field};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, circuits::{load_or_create_circuit, validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, VALIDATORS_STATE_CIRCUIT_DIR}, validators::{Validator, ValidatorsTree}, Field};
 use validator_circuits::circuits::validators_state_circuit::ValidatorsStateCircuit;
 
+const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
 const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
 
 pub fn benchmark_prove_validators_state(full: bool) {
@@ -22,7 +23,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     //build stake tracking structures
     println!("Building Accounts Tree...");
     let start = Instant::now();
-    let mut accounts_tree = match load_accounts(INITIAL_ACCOUNTS_OUTPUT_FILE) {
+    let mut accounts_tree = match load_accounts(&BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE) {
         Ok(t) => {
             println!("(loaded from file)");
             t
@@ -30,7 +31,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
         Err(_) => {
             let t = AccountsTree::new();
             println!("(finished in {:?})", start.elapsed());
-            if save_accounts(&t, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
+            if save_accounts(&t, &BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
                 log::warn!("Failed to save accounts tree to file.");
             }
             t
@@ -335,9 +336,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
     println!("accounts_tree_root - {:?}", proof.accounts_tree_root());
     println!();
-    
-    //save the last round
-    save_proof(&proof.proof(), VALIDATORS_STATE_CIRCUIT_DIR);
 }
 
 fn generate_account_address(seed: u64) -> [u8; 20] {

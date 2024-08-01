@@ -128,6 +128,10 @@ impl AttestationsAggregator1Proof {
     }
 }
 impl Proof for AttestationsAggregator1Proof {
+    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
+        Self { proof }
+    }
+    
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }

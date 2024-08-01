@@ -151,6 +151,10 @@ impl ValidatorsStateProof {
     }
 }
 impl Proof for ValidatorsStateProof {
+    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
+        Self { proof }
+    }
+
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }

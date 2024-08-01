@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof, Circuit, Proof, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR}, commitment::example_commitment_proof, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::{example_validator_set, ValidatorCommitmentReveal}, Field, MAX_VALIDATORS};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, save_proof_for_wrapping, Circuit, Proof, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR}, commitment::example_commitment_proof, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::{example_validator_set, ValidatorCommitmentReveal}, Field, MAX_VALIDATORS};
 use validator_circuits::circuits::attestations_aggregator_circuit::AttestationsAggregatorCircuit;
 
 pub fn benchmark_prove_attestations_aggregation(full: bool) {
@@ -60,7 +60,7 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    save_proof(&proof.proof(), ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR);
+    save_proof_for_wrapping(&proof.proof(), ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR);
     println!();
 
     if full {

@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, save_proof, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR}, participation::{ParticipationBits, ParticipationRound, ParticipationRoundsTree}};
+use validator_circuits::{circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, Circuit, PARTICIPATION_STATE_CIRCUIT_DIR}, participation::{ParticipationBits, ParticipationRound, ParticipationRoundsTree}};
 use validator_circuits::circuits::participation_state_circuit::ParticipationStateCircuit;
 
 pub fn benchmark_prove_participation_state(full: bool) {
@@ -178,9 +178,6 @@ pub fn benchmark_prove_participation_state(full: bool) {
     inputs_hash = next_inputs_hash(inputs_hash, round);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
     println!();
-
-    //save the last round
-    save_proof(&proof.proof(), PARTICIPATION_STATE_CIRCUIT_DIR);
 }
 
 fn next_inputs_hash(previous_hash: [u8; 32], round_update: ParticipationRound) -> [u8; 32] {

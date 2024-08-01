@@ -44,6 +44,7 @@ pub trait Serializeable {
 }
 
 pub trait Proof {
+    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self;
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D>;
 }
 
@@ -52,7 +53,7 @@ where
     C: Circuit + Serializeable,
 {
     if circuit_data_exists(dir) {
-        let bytes = read_from_dir(dir, CIRCUIT_FILENAME);
+        let bytes = read_file(&[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME);
         match bytes {
             Ok(bytes) => {
                 let circuit = C::from_bytes(&bytes);
@@ -83,7 +84,7 @@ where
     C: Circuit,
 {
     if circuit_proof_exists(dir) {
-        match load_proof(dir) {
+        match load_proof(&[CIRCUIT_OUTPUT_FOLDER, dir], PROOF_FILENAME) {
             Ok(proof) => {
                 log::info!("Loaded proof [/{}]", dir);
                 return proof;
@@ -92,7 +93,7 @@ where
         };
     }
     let proof = circuit.wrappable_example_proof().expect("Circuit is not wrappable");
-    save_proof(&proof.proof().clone(), dir);
+    save_proof_for_wrapping(&proof.proof().clone(), dir);
     proof.proof().clone()
 }
 
@@ -103,7 +104,7 @@ where
     let circuit_bytes = circuit.to_bytes();
     match circuit_bytes {
         Ok(bytes) => {
-            match write_to_dir(&bytes, dir, CIRCUIT_FILENAME) {
+            match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME) {
                 Ok(_) => log::info!("Saved raw circuit binary [/{}]", dir),
                 Err(e) => {
                     log::error!("Failed to save circuit [/{}]", dir);
@@ -123,7 +124,7 @@ where
     match common_circuit_data_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            match write_to_dir(&bytes, dir, COMMON_DATA_FILENAME) {
+            match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], COMMON_DATA_FILENAME) {
                 Ok(_) => log::info!("Saved common data [/{}]", dir),
                 Err(e) => {
                     log::error!("Failed to save common data [/{}]", dir);
@@ -141,7 +142,7 @@ where
     match verifier_only_circuit_data_serialized  {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            match write_to_dir(&bytes, dir, VERIFIER_ONLY_DATA_FILENAME) {
+            match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], VERIFIER_ONLY_DATA_FILENAME) {
                 Ok(_) => log::info!("Saved verifier only data [/{}]", dir),
                 Err(e) => {
                     log::error!("Failed to save verifier only data [/{}]", dir);
@@ -156,50 +157,42 @@ where
     }
 }
 
-pub fn save_proof(proof: &ProofWithPublicInputs<Field, Config, D>, dir: &str) {
+pub fn save_proof_for_wrapping(proof: &ProofWithPublicInputs<Field, Config, D>, dir: &str) {
+    save_proof(proof, &[CIRCUIT_OUTPUT_FOLDER, dir], PROOF_FILENAME).expect("Failed to save proof for wrapping");
+}
+
+pub fn save_proof(proof: &ProofWithPublicInputs<Field, Config, D>, path: &[&str], filename: &str) -> Result<()> {
     let proof_serialized = serde_json::to_string(proof);
     match proof_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            match write_to_dir(&bytes, dir, PROOF_FILENAME) {
-                Ok(_) => log::info!("Saved proof [/{}]", dir),
-                Err(e) => {
-                    log::error!("Failed to save proof [/{}]", dir);
-                    log::error!("{}", e);
+            match write_file(&bytes, path, filename) {
+                Ok(_) => {
+                    log::info!("Saved proof [/{}/{}]", path.join("/"), filename);
+                    Ok(())
                 },
+                Err(e) => Err(anyhow!("{}", e)),
             }
         },
-        Err(e) => {
-            log::error!("Failed to serialize proof [/{}]", dir);
-            log::error!("{}", e);
-        },
+        Err(e) => Err(anyhow!("{}", e)),
     }
 }
 
-pub fn load_proof(dir: &str) -> Result<ProofWithPublicInputs<Field, Config, D>> {
-    match read_from_dir(dir, PROOF_FILENAME) {
+pub fn load_proof(path: &[&str], filename: &str) -> Result<ProofWithPublicInputs<Field, Config, D>> {
+    match read_file(path, filename) {
         Ok(bytes) => {
             match std::str::from_utf8(&bytes) {
                 Ok(serialized_str) => {
                     let proof: Result<ProofWithPublicInputs<Field, Config, D>, serde_json::Error> = serde_json::from_str(serialized_str);
                     match proof {
                         Ok(proof) => Ok(proof),
-                        Err(_) => {
-                            log::error!("Failed to deserialize proof [/{}]", dir);
-                            Err(anyhow!("Failed to deserialize proof [/{}]", dir))
-                        },
+                        Err(e) => Err(anyhow!("{}", e)),
                     }
                 },
-                Err(_) => {
-                    log::error!("Failed to deserialize proof [/{}]", dir);
-                    Err(anyhow!("Failed to deserialize proof [/{}]", dir))
-                },
+                Err(e) => Err(anyhow!("{}", e)),
             }
         },
-        Err(_) => {
-            log::error!("Failed to load proof bytes [/{}]", dir);
-            Err(anyhow!("Failed to load proof bytes [/{}]", dir))
-        },
+        Err(e) => Err(anyhow!("{}", e)),
     }
 }
 
@@ -219,16 +212,18 @@ pub fn clear_data_and_proof(dir: &str) {
 }
 
 #[inline]
-fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
-    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
-    path.push(dir);
-    path.push(filename);
+fn write_file(bytes: &Vec<u8>, path: &[&str], filename: &str) -> io::Result<()> {
+    let mut path_buf = PathBuf::new();
+    for &p in path {
+        path_buf.push(p);
+    }
+    path_buf.push(filename);
 
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = path_buf.parent() {
         create_dir_all(parent)?;
     }
 
-    let mut file = File::create(&path)?;
+    let mut file = File::create(&path_buf)?;
     file.write_all(&bytes)?;
     file.flush()?;
 
@@ -236,12 +231,14 @@ fn write_to_dir(bytes: &Vec<u8>, dir: &str, filename: &str) -> io::Result<()> {
 }
 
 #[inline]
-fn read_from_dir(dir: &str, filename: &str) -> io::Result<Vec<u8>> {
-    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
-    path.push(dir);
-    path.push(filename);
+fn read_file(path: &[&str], filename: &str) -> io::Result<Vec<u8>> {
+    let mut path_buf = PathBuf::new();
+    for &p in path {
+        path_buf.push(p);
+    }
+    path_buf.push(filename);
 
-    let file = File::open(&path)?;
+    let file = File::open(&path_buf)?;
     let mut reader = BufReader::with_capacity(134217728, file);
     let mut buffer: Vec<u8> = Vec::new();
     reader.read_to_end(&mut buffer)?;

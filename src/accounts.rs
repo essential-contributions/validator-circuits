@@ -12,8 +12,6 @@ const SPARSE_ACCOUNTS_TREE_HEIGHT: usize = 160;
 const SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT: usize = 10;
 const SPARSE_ACCOUNTS_COMPUTED_TREE_HEIGHT: usize = SPARSE_ACCOUNTS_TREE_HEIGHT - SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT;
 
-const ACCOUNTS_OUTPUT_FOLDER: &str = "data";
-
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Account {
     pub address: [u8; 20],
@@ -483,28 +481,34 @@ fn address_shr(mut addr: [u8; 20], shift: usize) -> [u8; 20] {
     addr
 }
 
-pub fn save_accounts(accounts_tree: &AccountsTree, filename: &str) -> Result<()> {
+pub fn save_accounts(accounts_tree: &AccountsTree, path: &[&str], filename: &str) -> Result<()> {
     let bytes = accounts_tree.to_bytes()?;
 
-    let mut path = PathBuf::from(ACCOUNTS_OUTPUT_FOLDER);
-    path.push(filename);
+    let mut path_buf = PathBuf::new();
+    for &p in path {
+        path_buf.push(p);
+    }
+    path_buf.push(filename);
 
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = path_buf.parent() {
         create_dir_all(parent)?;
     }
 
-    let mut file = File::create(&path)?;
+    let mut file = File::create(&path_buf)?;
     file.write_all(&bytes)?;
     file.flush()?;
 
     Ok(())
 }
 
-pub fn load_accounts(filename: &str) -> Result<AccountsTree> {
-    let mut path = PathBuf::from(ACCOUNTS_OUTPUT_FOLDER);
-    path.push(filename);
+pub fn load_accounts(path: &[&str], filename: &str) -> Result<AccountsTree> {
+    let mut path_buf = PathBuf::new();
+    for &p in path {
+        path_buf.push(p);
+    }
+    path_buf.push(filename);
 
-    let file = File::open(&path)?;
+    let file = File::open(&path_buf)?;
     let mut reader = BufReader::with_capacity(32 * 1024, file);
     let mut bytes: Vec<u8> = Vec::new();
     reader.read_to_end(&mut bytes)?;

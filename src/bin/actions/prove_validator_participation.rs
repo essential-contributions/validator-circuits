@@ -1,8 +1,11 @@
 use std::time::Instant;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationBits, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, save_proof_for_wrapping, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationBits, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
+const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
 const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
+const VALIDATORS_STATE_OUTPUT_FILE: &str = "validator_participation_validators_state_proof.json";
+const PARTICIPATION_STATE_OUTPUT_FILE: &str = "validator_participation_participation_state_proof.json";
 
 pub fn benchmark_validator_prove_participation(full: bool) {
     //make sure circuits have been built
@@ -25,7 +28,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!();
 
     //build proof for validator state
-    println!("Building Validators State Data and Proof...");
+    println!("Building Validators State Data...");
     let start = Instant::now();
     let accounts = [[11u8; 20], [22u8; 20]];
     let validator_indexes = [10, 22];
@@ -43,7 +46,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!();
 
     //build proof for participation state
-    println!("Building Participation State Data and Proof...");
+    println!("Building Participation State Data...");
     let start = Instant::now();
     let (participation_rounds_tree, 
         participation_state_proof,
@@ -163,7 +166,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         log::error!("Proof failed verification.");
         return;
     }
-    save_proof(&proof.proof(), VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
+    save_proof_for_wrapping(&proof.proof(), VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
     println!();
 
     if full {
@@ -213,45 +216,61 @@ fn build_validators_state(
     ValidatorsStateProof //validators_state_proof
 ) {
     let mut validators_tree = ValidatorsTree::new();
-
-    println!("  building accounts tree");
-    let mut accounts_tree = match load_accounts(INITIAL_ACCOUNTS_OUTPUT_FILE) {
+    let mut accounts_tree = match load_accounts(&BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE) {
         Ok(tree) => tree,
         Err(_) => {
+            println!("  building accounts tree");
             let tree = AccountsTree::new();
-            if save_accounts(&tree, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
+            if save_accounts(&tree, &BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
                 log::warn!("Failed to save accounts tree to file.");
             }
             tree
         },
     };
 
-    let mut previous_proof: Option<ValidatorsStateProof> = None;
-    for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
-        println!("  building proof");
-        let commitment = example_commitment_root(validator_index);
-        let data = compile_data_for_validators_state_circuit(
-            &accounts_tree,
-            &validators_tree,
-            validator_index,
-            stake,
-            commitment,
-            account,
-            null_account_address(validator_index),
-            account,
-            previous_proof,
-        );
-        let proof = validators_state_circuit.generate_proof(&data).unwrap();
-        assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
-        validators_tree.set_validator(validator_index, Validator { commitment_root: commitment, stake });
-        accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
-        previous_proof = Some(proof);
-    }
-    
+    let validators_state_proof = match load_proof(&BENCHMARKING_DATA_DIR, VALIDATORS_STATE_OUTPUT_FILE) {
+        Ok(proof) => {
+            for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
+                let commitment_root = example_commitment_root(validator_index);
+                validators_tree.set_validator(validator_index, Validator { commitment_root, stake });
+                accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
+            }
+            ValidatorsStateProof::from_proof(proof)
+        },
+        Err(_) => {
+            let mut previous_proof: Option<ValidatorsStateProof> = None;
+            for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
+                println!("  building proof");
+                let commitment = example_commitment_root(validator_index);
+                let data = compile_data_for_validators_state_circuit(
+                    &accounts_tree,
+                    &validators_tree,
+                    validator_index,
+                    stake,
+                    commitment,
+                    account,
+                    null_account_address(validator_index),
+                    account,
+                    previous_proof,
+                );
+                let proof = validators_state_circuit.generate_proof(&data).unwrap();
+                assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+                validators_tree.set_validator(validator_index, Validator { commitment_root: commitment, stake });
+                accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
+                previous_proof = Some(proof);
+            }
+            let proof = previous_proof.unwrap();
+            if save_proof(&proof.proof(), &BENCHMARKING_DATA_DIR, VALIDATORS_STATE_OUTPUT_FILE).is_err() {
+                log::warn!("Failed to save validators state proof to file.");
+            }
+            proof
+        },
+    };
+            
     (
         validators_tree, //validators_tree
         accounts_tree, //accounts_tree
-        previous_proof.unwrap(), //validators_state_proof
+        validators_state_proof, //validators_state_proof
     )
 }
 
@@ -269,37 +288,47 @@ fn build_participation_state(
     for validator_index in validator_indexes {
         bit_flags[validator_index / 8] += 0x80 >> (validator_index % 8);
     }
-    
-    let mut previous_proof: Option<ParticipationStateProof> = None;
-    for num in rounds {
-        println!("  building proof");
-        let round = ParticipationRound {
-            num: *num,
-            state_inputs_hash,
-            participation_root: participation_root(&bit_flags),
-            participation_count: validator_indexes.len() as u32,
-            participation_bits: ParticipationBits { bit_flags: bit_flags.clone() },
-        };
-        let current_round_data = participation_rounds_tree.round(round.num);
-        let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
-            round_num: round.num,
-            state_inputs_hash: round.state_inputs_hash,
-            participation_root: round.participation_root,
-            participation_count: round.participation_count,
-            current_state_inputs_hash: current_round_data.state_inputs_hash,
-            current_participation_root: current_round_data.participation_root,
-            current_participation_count: current_round_data.participation_count,
-            participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
-            previous_proof,
-        }).unwrap();
-        assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
-        participation_rounds_tree.update_round(round.clone());
-        previous_proof = Some(proof);
-    }
+
+    let participation_state_proof = match load_proof(&BENCHMARKING_DATA_DIR, PARTICIPATION_STATE_OUTPUT_FILE) {
+        Ok(proof) => ParticipationStateProof::from_proof(proof),
+        Err(_) => {
+            let mut previous_proof: Option<ParticipationStateProof> = None;
+            for num in rounds {
+                println!("  building proof");
+                let round = ParticipationRound {
+                    num: *num,
+                    state_inputs_hash,
+                    participation_root: participation_root(&bit_flags),
+                    participation_count: validator_indexes.len() as u32,
+                    participation_bits: ParticipationBits { bit_flags: bit_flags.clone() },
+                };
+                let current_round_data = participation_rounds_tree.round(round.num);
+                let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
+                    round_num: round.num,
+                    state_inputs_hash: round.state_inputs_hash,
+                    participation_root: round.participation_root,
+                    participation_count: round.participation_count,
+                    current_state_inputs_hash: current_round_data.state_inputs_hash,
+                    current_participation_root: current_round_data.participation_root,
+                    current_participation_count: current_round_data.participation_count,
+                    participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
+                    previous_proof,
+                }).unwrap();
+                assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
+                participation_rounds_tree.update_round(round.clone());
+                previous_proof = Some(proof);
+            }
+            let proof = previous_proof.unwrap();
+            if save_proof(&proof.proof(), &BENCHMARKING_DATA_DIR, PARTICIPATION_STATE_OUTPUT_FILE).is_err() {
+                log::warn!("Failed to save participation state proof to file.");
+            }
+            proof
+        },
+    };    
     
     (
         participation_rounds_tree, //accounts_tree
-        previous_proof.unwrap(), //participation_state_proof
+        participation_state_proof, //participation_state_proof
     )
 }
 
