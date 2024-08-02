@@ -24,8 +24,12 @@ pub struct AttestationsAggregatorCircuit {
     attestations_aggregator2: AttestationsAggregator2Circuit,
     attestations_aggregator3: AttestationsAggregator3Circuit,
 }
+impl AttestationsAggregatorCircuit {
+    pub fn generate_proof(&self, data: &AttestationsAggregatorCircuitData) -> Result<AttestationsAggregatorProof> {
+        generate_proof_from_data(&self, data)
+    }
+}
 impl Circuit for AttestationsAggregatorCircuit {
-    type Data = AttestationsAggregatorCircuitData;
     type Proof = AttestationsAggregatorProof;
     
     fn new() -> Self {
@@ -37,10 +41,6 @@ impl Circuit for AttestationsAggregatorCircuit {
         let attestations_aggregator3 = AttestationsAggregator3Circuit::new_continuation(&attestations_aggregator2);
 
         Self { attestations_aggregator1, attestations_aggregator2, attestations_aggregator3 }
-    }
-    
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
-        generate_proof_from_data(&self, data)
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {

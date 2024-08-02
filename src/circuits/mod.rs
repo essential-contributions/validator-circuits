@@ -24,11 +24,9 @@ pub const VALIDATOR_PARTICIPATION_CIRCUIT_DIR: &str = "validator_participation";
 pub const ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR: &str = "attestations_aggregator";
 
 pub trait Circuit {
-    type Data;
     type Proof: Proof;
 
     fn new() -> Self;
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof>;
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()>;
     fn circuit_data(&self) -> &CircuitData<Field, Config, D>;
 

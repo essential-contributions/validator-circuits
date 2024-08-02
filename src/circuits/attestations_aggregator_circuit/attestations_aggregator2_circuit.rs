@@ -37,8 +37,16 @@ struct AttsAgg2Agg1Targets {
     has_participation: BoolTarget,
     proof: ProofWithPublicInputsTarget<D>
 }
+impl AttestationsAggregator2Circuit {
+    pub fn generate_proof(&self, data: &AttestationsAggregator2Data) -> Result<AttestationsAggregator2Proof> {
+        log::warn!("AttestationsAggregator2Circuit: use 'generate_proof_continuation' instead of 'generate_proof' for faster proving");
+        let prev_circuit = AttestationsAggregator1Circuit::new();
+        let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
+        let proof = self.circuit_data.prove(pw)?;
+        Ok(AttestationsAggregator2Proof { proof })
+    }
+}
 impl Circuit for AttestationsAggregator2Circuit {
-    type Data = AttestationsAggregator2Data;
     type Proof = AttestationsAggregator2Proof;
 
     fn new() -> Self {
@@ -50,14 +58,6 @@ impl Circuit for AttestationsAggregator2Circuit {
         let circuit_data = builder.build::<Config>();
 
         Self { circuit_data, targets }
-    }
-    
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
-        log::warn!("AttestationsAggregator2Circuit: use 'generate_proof_continuation' instead of 'generate_proof' for faster proving");
-        let prev_circuit = AttestationsAggregator1Circuit::new();
-        let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
-        let proof = self.circuit_data.prove(pw)?;
-        Ok(AttestationsAggregator2Proof { proof })
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {

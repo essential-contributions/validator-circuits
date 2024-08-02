@@ -54,8 +54,14 @@ struct ValidatorsStateCircuitTargets {
     verifier: VerifierCircuitTarget,
     previous_proof: ProofWithPublicInputsTarget<D>,
 }
+impl ValidatorsStateCircuit {
+    pub fn generate_proof(&self, data: &ValidatorsStateCircuitData) -> Result<ValidatorsStateProof> {
+        let pw = generate_partial_witness(&self.circuit_data, &self.targets, data)?;
+        let proof = self.circuit_data.prove(pw)?;
+        Ok(ValidatorsStateProof { proof })
+    }
+}
 impl Circuit for ValidatorsStateCircuit {
-    type Data = ValidatorsStateCircuitData;
     type Proof = ValidatorsStateProof;
     
     fn new() -> Self {
@@ -65,12 +71,6 @@ impl Circuit for ValidatorsStateCircuit {
         let circuit_data = builder.build::<Config>();
 
         Self { circuit_data, targets }
-    }
-
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
-        let pw = generate_partial_witness(&self.circuit_data, &self.targets, data)?;
-        let proof = self.circuit_data.prove(pw)?;
-        Ok(ValidatorsStateProof { proof })
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {

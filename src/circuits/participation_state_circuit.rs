@@ -44,8 +44,14 @@ struct ParticipationStateCircuitTargets {
     verifier: VerifierCircuitTarget,
     previous_proof: ProofWithPublicInputsTarget<D>,
 }
+impl ParticipationStateCircuit {
+    pub fn generate_proof(&self, data: &ParticipationStateCircuitData) -> Result<ParticipationStateProof> {
+        let pw = generate_partial_witness(&self.circuit_data, &self.targets, data)?;
+        let proof = self.circuit_data.prove(pw)?;
+        Ok(ParticipationStateProof { proof })
+    }
+}
 impl Circuit for ParticipationStateCircuit {
-    type Data = ParticipationStateCircuitData;
     type Proof = ParticipationStateProof;
     
     fn new() -> Self {
@@ -55,12 +61,6 @@ impl Circuit for ParticipationStateCircuit {
         let circuit_data = builder.build::<Config>();
 
         Self { circuit_data, targets }
-    }
-
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
-        let pw = generate_partial_witness(&self.circuit_data, &self.targets, data)?;
-        let proof = self.circuit_data.prove(pw)?;
-        Ok(ParticipationStateProof { proof })
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {

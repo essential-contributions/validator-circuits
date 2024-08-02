@@ -42,8 +42,14 @@ struct AttsAgg1ValidatorTargets {
     reveal: Vec<Target>,
     reveal_proof: MerkleProofTarget,
 }
+impl AttestationsAggregator1Circuit {
+    pub fn generate_proof(&self, data: &AttestationsAggregator1Data) -> Result<AttestationsAggregator1Proof> {
+        let pw = generate_partial_witness(&self.targets, data)?;
+        let proof = self.circuit_data.prove(pw)?;
+        Ok(AttestationsAggregator1Proof { proof })
+    }
+}
 impl Circuit for AttestationsAggregator1Circuit {
-    type Data = AttestationsAggregator1Data;
     type Proof = AttestationsAggregator1Proof;
 
     fn new() -> Self {
@@ -53,12 +59,6 @@ impl Circuit for AttestationsAggregator1Circuit {
         let circuit_data = builder.build::<Config>();
 
         Self { circuit_data, targets }
-    }
-    
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
-        let pw = generate_partial_witness(&self.targets, data)?;
-        let proof = self.circuit_data.prove(pw)?;
-        Ok(AttestationsAggregator1Proof { proof })
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
