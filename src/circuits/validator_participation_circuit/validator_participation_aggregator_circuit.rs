@@ -16,7 +16,7 @@ use crate::circuits::extensions::{common_data_for_recursion, CircuitBuilderExten
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
 use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof, PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT, PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED, PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT};
 use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, VALIDATORS_STATE_CIRCUIT_DIR};
-use crate::participation::{empty_participation_root, participation_merkle_data, PARTICIPANTS_PER_FIELD, PARTICIPATION_BITS_BYTE_SIZE, PARTICIPATION_FIELDS_PER_LEAF, PARTICIPATION_TREE_HEIGHT};
+use crate::participation::{empty_participation_root, participation_merkle_data, PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF, PARTICIPATION_TREE_HEIGHT};
 use crate::validators::{empty_validators_tree_proof, empty_validators_tree_root};
 use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
@@ -129,30 +129,28 @@ impl Serializeable for ValidatorParticipationAggCircuit {
         if write_targets(&mut buffer, &self.targets).is_err() {
             return Err(anyhow!("Failed to serialize circuit targets"));
         }
-        let validators_state_verifier_bytes = self.validators_state_verifier.to_bytes();
-        if validators_state_verifier_bytes.is_err() {
+        if write_verifier(&mut buffer, &self.validators_state_verifier).is_err() {
             return Err(anyhow!("Failed to serialize sub circuit verifier"));
         }
-        buffer.write_all(&validators_state_verifier_bytes.unwrap()).expect("Buffer write failure");
 
         Ok(buffer)
     }
 
     fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
         let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
-        let targets = read_targets(&mut buffer);
-        if targets.is_err() {
-            return Err(anyhow!("Failed to deserialize circuit targets"));
-        }
-        let validators_state_verifier = VerifierOnlyCircuitData::<Config, D>::from_bytes(buffer.unread_bytes().to_vec());
-        if validators_state_verifier.is_err() {
-            return Err(anyhow!("Failed to deserialize sub circuit verifier"));
-        }
+        let targets = match read_targets(&mut buffer) {
+            Ok(targets) => Ok(targets),
+            Err(_) => Err(anyhow!("Failed to deserialize circuit targets")),
+        }?;
+        let validators_state_verifier = match read_verifier(&mut buffer) {
+            Ok(verifier) => Ok(verifier),
+            Err(_) => Err(anyhow!("Failed to deserialize sub circuit verifier")),
+        }?;
 
         Ok(Self { 
             circuit_data, 
-            targets: targets.unwrap(), 
-            validators_state_verifier: validators_state_verifier.unwrap() 
+            targets, 
+            validators_state_verifier, 
         })
     }
 }
@@ -710,36 +708,114 @@ fn account_to_fields(account: [u8; 20]) -> [Field; 5] {
 
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCircuitTargets) -> IoResult<()> {
-    todo!()
-    /*
+    buffer.write_target_hash(&targets.init_pr_tree_root)?;
+    buffer.write_target_vec(&targets.init_account_address)?;
+    buffer.write_target(targets.init_epoch)?;
+    buffer.write_target(targets.init_param_rf)?;
+    buffer.write_target(targets.init_param_st)?;
+
+    buffer.write_target_verifier_circuit(&targets.validators_state_verifier)?;
+    buffer.write_target_proof_with_public_inputs(&targets.validators_state_proof)?;
+
+    buffer.write_target(targets.validator_index)?;
     buffer.write_target(targets.validator_bit_index)?;
-    buffer.write_target_vec(&targets.participation_bits_fields)?;
-    buffer.write_target_hash(&targets.participation_root)?;
     buffer.write_target(targets.validator_field_index)?;
-    buffer.write_target_merkle_proof(&targets.participation_root_merkle_proof)?;
+    buffer.write_target(targets.validator_stake)?;
+    buffer.write_target_hash(&targets.validator_commitment)?;
+    buffer.write_target_merkle_proof(&targets.validator_stake_proof)?;
+    buffer.write_target_merkle_proof(&targets.account_validator_proof)?;
+
+    buffer.write_target(targets.gamma)?;
+    buffer.write_target(targets.lambda)?;
+    buffer.write_target(targets.round_issuance)?;
+    buffer.write_usize(targets.participation_rounds_targets.len())?;
+    for d in &targets.participation_rounds_targets {
+        buffer.write_target_hash(&d.participation_root)?;
+        buffer.write_target(d.participation_count)?;
+        buffer.write_target_merkle_proof(&d.participation_round_proof)?;
+
+        buffer.write_target_bool(d.skip_participation)?;
+        buffer.write_target_vec(&d.participation_bits_fields)?;
+        buffer.write_target_merkle_proof(&d.participation_proof)?;
+    }
+    
+    buffer.write_target_bool(targets.init_zero)?;
+    buffer.write_target_verifier_circuit(&targets.verifier)?;
+    buffer.write_target_proof_with_public_inputs(&targets.previous_proof)?;
 
     Ok(())
-    */
 }
 
 #[inline]
 fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCircuitTargets> {
-    todo!()
-    /*
+    let init_pr_tree_root = buffer.read_target_hash()?;
+    let init_account_address = buffer.read_target_vec()?;
+    let init_epoch = buffer.read_target()?;
+    let init_param_rf = buffer.read_target()?;
+    let init_param_st = buffer.read_target()?;
+
+    let validators_state_verifier = buffer.read_target_verifier_circuit()?;
+    let validators_state_proof = buffer.read_target_proof_with_public_inputs()?;
+
+    let validator_index = buffer.read_target()?;
     let validator_bit_index = buffer.read_target()?;
-    let participation_bits_fields = buffer.read_target_vec()?;
-    let participation_root = buffer.read_target_hash()?;
     let validator_field_index = buffer.read_target()?;
-    let participation_root_merkle_proof = buffer.read_target_merkle_proof()?;
+    let validator_stake = buffer.read_target()?;
+    let validator_commitment = buffer.read_target_hash()?;
+    let validator_stake_proof = buffer.read_target_merkle_proof()?;
+    let account_validator_proof = buffer.read_target_merkle_proof()?;
+
+    let gamma = buffer.read_target()?;
+    let lambda = buffer.read_target()?;
+    let round_issuance = buffer.read_target()?;
+    let mut participation_rounds_targets: Vec<ValidatorParticipationRoundTargets> = Vec::new();
+    let participation_rounds_targets_length = buffer.read_usize()?;
+    for _ in 0..participation_rounds_targets_length {
+        let participation_root = buffer.read_target_hash()?;
+        let participation_count = buffer.read_target()?;
+        let participation_round_proof = buffer.read_target_merkle_proof()?;
+
+        let skip_participation = buffer.read_target_bool()?;
+        let participation_bits_fields = buffer.read_target_vec()?;
+        let participation_proof = buffer.read_target_merkle_proof()?;
+
+        participation_rounds_targets.push(ValidatorParticipationRoundTargets {
+            participation_root,
+            participation_count,
+            participation_round_proof,
+            skip_participation,
+            participation_bits_fields,
+            participation_proof,
+        });
+    }
+    
+    let init_zero = buffer.read_target_bool()?;
+    let verifier = buffer.read_target_verifier_circuit()?;
+    let previous_proof = buffer.read_target_proof_with_public_inputs()?;
 
     Ok(ValidatorParticipationAggCircuitTargets {
+        init_pr_tree_root,
+        init_account_address,
+        init_epoch,
+        init_param_rf,
+        init_param_st,
+        validators_state_verifier,
+        validators_state_proof,
+        validator_index,
         validator_bit_index,
-        participation_bits_fields,
-        participation_root,
         validator_field_index,
-        participation_root_merkle_proof,
+        validator_stake,
+        validator_commitment,
+        validator_stake_proof,
+        account_validator_proof,
+        gamma,
+        lambda,
+        round_issuance,
+        participation_rounds_targets,
+        init_zero,
+        verifier,
+        previous_proof,
     })
-    */
 }
 
 fn build_empty_participation_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
@@ -776,4 +852,22 @@ fn integer_sqrt(n: u64) -> u64 {
     }
 
     result
+}
+
+#[inline]
+fn write_verifier(buffer: &mut Vec<u8>, verifier: &VerifierOnlyCircuitData<Config, D>) -> IoResult<()> {
+    let bytes = verifier.to_bytes()?;
+    buffer.write_usize(bytes.len())?;
+    buffer.write_all(&bytes)?;
+
+    Ok(())
+}
+
+#[inline]
+fn read_verifier(buffer: &mut Buffer) -> IoResult<VerifierOnlyCircuitData<Config, D>> {
+    let len = buffer.read_usize()?;
+    let mut bytes = vec![0u8; len];
+    buffer.read_exact(&mut bytes)?;
+
+    VerifierOnlyCircuitData::<Config, D>::from_bytes(bytes)
 }

@@ -1,26 +1,16 @@
-use plonky2::hash::hash_types::{HashOut, HashOutTarget};
-use plonky2::hash::merkle_proofs::MerkleProofTarget;
-use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
-use plonky2::field::types::{Field as Plonky2_Field, Field64, PrimeField64};
+use plonky2::field::types::PrimeField64;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, CommonCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
-use anyhow::{anyhow, Result};
-use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
-use plonky2::recursion::dummy_circuit::cyclic_base_proof;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use anyhow::{anyhow, Result};
 
-use crate::circuits::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
 use crate::circuits::participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof, PIS_PARTICIPATION_ROUNDS_TREE_ROOT, PIS_PARTICIPATION_STATE_INPUTS_HASH};
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof, PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT, PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED, PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT};
-use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR};
-use crate::participation::{empty_participation_root, participation_merkle_data, PARTICIPANTS_PER_FIELD, PARTICIPATION_BITS_BYTE_SIZE, PARTICIPATION_FIELDS_PER_LEAF, PARTICIPATION_TREE_HEIGHT};
-use crate::validators::{empty_validators_tree_proof, empty_validators_tree_root};
-use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
-use crate::Hash;
+use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR};
+use crate::{Config, Field, D};
 
 use super::{ValidatorParticipationAggCircuit, ValidatorParticipationAggProof, PIS_AGG_ACCOUNT_ADDRESS, PIS_AGG_FROM_EPOCH, PIS_AGG_PARAM_RF, PIS_AGG_PARAM_ST, PIS_AGG_PR_TREE_ROOT, PIS_AGG_TO_EPOCH, PIS_AGG_WITHDRAW_MAX, PIS_AGG_WITHDRAW_UNEARNED};
 
@@ -109,33 +99,37 @@ impl Serializeable for ValidatorParticipationAggEndCircuit {
         if write_targets(&mut buffer, &self.targets).is_err() {
             return Err(anyhow!("Failed to serialize circuit targets"));
         }
-        //let validators_state_verifier_bytes = self.validators_state_verifier.to_bytes();
-        //if validators_state_verifier_bytes.is_err() {
-        //    return Err(anyhow!("Failed to serialize sub circuit verifier"));
-        //}
-        //buffer.write_all(&validators_state_verifier_bytes.unwrap()).expect("Buffer write failure");
+        if write_verifier(&mut buffer, &self.participation_agg_verifier).is_err() {
+            return Err(anyhow!("Failed to serialize sub circuit verifier"));
+        }
+        if write_verifier(&mut buffer, &self.participation_state_verifier).is_err() {
+            return Err(anyhow!("Failed to serialize sub circuit verifier"));
+        }
 
-        //Ok(buffer)
-        todo!()
+        Ok(buffer)
     }
 
     fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
         let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
-        let targets = read_targets(&mut buffer);
-        if targets.is_err() {
-            return Err(anyhow!("Failed to deserialize circuit targets"));
-        }
-        //let validators_state_verifier = VerifierOnlyCircuitData::<Config, D>::from_bytes(buffer.unread_bytes().to_vec());
-        //if validators_state_verifier.is_err() {
-        //    return Err(anyhow!("Failed to deserialize sub circuit verifier"));
-        //}
+        let targets = match read_targets(&mut buffer) {
+            Ok(targets) => Ok(targets),
+            Err(_) => Err(anyhow!("Failed to deserialize circuit targets")),
+        }?;
+        let participation_agg_verifier = match read_verifier(&mut buffer) {
+            Ok(verifier) => Ok(verifier),
+            Err(_) => Err(anyhow!("Failed to deserialize sub circuit verifier")),
+        }?;
+        let participation_state_verifier = match read_verifier(&mut buffer) {
+            Ok(verifier) => Ok(verifier),
+            Err(_) => Err(anyhow!("Failed to deserialize sub circuit verifier")),
+        }?;
 
-        //Ok(Self { 
-        //    circuit_data, 
-        //    targets: targets.unwrap(), 
-        //    validators_state_verifier: validators_state_verifier.unwrap() 
-        //})
-        todo!()
+        Ok(Self { 
+            circuit_data, 
+            targets, 
+            participation_agg_verifier,
+            participation_state_verifier,
+        })
     }
 }
 
@@ -311,34 +305,45 @@ fn generate_partial_witness(
 
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggEndCircuitTargets) -> IoResult<()> {
-    todo!()
-    /*
-    buffer.write_target(targets.validator_bit_index)?;
-    buffer.write_target_vec(&targets.participation_bits_fields)?;
-    buffer.write_target_hash(&targets.participation_root)?;
-    buffer.write_target(targets.validator_field_index)?;
-    buffer.write_target_merkle_proof(&targets.participation_root_merkle_proof)?;
+    buffer.write_target_proof_with_public_inputs(&targets.participation_agg_proof)?;
+    buffer.write_target_verifier_circuit(&targets.participation_agg_verifier)?;
+
+    buffer.write_target_proof_with_public_inputs(&targets.participation_agg_proof)?;
+    buffer.write_target_verifier_circuit(&targets.participation_state_verifier)?;
 
     Ok(())
-    */
 }
 
 #[inline]
 fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggEndCircuitTargets> {
-    todo!()
-    /*
-    let validator_bit_index = buffer.read_target()?;
-    let participation_bits_fields = buffer.read_target_vec()?;
-    let participation_root = buffer.read_target_hash()?;
-    let validator_field_index = buffer.read_target()?;
-    let participation_root_merkle_proof = buffer.read_target_merkle_proof()?;
+    let participation_agg_proof = buffer.read_target_proof_with_public_inputs()?;
+    let participation_agg_verifier = buffer.read_target_verifier_circuit()?;
+
+    let participation_state_proof = buffer.read_target_proof_with_public_inputs()?;
+    let participation_state_verifier = buffer.read_target_verifier_circuit()?;
 
     Ok(ValidatorParticipationAggEndCircuitTargets {
-        validator_bit_index,
-        participation_bits_fields,
-        participation_root,
-        validator_field_index,
-        participation_root_merkle_proof,
+        participation_agg_proof,
+        participation_agg_verifier,
+        participation_state_proof,
+        participation_state_verifier,
     })
-    */
+}
+
+#[inline]
+fn write_verifier(buffer: &mut Vec<u8>, verifier: &VerifierOnlyCircuitData<Config, D>) -> IoResult<()> {
+    let bytes = verifier.to_bytes()?;
+    buffer.write_usize(bytes.len())?;
+    buffer.write_all(&bytes)?;
+
+    Ok(())
+}
+
+#[inline]
+fn read_verifier(buffer: &mut Buffer) -> IoResult<VerifierOnlyCircuitData<Config, D>> {
+    let len = buffer.read_usize()?;
+    let mut bytes = vec![0u8; len];
+    buffer.read_exact(&mut bytes)?;
+
+    VerifierOnlyCircuitData::<Config, D>::from_bytes(bytes)
 }
