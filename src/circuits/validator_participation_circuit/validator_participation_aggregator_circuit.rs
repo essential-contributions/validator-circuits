@@ -74,8 +74,19 @@ struct ValidatorParticipationRoundTargets {
     participation_bits_fields: Vec<Target>,
     participation_proof: MerkleProofTarget,
 }
+impl ValidatorParticipationAggCircuit {
+    pub fn generate_proof(&self, data: &ValidatorParticipationAggCircuitData) -> Result<ValidatorParticipationAggProof> {
+        let pw = generate_partial_witness(
+            &self.targets, 
+            data, 
+            &self.circuit_data, 
+            &self.validators_state_verifier,
+        )?;
+        let proof = self.circuit_data.prove(pw)?;
+        Ok(ValidatorParticipationAggProof { proof })
+    }
+}
 impl Circuit for ValidatorParticipationAggCircuit {
-    type Data = ValidatorParticipationAggCircuitData;
     type Proof = ValidatorParticipationAggProof;
     
     fn new() -> Self {
@@ -89,17 +100,6 @@ impl Circuit for ValidatorParticipationAggCircuit {
         let circuit_data = builder.build::<Config>();
 
         Self { circuit_data, targets, validators_state_verifier }
-    }
-    
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
-        let pw = generate_partial_witness(
-            &self.targets, 
-            data, 
-            &self.circuit_data, 
-            &self.validators_state_verifier,
-        )?;
-        let proof = self.circuit_data.prove(pw)?;
-        Ok(ValidatorParticipationAggProof { proof })
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -573,8 +573,12 @@ fn generate_partial_witness(
         Some(v) => Some(v.index),
         None => None,
     };
-    assert!(validator_index.is_none() || validator_index.unwrap() < MAX_VALIDATORS, "Invalid validator index (max: {})", MAX_VALIDATORS);
-    assert_eq!(data.participation_rounds.len(), PARTICIPATION_ROUNDS_PER_STATE_EPOCH, "Incorrect number of rounds data (expected: {})", PARTICIPATION_ROUNDS_PER_STATE_EPOCH);
+    if validator_index.is_some_and(|i| i >= MAX_VALIDATORS) {
+        return Err(anyhow!("Invalid validator index (max: {})", MAX_VALIDATORS));
+    }
+    if data.participation_rounds.len() != PARTICIPATION_ROUNDS_PER_STATE_EPOCH {
+        return Err(anyhow!("Incorrect number of rounds data (expected: {})", PARTICIPATION_ROUNDS_PER_STATE_EPOCH));
+    }
     let mut pw = PartialWitness::new();
 
     //validators state proof
@@ -623,7 +627,7 @@ fn generate_partial_witness(
     pw.set_target(targets.round_issuance, Field::from_canonical_u64(round_issuance));
 
     //participation rounds targets
-    targets.participation_rounds_targets.iter().zip(data.participation_rounds.clone()).for_each(|(t, d)| {
+    for (t, d) in targets.participation_rounds_targets.iter().zip(data.participation_rounds.clone()) {
         pw.set_hash_target(t.participation_root, HashOut::<Field> { elements: d.participation_root });
         pw.set_target(t.participation_count, Field::from_canonical_u32(d.participation_count));
         pw.set_merkle_proof_target(t.participation_round_proof.clone(), &d.participation_round_proof);
@@ -632,7 +636,9 @@ fn generate_partial_witness(
             let validator_index = validator_index.unwrap();
             let participation_bits = d.participation_bits.unwrap();
             let participation_merkle_data = participation_merkle_data(&participation_bits, validator_index);
-            assert_eq!(participation_merkle_data.root, d.participation_root, "Root caluclated from participation bits is different from given root");
+            if participation_merkle_data.root != d.participation_root {
+                return Err(anyhow!("Root caluclated from participation bits is different from given root"));
+            }
             pw.set_bool_target(t.skip_participation, false);
             pw.set_target_arr(&t.participation_bits_fields, &participation_merkle_data.leaf_fields);
             pw.set_merkle_proof_target(t.participation_proof.clone(), &participation_merkle_data.proof);
@@ -643,7 +649,7 @@ fn generate_partial_witness(
             pw.set_target_arr(&t.participation_bits_fields, &participation_merkle_data.leaf_fields);
             pw.set_merkle_proof_target(t.participation_proof.clone(), &participation_merkle_data.proof);
         }
-    });
+    }
     
     //previous data to build off of
     match &data.previous_data {

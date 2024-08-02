@@ -67,17 +67,8 @@ impl ValidatorParticipationAggEndCircuit {
 
         Self { circuit_data, targets, participation_agg_verifier, participation_state_verifier }
     }
-}
-impl Circuit for ValidatorParticipationAggEndCircuit {
-    type Data = ValidatorParticipationAggEndCircuitData;
-    type Proof = ValidatorParticipationAggEndProof;
-    
-    fn new() -> Self {
-        let participation_agg_circuit = ValidatorParticipationAggCircuit::new();
-        Self::from_subcircuits(&participation_agg_circuit)
-    }
-    
-    fn generate_proof(&self, data: &Self::Data) -> Result<Self::Proof> {
+
+    pub fn generate_proof(&self, data: &ValidatorParticipationAggEndCircuitData) -> Result<ValidatorParticipationAggEndProof> {
         let pw = generate_partial_witness(
             &self.targets, 
             data, 
@@ -86,6 +77,14 @@ impl Circuit for ValidatorParticipationAggEndCircuit {
         )?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ValidatorParticipationAggEndProof { proof })
+    }
+}
+impl Circuit for ValidatorParticipationAggEndCircuit {
+    type Proof = ValidatorParticipationAggEndProof;
+    
+    fn new() -> Self {
+        let participation_agg_circuit = ValidatorParticipationAggCircuit::new();
+        Self::from_subcircuits(&participation_agg_circuit)
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {

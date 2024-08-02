@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, Circuit, PARTICIPATION_STATE_CIRCUIT_DIR}, participation::{ParticipationBits, ParticipationRound, ParticipationRoundsTree}};
+use validator_circuits::{circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, Circuit, PARTICIPATION_STATE_CIRCUIT_DIR}, participation::{ParticipationRound, ParticipationRoundsTree}};
 use validator_circuits::circuits::participation_state_circuit::ParticipationStateCircuit;
 
 pub fn benchmark_prove_participation_state(full: bool) {
@@ -25,7 +25,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
         state_inputs_hash: [1u8; 32],
         participation_root: [Field::ONE; 4],
         participation_count: 100,
-        participation_bits: ParticipationBits { bit_flags: vec![7, 8, 9, 10] },
+        participation_bits: Some(vec![7, 8, 9, 10]),
     };
     let current_round_data = participation_rounds_tree.round(round.num);
     println!("Generating 1st Proof (from initial state)...");
@@ -57,7 +57,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
         state_inputs_hash: [1u8; 32],
         participation_root: [Field::TWO; 4],
         participation_count: 7700,
-        participation_bits: ParticipationBits { bit_flags: vec![55, 55, 55, 55] },
+        participation_bits: Some(vec![55, 55, 55, 55]),
     };
     let current_round_data = participation_rounds_tree.round(round.num);
     println!("Generating 2nd Round Proof...");
@@ -89,7 +89,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
         state_inputs_hash: [1u8; 32],
         participation_root: [Field::TWO, Field::ONE, Field::TWO, Field::ONE],
         participation_count: 7699,
-        participation_bits: ParticipationBits { bit_flags: vec![44, 44, 44, 44] },
+        participation_bits: Some(vec![44, 44, 44, 44]),
     };
     let current_round_data = participation_rounds_tree.round(round.num);
     println!("Generating 3rd Round Proof...");
@@ -121,7 +121,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
         state_inputs_hash: [89u8; 32],
         participation_root: [Field::ZERO, Field::ONE, Field::TWO, Field::ZERO],
         participation_count: 100_000,
-        participation_bits: ParticipationBits { bit_flags: vec![123, 99] },
+        participation_bits: Some(vec![123, 99]),
     };
     let current_round_data = participation_rounds_tree.round(round.num);
     println!("Generating 4th Round Proof...");
@@ -153,7 +153,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
         state_inputs_hash: [89u8; 32],
         participation_root: [Field::from_canonical_u64(123); 4],
         participation_count: 100_000,
-        participation_bits: ParticipationBits { bit_flags: vec![255, 52, 1] },
+        participation_bits: Some(vec![255, 52, 1]),
     };
     let current_round_data = participation_rounds_tree.round(round.num);
     println!("Generating 5th Round Proof...");

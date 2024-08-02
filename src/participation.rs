@@ -16,12 +16,7 @@ pub const PARTICIPATION_FIELDS_PER_LEAF: usize = div_ceil(AGGREGATION_PASS1_SIZE
 pub const PARTICIPATION_BITS_BYTE_SIZE: usize = (AGGREGATION_PASS1_SIZE * AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE) / 8;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
-//TODO: store ParticipationBits in disk rather than memory
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ParticipationBits {
-    pub bit_flags: Vec<u8>,
-}
+//TODO: store participation_bits in disk rather than memory
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ParticipationRound {
@@ -29,14 +24,14 @@ pub struct ParticipationRound {
     pub state_inputs_hash: [u8; 32],
     pub participation_root: [Field; 4],
     pub participation_count: u32,
-    pub participation_bits: ParticipationBits,
+    pub participation_bits: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ParticipationRoundData {
     pub participation_root: [Field; 4],
     pub participation_count: u32,
-    pub participation_bits: ParticipationBits,
+    pub participation_bits: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -55,9 +50,7 @@ impl ParticipationRoundsTree {
         let default_round_data = ParticipationRoundData {
             participation_root: empty_participation_root(),
             participation_count: 0,
-            participation_bits: ParticipationBits {
-                bit_flags: Vec::<u8>::new(),
-            },
+            participation_bits: None,
         };
         let mut rounds_tree = Self { 
             state_inputs_hashes: HashMap::new(), 
