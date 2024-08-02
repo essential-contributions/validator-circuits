@@ -9,8 +9,8 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use anyhow::{anyhow, Result};
 use plonky2::util::serialization::Write;
 
-use crate::{accounts::AccountsTree, commitment::example_commitment_proof, participation::ParticipationRoundsTree, validators::{example_validator_set, ValidatorsTree}, Config, Field, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
-use super::{participation_state_circuit::ParticipationStateProof, validators_state_circuit::ValidatorsStateProof, Circuit, Proof, Serializeable};
+use crate::{accounts::{null_account_address, Account, AccountsTree}, circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use super::{participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, Serializeable};
 
 //TODO: proof generation needs to be able to reference validators_tree at specific epochs (see todo in validators.rs)
 
@@ -54,24 +54,44 @@ impl Circuit for ValidatorParticipationCircuit {
     }
 
     fn wrappable_example_proof(&self) -> Option<Self::Proof> {
-        todo!()
-        /*
-        log::info!("Generating example sub proof for secondary group");
-        let proof1 = self.attestations_aggregator1.generate_proof(
-            &example_data_agg1(),
-        ).unwrap();
-        log::info!("Generating example sub proof for primary group");
-        let proof2 = self.attestations_aggregator2.generate_proof_continuation(
-            &example_data_agg2(&proof1), 
-            &self.attestations_aggregator1,
-        ).unwrap();
-        log::info!("Generating final aggregate example proof");
-        let proof3 = self.attestations_aggregator3.generate_proof_continuation(
-            &example_data_agg3(&proof2), 
-            &self.attestations_aggregator2,
-        ).unwrap();
-        Some(ValidatorParticipationProof { proof: proof3 })
-        */
+        //load sub circuits
+        let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+        let participation_state_circuit = load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
+
+        //create prerequisite data
+        let accounts = [[77u8; 20]];
+        let validator_indexes = [77];
+        let stakes = [64];
+        let rounds = [32];
+        let (validators_tree, 
+            accounts_tree, 
+            validators_state_proof,
+        ) = example_validators_state(
+            &validators_state_circuit,
+            &accounts,
+            &validator_indexes,
+            &stakes,
+        );
+        let (participation_rounds_tree, 
+            participation_state_proof,
+        ) = example_participation_state(
+            &participation_state_circuit,
+            &validator_indexes,
+            validators_state_proof.inputs_hash(),
+            &rounds,
+        );
+
+        //generate proof
+        let data = ValidatorParticipationCircuitData {
+            account_address: accounts[0],
+            from_epoch: 0,
+            to_epoch: 1,
+            rf: 13093,
+            st: 84,
+            validators_state_proof: validators_state_proof.clone(),
+            participation_state_proof: participation_state_proof.clone(),
+        };
+        Some(generate_proof_from_data(&self, &data, &validators_tree, &accounts_tree, &participation_rounds_tree).unwrap())
     }
 }
 impl Serializeable for ValidatorParticipationCircuit {
@@ -94,7 +114,7 @@ impl Serializeable for ValidatorParticipationCircuit {
 
     fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
         let mut be_bytes = [0u8; 8];
-        let start1 = 16;
+        let start1 = 8;
         be_bytes.copy_from_slice(&bytes[0..8]);
         let start2 = start1 + (u64::from_be_bytes(be_bytes) as usize);
 
@@ -176,6 +196,8 @@ fn generate_proof_from_data(
     if data.validators_state_proof.validators_tree_root() != validators_tree.root() {
         return Err(anyhow!("Validators tree root does not match the given validators state proof."));
     }
+    println!("data.validators_state_proof.accounts_tree_root() {:?}", data.validators_state_proof.accounts_tree_root());//////////
+    println!("accounts_tree.root() {:?}", accounts_tree.root());////////////////////////
     if data.validators_state_proof.accounts_tree_root() != accounts_tree.root() {
         return Err(anyhow!("Accounts tree root does not match the given validators state proof."));
     }
@@ -250,81 +272,130 @@ fn write_all(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
     Ok(result.unwrap())
 }
 
-/*
-fn example_data_agg1() -> ValidatorParticipation1Data {
-    let num_attestations = 500;
-    let validator_set = example_validator_set();
-    let validators: Vec<ValidatorParticipation1ValidatorData> = (0..ATTESTATION_AGGREGATION_PASS1_SIZE).map(|i| {
-        let validator = validator_set.validator(i);
-        if i < num_attestations {
-            let commitment_proof = example_commitment_proof(i);
-            ValidatorParticipation1ValidatorData {
-                stake: validator.stake,
-                commitment_root: validator.commitment_root,
-                reveal: Some(ValidatorParticipation1RevealData {
-                    reveal: commitment_proof.reveal,
-                    reveal_proof: commitment_proof.proof,
-                }),
-            }
-        } else {
-            ValidatorParticipation1ValidatorData {
-                stake: validator.stake,
-                commitment_root: validator.commitment_root,
-                reveal: None,
-            }
-        }
-    }).collect();
+fn example_validators_state(
+    validators_state_circuit: &ValidatorsStateCircuit,
+    accounts: &[[u8; 20]],
+    validator_indexes: &[usize],
+    stakes: &[u32],
+) -> (
+    ValidatorsTree, //validators_tree
+    AccountsTree, //accounts_tree
+    ValidatorsStateProof //validators_state_proof
+) {
+    log::info!("Generating example accounts");
+    let mut validators_tree = ValidatorsTree::new();
+    let mut accounts_tree = AccountsTree::new();
 
-    ValidatorParticipation1Data {
-        block_slot: 100,
-        validators,
+    log::info!("Generating example validator state sub proof");
+    let mut previous_proof: Option<ValidatorsStateProof> = None;
+    for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
+        let commitment = example_commitment_root(validator_index);
+        let data = compile_data_for_validators_state_circuit(
+            &accounts_tree,
+            &validators_tree,
+            validator_index,
+            stake,
+            commitment,
+            account,
+            null_account_address(validator_index),
+            account,
+            previous_proof,
+        );
+        let proof = validators_state_circuit.generate_proof(&data).unwrap();
+        assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+        validators_tree.set_validator(validator_index, Validator { commitment_root: commitment, stake });
+        accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
+        previous_proof = Some(proof);
     }
+    let validators_state_proof = previous_proof.unwrap();
+            
+    (
+        validators_tree, //validators_tree
+        accounts_tree, //accounts_tree
+        validators_state_proof, //validators_state_proof
+    )
 }
 
-fn example_data_agg2(agg1_proof: &ValidatorParticipation1Proof) -> ValidatorParticipation2Data {
-    let validator_set = example_validator_set();
-    let agg1_data: Vec<ValidatorParticipation2Agg1Data> = (0..ATTESTATION_AGGREGATION_PASS2_SIZE).map(|i| {
-        let validators_sub_root = validator_set.sub_root(AGGREGATION_PASS1_SUB_TREE_HEIGHT, i);
-        if i == 0 {
-            ValidatorParticipation2Agg1Data {
-                validators_sub_root,
-                agg1_proof: Some(agg1_proof.clone()),
-            }
-        } else {
-            ValidatorParticipation2Agg1Data {
-                validators_sub_root,
-                agg1_proof: None,
-            }
-        }
-    }).collect();
-
-    ValidatorParticipation2Data {
-        block_slot: 100,
-        agg1_data,
+fn example_participation_state(
+    participation_state_circuit: &ParticipationStateCircuit,
+    validator_indexes: &[usize],
+    state_inputs_hash: [u8; 32],
+    rounds: &[usize],
+) -> (
+    ParticipationRoundsTree, //participation_rounds_tree
+    ParticipationStateProof //participation_state_proof
+) {
+    let mut participation_rounds_tree = ParticipationRoundsTree::new();
+    let mut bit_flags: Vec<u8> = vec![0u8; PARTICIPATION_BITS_BYTE_SIZE];
+    for validator_index in validator_indexes {
+        bit_flags[validator_index / 8] += 0x80 >> (validator_index % 8);
     }
+
+    log::info!("Generating example participation state sub proof");
+    let mut previous_proof: Option<ParticipationStateProof> = None;
+    for num in rounds {
+        let round = ParticipationRound {
+            num: *num,
+            state_inputs_hash,
+            participation_root: participation_root(&bit_flags),
+            participation_count: validator_indexes.len() as u32,
+            participation_bits: Some(bit_flags.clone()),
+        };
+        let current_round_data = participation_rounds_tree.round(round.num);
+        let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
+            round_num: round.num,
+            state_inputs_hash: round.state_inputs_hash,
+            participation_root: round.participation_root,
+            participation_count: round.participation_count,
+            current_state_inputs_hash: current_round_data.state_inputs_hash,
+            current_participation_root: current_round_data.participation_root,
+            current_participation_count: current_round_data.participation_count,
+            participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
+            previous_proof,
+        }).unwrap();
+        assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
+        participation_rounds_tree.update_round(round.clone());
+        previous_proof = Some(proof);
+    }
+    let participation_state_proof = previous_proof.unwrap();
+    
+    (
+        participation_rounds_tree, //accounts_tree
+        participation_state_proof, //participation_state_proof
+    )
 }
 
-fn example_data_agg3(agg2_proof: &ValidatorParticipation2Proof) -> ValidatorParticipation3Data {
-    let validator_set = example_validator_set();
-    let agg2_data: Vec<ValidatorParticipation3Agg2Data> = (0..ATTESTATION_AGGREGATION_PASS3_SIZE).map(|i| {
-        let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT + AGGREGATION_PASS2_SUB_TREE_HEIGHT;
-        let validators_sub_root = validator_set.sub_root(height, i);
-        if i == 0 {
-            ValidatorParticipation3Agg2Data {
-                validators_sub_root,
-                agg2_proof: Some(agg2_proof.clone()),
-            }
-        } else {
-            ValidatorParticipation3Agg2Data {
-                validators_sub_root,
-                agg2_proof: None,
-            }
-        }
-    }).collect();
+fn compile_data_for_validators_state_circuit(
+    accounts_tree: &AccountsTree,
+    validators_tree: &ValidatorsTree,
+    index: usize,
+    stake: u32,
+    commitment: [Field; 4],
+    account: [u8; 20],
+    from_account: [u8; 20],
+    to_account: [u8; 20],
+    previous_proof: Option<ValidatorsStateProof>,
+) -> ValidatorsStateCircuitData {
+    let curr_validator = validators_tree.validator(index);
+    ValidatorsStateCircuitData {
+        index,
+        stake,
+        commitment,
+        account,
 
-    ValidatorParticipation3Data {
-        block_slot: 100,
-        agg2_data,
+        validator_index: index,
+        validator_stake: curr_validator.stake,
+        validator_commitment: curr_validator.commitment_root,
+        validator_proof: validators_tree.merkle_proof(index),
+
+        from_account,
+        from_acc_index: accounts_tree.account(from_account).validator_index,
+        from_acc_proof: accounts_tree.merkle_proof(from_account),
+
+        to_account,
+        to_acc_index: accounts_tree.account(to_account).validator_index,
+        to_acc_proof: accounts_tree.merkle_proof(to_account),
+
+        previous_proof,
     }
 }
-*/

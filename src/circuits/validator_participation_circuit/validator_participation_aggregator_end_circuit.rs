@@ -308,7 +308,7 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggEndCir
     buffer.write_target_proof_with_public_inputs(&targets.participation_agg_proof)?;
     buffer.write_target_verifier_circuit(&targets.participation_agg_verifier)?;
 
-    buffer.write_target_proof_with_public_inputs(&targets.participation_agg_proof)?;
+    buffer.write_target_proof_with_public_inputs(&targets.participation_state_proof)?;
     buffer.write_target_verifier_circuit(&targets.participation_state_verifier)?;
 
     Ok(())

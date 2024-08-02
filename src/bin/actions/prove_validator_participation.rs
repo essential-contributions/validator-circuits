@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, save_proof_for_wrapping, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData, ValidatorParticipationAggEndCircuit, ValidatorParticipationAggEndCircuitData, ValidatorParticipationCircuit, ValidatorParticipationCircuitData, ValidatorParticipationValidatorData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, save_proof_for_wrapping, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData, ValidatorParticipationAggEndCircuit, ValidatorParticipationAggEndCircuitData, ValidatorParticipationCircuit, ValidatorParticipationCircuitData, ValidatorParticipationValidatorData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
 const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
 const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
@@ -22,8 +22,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     let start = Instant::now();
     let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
     let participation_state_circuit = load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
-    //let validator_participation_circuit = load_or_create_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
-    let participation_circuit = ValidatorParticipationCircuit::new();//////
+    let validator_participation_circuit = load_or_create_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -63,7 +62,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!("Generating Proof (account with no participation)...");
     let start: Instant = Instant::now();
     let bad_account = [13u8; 20];
-    let proof = participation_circuit.generate_proof(
+    let proof = validator_participation_circuit.generate_proof(
         &ValidatorParticipationCircuitData {
             account_address: bad_account,
             from_epoch: 0,
@@ -77,7 +76,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         &accounts_tree,
         &participation_rounds_tree,
     ).unwrap();
-    assert!(participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    assert!(validator_participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
     println!("(finished in {:?})", start.elapsed());
     println!("Proved validator participation at inputs hash 0x{}", to_hex(&proof.participation_inputs_hash()));
     println!("account_address - 0x{}", to_hex(&proof.account_address()));
@@ -93,7 +92,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!("Generating Proof (account with missing participation)...");
     let start: Instant = Instant::now();
     let missing_account = accounts[2];
-    let proof = participation_circuit.generate_proof(
+    let proof = validator_participation_circuit.generate_proof(
         &ValidatorParticipationCircuitData {
             account_address: missing_account,
             from_epoch: 0,
@@ -107,7 +106,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         &accounts_tree,
         &participation_rounds_tree,
     ).unwrap();
-    assert!(participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    assert!(validator_participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
     println!("(finished in {:?})", start.elapsed());
     println!("Proved validator participation at inputs hash 0x{}", to_hex(&proof.participation_inputs_hash()));
     println!("account_address - 0x{}", to_hex(&proof.account_address()));
@@ -122,7 +121,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     //build proofs for participation
     println!("Generating Proof for Multiple Epochs...");
     let start: Instant = Instant::now();
-    let proof = participation_circuit.generate_proof(
+    let proof = validator_participation_circuit.generate_proof(
         &ValidatorParticipationCircuitData {
             account_address: accounts[0],
             from_epoch: 0,
@@ -136,7 +135,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         &accounts_tree,
         &participation_rounds_tree,
     ).unwrap();
-    assert!(participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    assert!(validator_participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
     println!("(finished in {:?})", start.elapsed());
     println!("Proved validator participation at inputs hash 0x{}", to_hex(&proof.participation_inputs_hash()));
     println!("account_address - 0x{}", to_hex(&proof.account_address()));
@@ -158,12 +157,12 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     //prove
     println!("Generating Proof...");
     let start = Instant::now();
-    let proof = participation_circuit.generate_proof(&ParticipationCircuitData {
+    let proof = validator_participation_circuit.generate_proof(&ParticipationCircuitData {
         participation_bits,
         validator_index,
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
-    if participation_circuit.verify_proof(&proof).is_ok() {
+    if validator_participation_circuit.verify_proof(&proof).is_ok() {
         if proof.participated() {
             println!("Proved validator {} participated in root {:?}!", proof.validator_index(), proof.participation_root());
         } else {
@@ -177,7 +176,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!();
 
     if full {
-        let inner_circuit = participation_circuit.circuit_data();
+        let inner_circuit = validator_participation_circuit.circuit_data();
         let inner_proof = proof.proof();
 
         //wrap proof to bn128
