@@ -99,7 +99,7 @@ impl AccountsTree {
 
         self.accounts.iter().enumerate().for_each(|(i, (_, a))| {
             a.address.iter().enumerate().for_each(|(j, b)| bytes[(i * (20 + 4)) + j] = *b);
-            a.validator_index.to_be_bytes().iter().enumerate().for_each(|(j, b)| {
+            (a.validator_index as u32).to_be_bytes().iter().enumerate().for_each(|(j, b)| {
                 bytes[(i * (20 + 4)) + 20 + j] = *b;
             });
         });
