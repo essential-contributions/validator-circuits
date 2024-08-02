@@ -25,6 +25,12 @@ pub trait CircuitBuilderExtended {
     /// Computes the arithmetic generalization of `x < y`
     fn less_than(&mut self, x: Target, y: Target, num_bits: usize) -> BoolTarget;
 
+    /// Asserts that `r` is equal to `x / y` rounded to the nearest whole number.
+    fn div_round_down(&mut self, x: Target, y: Target, r: Target, num_bits: usize);
+
+    /// Asserts that `r` is equal to `sqrt(x)` rounded to the nearest whole number.
+    fn sqrt_round_down(&mut self, x: Target, r: Target, num_bits: usize);
+
     /// Selects `x` or `y` based on `b`, i.e., this returns `if b { x } else { y }`.
     fn select_hash(&mut self, b: BoolTarget, x: HashOutTarget, y: HashOutTarget) -> HashOutTarget;
 
@@ -119,6 +125,30 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
             previous_bit_comparison = self.or(y_bit_and_prev_comp_or_y_bit_and_not_x_bit, prev_comp_and_not_x_bit);
         }
         previous_bit_comparison
+    }
+
+    fn div_round_down(&mut self, x: Target, y: Target, r: Target, num_bits: usize) {
+        let one = self.one();
+        let r2 = self.add(r, one);
+        let low = self.mul(y, r);
+        let high = self.mul(y, r2);
+        let low_is_greater = self.greater_than(low, x, num_bits);
+        let high_is_greater = self.greater_than(high, x, num_bits);
+
+        self.assert_zero(low_is_greater.target);
+        self.assert_one(high_is_greater.target);
+    }
+
+    fn sqrt_round_down(&mut self, x: Target, r: Target, num_bits: usize) {
+        let one = self.one();
+        let r2 = self.add(r, one);
+        let low = self.mul(r, r);
+        let high = self.mul(r2, r2);
+        let low_is_greater = self.greater_than(low, x, num_bits);
+        let high_is_greater = self.greater_than(high, x, num_bits);
+
+        self.assert_zero(low_is_greater.target);
+        self.assert_one(high_is_greater.target);
     }
 
     fn select_hash(&mut self, b: BoolTarget, x: HashOutTarget, y: HashOutTarget) -> HashOutTarget {

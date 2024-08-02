@@ -54,8 +54,11 @@ struct ValidatorParticipationAggCircuitTargets {
     validator_stake: Target,
     validator_commitment: HashOutTarget,
     validator_stake_proof: MerkleProofTarget,
-    account_validator_index_proof: MerkleProofTarget,
+    account_validator_proof: MerkleProofTarget,
 
+    gamma: Target,
+    lambda: Target,
+    round_issuance: Target,
     participation_rounds_targets: Vec<ValidatorParticipationRoundTargets>,
     
     init_zero: BoolTarget,
@@ -195,7 +198,7 @@ impl ValidatorParticipationAggProof {
         self.proof.public_inputs[PIS_PARAM_RF].to_canonical_u64()
     }
 
-    pub fn parma_st(&self) -> u64 {
+    pub fn param_st(&self) -> u64 {
         self.proof.public_inputs[PIS_PARAM_ST].to_canonical_u64()
     }
 }
@@ -213,6 +216,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     let empty_participation_root = build_empty_participation_root(builder);
     let empty_stake_validators_root = build_empty_stake_root(builder);
     let agg_pass1_size = builder.constant(Field::from_canonical_usize(AGGREGATION_PASS1_SIZE));
+    let x1000000 = builder.constant(Field::from_canonical_u32(1000000));
     let null = builder.constant(Field::ZERO.sub_one());
     let zero = builder.zero();
     let one = builder.one();
@@ -264,7 +268,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     let validator_index = builder.add_virtual_target();
     let validator_index_is_null = builder.is_equal(validator_index, null);
     let validator_index_is_not_null = builder.not(validator_index_is_null);
-    let account_validator_index_proof = MerkleProofTarget {
+    let account_validator_proof = MerkleProofTarget {
         siblings: builder.add_virtual_hashes(ACCOUNTS_TREE_HEIGHT),
     };
     let account_address_bits: Vec<BoolTarget> = current_account_address.iter().rev().map(|t| {
@@ -274,7 +278,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
         vec![validator_index], 
         &account_address_bits, 
         validators_state_accounts_tree_root,
-        &account_validator_index_proof,
+        &account_validator_proof,
     );
     let validator_field_index = builder.add_virtual_target();
     let validator_bit_index = builder.add_virtual_target();
@@ -308,6 +312,19 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
         validator_stake_merkle_root,
         &validator_stake_proof,
     );
+
+    //Build constants for calculating withdrawals
+    let gamma = builder.add_virtual_target(); //`sqrt(total_staked * 1000000)` rounded down
+    let lambda = builder.add_virtual_target(); //`(rf * st * stake * 1000000) / gamma` rounded down
+    let round_issuance = builder.add_virtual_target(); //`(lambda * 1000000) / (total_staked + (st * 1000000))` rounded down
+    let total_staked_x1000000 = builder.mul(total_staked, x1000000);
+    builder.sqrt_round_down(total_staked_x1000000, gamma, 60);
+    let rf_st_stake_x1000000 = builder.mul_many(&[current_param_rf, current_param_st, validator_stake, x1000000]);
+    builder.div_round_down(rf_st_stake_x1000000, gamma, lambda, 60);
+    let st_x1000000 = builder.mul(current_param_st, x1000000);
+    let total_staked_st_x1000000 = builder.add(total_staked, st_x1000000);
+    let lambda_x1000000 = builder.mul(lambda, x1000000);
+    builder.div_round_down(lambda_x1000000, total_staked_st_x1000000, round_issuance, 60);
 
     //Start tracking the new withdraw values
     let mut new_withdraw_max = current_withdraw_max;
@@ -399,9 +416,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
         }
 
         //Compute total max withdraw value
-        //TODO: better compute amount based on things like total_staked
-        let amount = builder.mul(round_has_participation.target, one);
-        //TODO: amount = round has to have participation and account needs to be a validator
+        let amount = builder.mul_many(&[round_issuance, round_has_participation.target, validator_index_is_not_null.target]);
         new_withdraw_max = builder.add(new_withdraw_max, amount);
 
         //Compute unearned withdraw value
@@ -496,8 +511,11 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
         validator_stake,
         validator_commitment,
         validator_stake_proof,
-        account_validator_index_proof,
+        account_validator_proof,
     
+        gamma,
+        lambda,
+        round_issuance,
         participation_rounds_targets,
         
         init_zero,
@@ -585,7 +603,24 @@ fn generate_partial_witness(
             pw.set_merkle_proof_target(targets.validator_stake_proof.clone(), &empty_validators_tree_proof());
         },
     }
-    pw.set_merkle_proof_target(targets.account_validator_index_proof.clone(), &data.account_validator_proof);
+    pw.set_merkle_proof_target(targets.account_validator_proof.clone(), &data.account_validator_proof);
+
+    //participation round issuance
+    let (rf, st) = match &data.previous_data {
+        ValidatorPartAggPrevData::Start(start_data) => (start_data.param_rf, start_data.param_st),
+        ValidatorPartAggPrevData::Continue(previous_proof) => (previous_proof.param_rf(), previous_proof.param_st()),
+    };
+    let validator_stake = match &data.validator {
+        Some(validator) => validator.stake as u64,
+        None => 0,
+    };
+    let total_staked = data.validators_state_proof.total_staked() as u64;
+    let gamma = integer_sqrt(total_staked * 1000000); //`sqrt(total_staked * 1000000)` rounded down
+    let lambda = (rf * st * validator_stake * 1000000) / gamma; //`(rf * st * stake * 1000000) / gamma` rounded down
+    let round_issuance = (lambda * 1000000) / (total_staked + (st * 1000000)); //`(lambda * 1000000) / (total_staked + (st * 1000000))` rounded down
+    pw.set_target(targets.gamma, Field::from_canonical_u64(gamma));
+    pw.set_target(targets.lambda, Field::from_canonical_u64(lambda));
+    pw.set_target(targets.round_issuance, Field::from_canonical_u64(round_issuance));
 
     //participation rounds targets
     targets.participation_rounds_targets.iter().zip(data.participation_rounds.clone()).for_each(|(t, d)| {
@@ -713,4 +748,26 @@ fn build_empty_stake_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarg
     HashOutTarget {
         elements: root.map(|f| { builder.constant(f) }),
     }
+}
+
+fn integer_sqrt(n: u64) -> u64 {
+    if n == 0 {
+        return 0;
+    }
+
+    let mut left: u64 = 1;
+    let mut right: u64 = n;
+    let mut result: u64 = 0;
+
+    while left <= right {
+        let mid = left + (right - left) / 2;
+        if mid * mid <= n {
+            result = mid;
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+
+    result
 }

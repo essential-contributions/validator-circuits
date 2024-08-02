@@ -30,9 +30,9 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     //build proof for validator state
     println!("Building Validators State Data...");
     let start = Instant::now();
-    let accounts = [[11u8; 20], [22u8; 20]];
-    let validator_indexes = [10, 22];
-    let stakes = [64, 128];
+    let accounts = [[11u8; 20], [22u8; 20], [66u8; 20]];
+    let validator_indexes = [10, 22, 66];
+    let stakes = [64, 128, 32];
     let (validators_tree, 
         accounts_tree, 
         validators_state_proof,
@@ -52,7 +52,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         participation_state_proof,
     ) = build_participation_state(
         &participation_state_circuit,
-        &validator_indexes,
+        &validator_indexes[0..2],
         validators_state_proof.inputs_hash(),
         &[32, 48, 67, 100],
     );
@@ -83,8 +83,8 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             pr_tree_root: participation_rounds_tree.root(),
             account: bad_account,
             epoch: epoch as u32,
-            param_rf: 1122,
-            param_st: 3344,
+            param_rf: 13093,
+            param_st: 84,
         }),
     };
     let proof = participation_agg_circuit.generate_proof(&data).unwrap();
@@ -97,7 +97,53 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!("withdraw_max - {:?}", proof.withdraw_max());
     println!("withdraw_unearned - {:?}", proof.withdraw_unearned());
     println!("param_rf - {:?}", proof.param_rf());
-    println!("parma_st - {:?}", proof.parma_st());
+    println!("param_st - {:?}", proof.param_st());
+    println!();
+
+    //build proofs for participation
+    println!("Generating Proof (account with missing participation)...");
+    let start: Instant = Instant::now();
+    let epoch = 0;
+    let participation_rounds = (0..PARTICIPATION_ROUNDS_PER_STATE_EPOCH).map(|n| {
+        let round_num = (epoch * PARTICIPATION_ROUNDS_PER_STATE_EPOCH) + n;
+        let round = participation_rounds_tree.round(round_num);
+        ValidatorPartAggRoundData {
+            participation_root: round.participation_root,
+            participation_count: round.participation_count,
+            participation_round_proof: participation_rounds_tree.merkle_proof(round_num),
+            participation_bits: Some(round.participation_bits.bit_flags),
+        }
+    }).collect();
+    let validator = validators_tree.validator(validator_indexes[2]);
+    let data = ValidatorParticipationAggCircuitData {
+        validator: Some(ValidatorParticipationValidatorData {
+            index: validator_indexes[2],
+            stake: validator.stake,
+            commitment: validator.commitment_root,
+            proof: validators_tree.merkle_proof(validator_indexes[2]),
+        }),
+        account_validator_proof: accounts_tree.merkle_proof(accounts[2]),
+        validators_state_proof: validators_state_proof.clone(),
+        participation_rounds,
+        previous_data: ValidatorPartAggPrevData::Start(ValidatorPartAggStartData {
+            pr_tree_root: participation_rounds_tree.root(),
+            account: accounts[2],
+            epoch: epoch as u32,
+            param_rf: 13093,
+            param_st: 84,
+        }),
+    };
+    let proof = participation_agg_circuit.generate_proof(&data).unwrap();
+    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    println!("(finished in {:?})", start.elapsed());
+    println!("pr_tree_root - {:?}", proof.pr_tree_root());
+    println!("account_address - {:?}", proof.account_address());
+    println!("from_epoch - {:?}", proof.from_epoch());
+    println!("to_epoch - {:?}", proof.to_epoch());
+    println!("withdraw_max - {:?}", proof.withdraw_max());
+    println!("withdraw_unearned - {:?}", proof.withdraw_unearned());
+    println!("param_rf - {:?}", proof.param_rf());
+    println!("param_st - {:?}", proof.param_st());
     println!();
 
     //build proofs for participation
@@ -129,8 +175,8 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             pr_tree_root: participation_rounds_tree.root(),
             account: accounts[0],
             epoch: epoch as u32,
-            param_rf: 1122,
-            param_st: 3344,
+            param_rf: 13093,
+            param_st: 84,
         }),
     };
     let proof = participation_agg_circuit.generate_proof(&data).unwrap();
@@ -143,7 +189,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!("withdraw_max - {:?}", proof.withdraw_max());
     println!("withdraw_unearned - {:?}", proof.withdraw_unearned());
     println!("param_rf - {:?}", proof.param_rf());
-    println!("parma_st - {:?}", proof.parma_st());
+    println!("param_st - {:?}", proof.param_st());
     println!();
 
     //build proofs for participation
@@ -183,7 +229,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!("withdraw_max - {:?}", proof.withdraw_max());
     println!("withdraw_unearned - {:?}", proof.withdraw_unearned());
     println!("param_rf - {:?}", proof.param_rf());
-    println!("parma_st - {:?}", proof.parma_st());
+    println!("param_st - {:?}", proof.param_st());
     println!();
 
     

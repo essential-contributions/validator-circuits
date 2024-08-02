@@ -24,10 +24,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     println!("Building Accounts Tree...");
     let start = Instant::now();
     let mut accounts_tree = match load_accounts(&BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE) {
-        Ok(t) => {
-            println!("(loaded from file)");
-            t
-        },
+        Ok(tree) => tree,
         Err(_) => {
             let t = AccountsTree::new();
             println!("(finished in {:?})", start.elapsed());
