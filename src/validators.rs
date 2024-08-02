@@ -4,7 +4,6 @@ use rayon::prelude::*;
 use anyhow::{anyhow, Result};
 
 use crate::circuits::attestations_aggregator_circuit::{AttestationsAggregatorCircuit, AttestationsAggregatorCircuitData, AttestationsAggregatorProof, ValidatorData, ValidatorPrimaryGroupData, ValidatorRevealData, ValidatorSecondaryGroupData, ATTESTATION_AGGREGATION_PASS1_SIZE, ATTESTATION_AGGREGATION_PASS2_SIZE, ATTESTATION_AGGREGATION_PASS3_SIZE};
-use crate::circuits::Circuit;
 use crate::commitment::{example_commitment_root, EXAMPLE_COMMITMENTS_REPEAT};
 use crate::{field_hash, field_hash_two, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
