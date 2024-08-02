@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, save_proof_for_wrapping, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData, ValidatorParticipationValidatorData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationBits, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, save_proof_for_wrapping, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData, ValidatorParticipationAggEndCircuit, ValidatorParticipationAggEndCircuitData, ValidatorParticipationValidatorData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationBits, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
 const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
 const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
@@ -24,6 +24,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     let participation_state_circuit = load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
     //let validator_participation_circuit = load_or_create_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
     let participation_agg_circuit = ValidatorParticipationAggCircuit::new();//////
+    let participation_agg_end_circuit = ValidatorParticipationAggEndCircuit::from_subcircuits(&participation_agg_circuit);//////
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -91,7 +92,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
     println!("(finished in {:?})", start.elapsed());
     println!("pr_tree_root - {:?}", proof.pr_tree_root());
-    println!("account_address - {:?}", proof.account_address());
+    println!("account_address - 0x{}", to_hex(&proof.account_address()));
     println!("from_epoch - {:?}", proof.from_epoch());
     println!("to_epoch - {:?}", proof.to_epoch());
     println!("withdraw_max - {:?}", proof.withdraw_max());
@@ -134,10 +135,10 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         }),
     };
     let proof = participation_agg_circuit.generate_proof(&data).unwrap();
-    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validator participation proof verification failed.");
     println!("(finished in {:?})", start.elapsed());
     println!("pr_tree_root - {:?}", proof.pr_tree_root());
-    println!("account_address - {:?}", proof.account_address());
+    println!("account_address - 0x{}", to_hex(&proof.account_address()));
     println!("from_epoch - {:?}", proof.from_epoch());
     println!("to_epoch - {:?}", proof.to_epoch());
     println!("withdraw_max - {:?}", proof.withdraw_max());
@@ -180,10 +181,10 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         }),
     };
     let proof = participation_agg_circuit.generate_proof(&data).unwrap();
-    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validator participation proof verification failed.");
     println!("(finished in {:?})", start.elapsed());
     println!("pr_tree_root - {:?}", proof.pr_tree_root());
-    println!("account_address - {:?}", proof.account_address());
+    println!("account_address - 0x{}", to_hex(&proof.account_address()));
     println!("from_epoch - {:?}", proof.from_epoch());
     println!("to_epoch - {:?}", proof.to_epoch());
     println!("withdraw_max - {:?}", proof.withdraw_max());
@@ -220,10 +221,10 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         previous_data: ValidatorPartAggPrevData::Continue(proof),
     };
     let proof = participation_agg_circuit.generate_proof(&data).unwrap();
-    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
+    assert!(participation_agg_circuit.verify_proof(&proof).is_ok(), "Validator participation proof verification failed.");
     println!("(finished in {:?})", start.elapsed());
     println!("pr_tree_root - {:?}", proof.pr_tree_root());
-    println!("account_address - {:?}", proof.account_address());
+    println!("account_address - 0x{}", to_hex(&proof.account_address()));
     println!("from_epoch - {:?}", proof.from_epoch());
     println!("to_epoch - {:?}", proof.to_epoch());
     println!("withdraw_max - {:?}", proof.withdraw_max());
@@ -232,6 +233,25 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!("param_st - {:?}", proof.param_st());
     println!();
 
+    //build proofs for participation
+    println!("Generating Final Proof...");
+    let start: Instant = Instant::now();
+    let data = ValidatorParticipationAggEndCircuitData {
+        participation_agg_proof: proof,
+        participation_state_proof,
+    };
+    let proof = participation_agg_end_circuit.generate_proof(&data).unwrap();
+    assert!(participation_agg_end_circuit.verify_proof(&proof).is_ok(), "Validator participation proof verification failed.");
+    println!("(finished in {:?})", start.elapsed());
+    println!("participation_inputs_hash - 0x{}", to_hex(&proof.participation_inputs_hash()));
+    println!("account_address - 0x{}", to_hex(&proof.account_address()));
+    println!("from_epoch - {:?}", proof.from_epoch());
+    println!("to_epoch - {:?}", proof.to_epoch());
+    println!("withdraw_max - {:?}", proof.withdraw_max());
+    println!("withdraw_unearned - {:?}", proof.withdraw_unearned());
+    println!("param_rf - {:?}", proof.param_rf());
+    println!("param_st - {:?}", proof.param_st());
+    println!();
     
 
 /*
@@ -468,4 +488,9 @@ fn compile_data_for_validators_state_circuit(
 
         previous_proof,
     }
+}
+
+fn to_hex(bytes: &[u8]) -> String {
+    let hex_string: String = bytes.iter().map(|byte| format!("{:02x}", byte)).collect();
+    hex_string
 }
