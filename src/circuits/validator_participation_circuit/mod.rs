@@ -196,8 +196,6 @@ fn generate_proof_from_data(
     if data.validators_state_proof.validators_tree_root() != validators_tree.root() {
         return Err(anyhow!("Validators tree root does not match the given validators state proof."));
     }
-    println!("data.validators_state_proof.accounts_tree_root() {:?}", data.validators_state_proof.accounts_tree_root());//////////
-    println!("accounts_tree.root() {:?}", accounts_tree.root());////////////////////////
     if data.validators_state_proof.accounts_tree_root() != accounts_tree.root() {
         return Err(anyhow!("Accounts tree root does not match the given validators state proof."));
     }

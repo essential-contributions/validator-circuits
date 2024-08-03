@@ -77,24 +77,6 @@ where
     circuit
 }
 
-pub fn load_or_create_example_proof<C>(circuit: &C, dir: &str) -> ProofWithPublicInputs<Field, Config, D> 
-where
-    C: Circuit,
-{
-    if circuit_proof_exists(dir) {
-        match load_proof(&[CIRCUIT_OUTPUT_FOLDER, dir], PROOF_FILENAME) {
-            Ok(proof) => {
-                log::info!("Loaded proof [/{}]", dir);
-                return proof;
-            },
-            Err(e) => log::error!("{}", e),
-        };
-    }
-    let proof = circuit.wrappable_example_proof().expect("Circuit is not wrappable");
-    save_proof_for_wrapping(&proof.proof().clone(), dir);
-    proof.proof().clone()
-}
-
 pub fn save_circuit<C>(circuit: &C, dir: &str) 
 where
     C: Circuit + Serializeable,
@@ -153,10 +135,6 @@ where
             log::error!("{}", e);
         },
     }
-}
-
-pub fn save_proof_for_wrapping(proof: &ProofWithPublicInputs<Field, Config, D>, dir: &str) {
-    save_proof(proof, &[CIRCUIT_OUTPUT_FOLDER, dir], PROOF_FILENAME).expect("Failed to save proof for wrapping");
 }
 
 pub fn save_proof(proof: &ProofWithPublicInputs<Field, Config, D>, path: &[&str], filename: &str) -> Result<()> {
