@@ -216,9 +216,6 @@ fn blake3_hash(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-// The max number of unique commitments when generating examples (index is always modulo this value)
-pub const EXAMPLE_COMMITMENTS_REPEAT: usize = 2000;
-
 // Creates an example commitment root
 pub fn example_commitment_root(validator_index: usize) -> [Field; 4] {
     let secret = generate_secret_from_seed(validator_index);
@@ -275,7 +272,6 @@ pub fn empty_commitment_root() -> [Field; 4] {
 }
 
 fn generate_secret_from_seed(seed: usize) -> [Field; 4] {
-    let seed = seed % EXAMPLE_COMMITMENTS_REPEAT;
     [
         Field::from_canonical_usize(seed + 10),
         Field::from_canonical_usize(seed + 11),

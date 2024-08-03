@@ -1,6 +1,6 @@
 use clap::{arg, command, Parser};
 use env_logger::{Builder, Env};
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, bn128_wrapper_clear_data_and_proof, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestation_aggregation_circuit::AttestationAggregationCircuit, circuit_data_exists, clear_data_and_proof, load_or_create_circuit, participation_state_circuit::ParticipationStateCircuit, validator_participation_circuit::ValidatorParticipationCircuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, Serializeable, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists, groth16_wrapper_clear_data_and_proof}};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, bn128_wrapper_clear_data_and_proof, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestation_aggregation_circuit::AttestationAggregationCircuit, circuit_data_exists, clear_data_and_proof, load_or_create_circuit, participation_state_circuit::ParticipationStateCircuit, validator_participation_circuit::ValidatorParticipationCircuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, Serializeable, ATTESTATION_AGGREGATION_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists, groth16_wrapper_clear_data_and_proof}};
 use jemallocator::Jemalloc;
 
 #[global_allocator]
@@ -29,7 +29,7 @@ fn main() {
                 build_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR, args.full, args.clear);
                 build_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR, args.full, args.clear);
             } else if circuit_name.eq("attestations")  {
-                build_circuit::<AttestationAggregationCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full, args.clear);
+                build_circuit::<AttestationAggregationCircuit>(ATTESTATION_AGGREGATION_CIRCUIT_DIR, args.full, args.clear);
             } else if circuit_name.eq("participation")  {
                 build_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR, args.full, args.clear);
             } else {
@@ -39,7 +39,7 @@ fn main() {
         None => {
             build_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR, args.full, args.clear);
             build_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR, args.full, args.clear);
-            build_circuit::<AttestationAggregationCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR, args.full, args.clear);
+            build_circuit::<AttestationAggregationCircuit>(ATTESTATION_AGGREGATION_CIRCUIT_DIR, args.full, args.clear);
             build_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR, args.full, args.clear);
         },
     }

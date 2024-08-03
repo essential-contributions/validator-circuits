@@ -21,7 +21,7 @@ pub const PROOF_FILENAME: &str = "proof_with_public_inputs.json";
 pub const VALIDATORS_STATE_CIRCUIT_DIR: &str = "validators_state";
 pub const PARTICIPATION_STATE_CIRCUIT_DIR: &str = "participation_state";
 pub const VALIDATOR_PARTICIPATION_CIRCUIT_DIR: &str = "validator_participation";
-pub const ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR: &str = "attestations_aggregator";
+pub const ATTESTATION_AGGREGATION_CIRCUIT_DIR: &str = "attestation_aggregation";
 
 pub trait Circuit {
     type Proof: Proof;

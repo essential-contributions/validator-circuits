@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 use anyhow::{anyhow, Result};
 
-use crate::commitment::{example_commitment_root, EXAMPLE_COMMITMENTS_REPEAT};
 use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
 
@@ -169,17 +168,6 @@ impl ValidatorsTree {
 pub fn initial_validators_tree_root() -> [Field; 4] {
     let validators_tree = ValidatorsTree::new();
     validators_tree.root()
-}
-
-pub fn example_validator_set() -> ValidatorsTree {
-    let commitment_roots: Vec<[Field; 4]> = (0..EXAMPLE_COMMITMENTS_REPEAT).into_par_iter().map(|i| example_commitment_root(i)).collect();
-    let validator_stake_default = 7;
-    let validators: Vec<Validator> = (0..(1 << VALIDATORS_TREE_HEIGHT)).map(|i| Validator {
-        commitment_root: commitment_roots[(i % EXAMPLE_COMMITMENTS_REPEAT) as usize],
-        stake: validator_stake_default,
-    }).collect();
-
-    ValidatorsTree::from_validators(validators)
 }
 
 pub fn empty_validators_tree_root() -> [Field; 4] {

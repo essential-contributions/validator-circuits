@@ -163,12 +163,12 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         let proof = bn128_wrapper.generate_proof(inner_circuit, inner_proof).unwrap();
         println!("(finished in {:?})", start.elapsed());
         assert!(bn128_wrapper.verify_proof(&proof).is_ok(), "BN128 wrapped proof verification failed.");
-        save_bn128_wrapper_proof(&proof, VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
         println!();
 
         //wrap proof to groth16
         println!("Generating Groth16 Wrapper Proof...");
         let start = Instant::now();
+        save_bn128_wrapper_proof(&proof, VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
         let proof = generate_groth16_wrapper_proof(VALIDATOR_PARTICIPATION_CIRCUIT_DIR).unwrap();
         println!("Proved with Groth16 wrapper!");
         println!("(finished in {:?})", start.elapsed());

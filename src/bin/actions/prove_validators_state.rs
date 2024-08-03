@@ -60,8 +60,8 @@ pub fn benchmark_prove_validators_state(full: bool) {
         None,
     );
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
+    println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
-    println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     total_staked = total_staked + stake;
     assert_eq!(proof.total_staked(), total_staked, "Unexpected total staked value from proof.");
     total_validators = total_validators + 1;
@@ -72,7 +72,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     assert_eq!(proof.accounts_tree_root(), accounts_tree.root(), "Unexpected accounts tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, data);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
-    println!("(finished in {:?})", start.elapsed());
+    println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     println!("total_staked - {:?}", proof.total_staked());
     println!("total_validators - {:?}", proof.total_validators());
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
@@ -99,6 +99,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
         Some(proof),
     );
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
+    println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
     println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     total_staked = total_staked + 32;
@@ -109,7 +110,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     assert_eq!(proof.accounts_tree_root(), accounts_tree.root(), "Unexpected accounts tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, data);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
-    println!("(finished in {:?})", start.elapsed());
     println!("total_staked - {:?}", proof.total_staked());
     println!("total_validators - {:?}", proof.total_validators());
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
@@ -136,6 +136,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
         Some(proof),
     );
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
+    println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
     println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     assert_eq!(proof.total_staked(), total_staked, "Unexpected total staked value from proof.");
@@ -144,7 +145,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     assert_eq!(proof.accounts_tree_root(), accounts_tree.root(), "Unexpected accounts tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, data);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
-    println!("(finished in {:?})", start.elapsed());
     println!("total_staked - {:?}", proof.total_staked());
     println!("total_validators - {:?}", proof.total_validators());
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
@@ -171,6 +171,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
         Some(proof),
     );
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
+    println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
     println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     total_staked = total_staked + stake;
@@ -183,7 +184,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     assert_eq!(proof.accounts_tree_root(), accounts_tree.root(), "Unexpected accounts tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, data);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
-    println!("(finished in {:?})", start.elapsed());
     println!("total_staked - {:?}", proof.total_staked());
     println!("total_validators - {:?}", proof.total_validators());
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
@@ -210,6 +210,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
         Some(proof),
     );
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
+    println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
     println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     assert_eq!(proof.total_staked(), total_staked, "Unexpected total staked value from proof.");
@@ -218,7 +219,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     assert_eq!(proof.accounts_tree_root(), accounts_tree.root(), "Unexpected accounts tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, data);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
-    println!("(finished in {:?})", start.elapsed());
     println!("total_staked - {:?}", proof.total_staked());
     println!("total_validators - {:?}", proof.total_validators());
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
@@ -245,6 +245,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
         Some(proof),
     );
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
+    println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
     println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     assert_eq!(proof.total_staked(), total_staked, "Unexpected total staked value from proof.");
@@ -253,7 +254,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     assert_eq!(proof.accounts_tree_root(), accounts_tree.root(), "Unexpected accounts tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, data);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
-    println!("(finished in {:?})", start.elapsed());
     println!("total_staked - {:?}", proof.total_staked());
     println!("total_validators - {:?}", proof.total_validators());
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
@@ -280,6 +280,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
         Some(proof),
     );
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
+    println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
     println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     total_staked = total_staked - 512;
@@ -292,7 +293,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     assert_eq!(proof.accounts_tree_root(), accounts_tree.root(), "Unexpected accounts tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, data);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
-    println!("(finished in {:?})", start.elapsed());
     println!("total_staked - {:?}", proof.total_staked());
     println!("total_validators - {:?}", proof.total_validators());
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
@@ -319,6 +319,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
         Some(proof),
     );
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
+    println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
     println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
     assert_eq!(proof.total_staked(), total_staked, "Unexpected total staked value from proof.");
@@ -327,7 +328,6 @@ pub fn benchmark_prove_validators_state(full: bool) {
     assert_eq!(proof.accounts_tree_root(), accounts_tree.root(), "Unexpected accounts tree root.");
     inputs_hash = next_inputs_hash(inputs_hash, data);
     assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
-    println!("(finished in {:?})", start.elapsed());
     println!("total_staked - {:?}", proof.total_staked());
     println!("total_validators - {:?}", proof.total_validators());
     println!("validators_tree_root - {:?}", proof.validators_tree_root());
