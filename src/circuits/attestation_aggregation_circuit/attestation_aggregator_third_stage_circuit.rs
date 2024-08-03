@@ -3,7 +3,7 @@ use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::field::types::{Field as Plonky2_Field, PrimeField64};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierCircuitTarget};
+use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, CommonCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
@@ -11,56 +11,60 @@ use anyhow::{anyhow, Result};
 
 use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::participation::empty_participation_sub_root;
-use crate::{Config, Field, Hash, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, D};
-use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use super::{AttestationsAggregator2Circuit, AttestationsAggregator2Proof, Circuit, Proof, Serializeable, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_NUM_PARTICIPANTS, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_TOTAL_STAKE, PIS_AGG2_VALIDATORS_SUB_ROOT};
+use crate::{Config, Field, Hash, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE, AGGREGATION_STAGE3_SUB_TREE_HEIGHT, D};
+use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
+use super::{AttestationAggregatorSecondStageCircuit, AttestationAggregatorSecondStageProof, Circuit, Proof, Serializeable, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_NUM_PARTICIPANTS, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_TOTAL_STAKE, PIS_AGG2_VALIDATORS_SUB_ROOT};
 
-pub const VALIDATORS_TREE_AGG3_SUB_HEIGHT: usize = AGGREGATION_PASS3_SUB_TREE_HEIGHT;
-pub const ATTESTATION_AGGREGATION_PASS3_SIZE: usize = AGGREGATION_PASS3_SIZE;
 pub const PIS_AGG3_VALIDATORS_ROOT: [usize; 4] = [0, 1, 2, 3];
 pub const PIS_AGG3_PARTICIPATION_ROOT: [usize; 4] = [4, 5, 6, 7];
 pub const PIS_AGG3_NUM_PARTICIPANTS: usize = 8;
 pub const PIS_AGG3_BLOCK_SLOT: usize = 9;
 pub const PIS_AGG3_TOTAL_STAKE: usize = 10;
 
-pub struct AttestationsAggregator3Circuit {
+pub struct AttestationAggregatorThirdStageCircuit {
     circuit_data: CircuitData<Field, Config, D>,
-    targets: AttsAgg3Targets,
+    targets: AttAgg3Targets,
+
+    atts_agg2_verifier: VerifierOnlyCircuitData<Config, D>,
 }
-struct AttsAgg3Targets {
+struct AttAgg3Targets {
     block_slot: Target,
     atts_agg2_verifier: VerifierCircuitTarget,
-    atts_agg2_data: Vec<AttsAgg3Agg2Targets>,
+    atts_agg2_data: Vec<AttAgg3Agg2Targets>,
 }
-struct AttsAgg3Agg2Targets {
+struct AttAgg3Agg2Targets {
     validators_sub_root: HashOutTarget,
     has_participation: BoolTarget,
     proof: ProofWithPublicInputsTarget<D>
 }
-impl AttestationsAggregator3Circuit {
-    pub fn generate_proof(&self, data: &AttestationsAggregator3Data) -> Result<AttestationsAggregator3Proof> {
-        log::warn!("AttestationsAggregator3Circuit: use 'generate_proof_continuation' instead of 'generate_proof' for faster proving");
-        let prev_circuit = AttestationsAggregator2Circuit::new();
-        let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
-        let proof = self.circuit_data.prove(pw)?;
-        Ok(AttestationsAggregator3Proof { proof })
-    }
-}
-impl Circuit for AttestationsAggregator3Circuit {
-    type Proof = AttestationsAggregator3Proof;
+impl AttestationAggregatorThirdStageCircuit {
+    pub fn from_subcircuits(atts_agg_second_stage_circuit: &AttestationAggregatorSecondStageCircuit) -> Self {
+        let atts_agg2_common_data = &atts_agg_second_stage_circuit.circuit_data().common;
+        let atts_agg2_verifier = atts_agg_second_stage_circuit.circuit_data().verifier_only.clone();
 
-    fn new() -> Self {
-        log::warn!("AttestationsAggregator3Circuit: use 'new_continuation' instead of 'new' for faster building");
-        let prev_circuit = AttestationsAggregator2Circuit::new();
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
-        let targets = generate_circuit(&mut builder, prev_circuit.circuit_data());
+        let targets = generate_circuit(&mut builder, atts_agg2_common_data);
         let circuit_data = builder.build::<Config>();
 
-        Self { circuit_data, targets }
+        Self { circuit_data, targets, atts_agg2_verifier }
     }
 
-    fn verify_proof(&self, proof: &AttestationsAggregator3Proof) -> Result<()> {
+    pub fn generate_proof(&self, data: &AttestationAggregatorThirdStageData) -> Result<AttestationAggregatorThirdStageProof> {
+        let pw = generate_partial_witness(&self.targets, data, &self.atts_agg2_verifier)?;
+        let proof = self.circuit_data.prove(pw)?;
+        Ok(AttestationAggregatorThirdStageProof { proof })
+    }
+}
+impl Circuit for AttestationAggregatorThirdStageCircuit {
+    type Proof = AttestationAggregatorThirdStageProof;
+
+    fn new() -> Self {
+        let atts_agg_second_stage_circuit = AttestationAggregatorSecondStageCircuit::new();
+        Self::from_subcircuits(&atts_agg_second_stage_circuit)
+    }
+
+    fn verify_proof(&self, proof: &AttestationAggregatorThirdStageProof) -> Result<()> {
         self.circuit_data.verify(proof.proof.clone())
     }
     
@@ -76,46 +80,37 @@ impl Circuit for AttestationsAggregator3Circuit {
         None
     }
 }
-impl AttestationsAggregator3Circuit {
-    pub fn new_continuation(prev_circuit: &AttestationsAggregator2Circuit) -> Self {
-        let config = CircuitConfig::standard_recursion_config();
-        let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
-        let targets = generate_circuit(&mut builder, prev_circuit.circuit_data());
-        let circuit_data = builder.build::<Config>();
-
-        Self { circuit_data, targets }
-    }
-    
-    pub fn generate_proof_continuation(&self, data: &AttestationsAggregator3Data, prev_circuit: &AttestationsAggregator2Circuit) -> Result<AttestationsAggregator3Proof> {
-        let pw = generate_partial_witness(&self.targets, data, prev_circuit.circuit_data())?;
-        let proof = self.circuit_data.prove(pw)?;
-        Ok(AttestationsAggregator3Proof { proof })
-    }
-}
-impl Serializeable for AttestationsAggregator3Circuit {
+impl Serializeable for AttestationAggregatorThirdStageCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = serialize_circuit(&self.circuit_data)?;
         if write_targets(&mut buffer, &self.targets).is_err() {
             return Err(anyhow!("Failed to serialize circuit targets"));
+        }
+        if write_verifier(&mut buffer, &self.atts_agg2_verifier).is_err() {
+            return Err(anyhow!("Failed to serialize sub circuit verifier"));
         }
         Ok(buffer)
     }
 
     fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
         let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
-        let targets = read_targets(&mut buffer);
-        if targets.is_err() {
-            return Err(anyhow!("Failed to deserialize circuit targets"));
-        }
-        Ok(Self { circuit_data, targets: targets.unwrap() })
+        let targets = match read_targets(&mut buffer) {
+            Ok(targets) => Ok(targets),
+            Err(_) => Err(anyhow!("Failed to deserialize circuit targets")),
+        }?;
+        let atts_agg2_verifier = match read_verifier(&mut buffer) {
+            Ok(verifier) => Ok(verifier),
+            Err(_) => Err(anyhow!("Failed to deserialize sub circuit verifier")),
+        }?;
+        Ok(Self { circuit_data, targets, atts_agg2_verifier })
     }
 }
 
 #[derive(Clone)]
-pub struct AttestationsAggregator3Proof {
+pub struct AttestationAggregatorThirdStageProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
-impl AttestationsAggregator3Proof {
+impl AttestationAggregatorThirdStageProof {
     pub fn validators_root(&self) -> [Field; 4] {
         [self.proof.public_inputs[PIS_AGG3_VALIDATORS_ROOT[0]], 
         self.proof.public_inputs[PIS_AGG3_VALIDATORS_ROOT[1]], 
@@ -142,7 +137,7 @@ impl AttestationsAggregator3Proof {
         self.proof.public_inputs[PIS_AGG3_TOTAL_STAKE].to_canonical_u64()
     }
 }
-impl Proof for AttestationsAggregator3Proof {
+impl Proof for AttestationAggregatorThirdStageProof {
     fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
         Self { proof }
     }
@@ -152,8 +147,8 @@ impl Proof for AttestationsAggregator3Proof {
     }
 }
 
-fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_circuit_data: &CircuitData<Field, Config, D>) -> AttsAgg3Targets {
-    let mut atts_agg2_data: Vec<AttsAgg3Agg2Targets> = Vec::new();
+fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_common_data: &CommonCircuitData<Field, D>) -> AttAgg3Targets {
+    let mut atts_agg2_data: Vec<AttAgg3Agg2Targets> = Vec::new();
 
     // Global targets
     let empty_participation_root = build_empty_participation_sub_root(builder);
@@ -163,20 +158,20 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_circuit_da
 
     // Circuit target
     let atts_agg2_verifier = VerifierCircuitTarget {
-        constants_sigmas_cap: builder.add_virtual_cap(atts_agg2_circuit_data.common.config.fri_config.cap_height),
+        constants_sigmas_cap: builder.add_virtual_cap(atts_agg2_common_data.config.fri_config.cap_height),
         circuit_digest: builder.add_virtual_hash(),
     };
 
     // Verify each agg2 data
     let mut validator_nodes: Vec<HashOutTarget> = Vec::new();
     let mut participation_nodes: Vec<HashOutTarget> = Vec::new();
-    for _ in 0..ATTESTATION_AGGREGATION_PASS3_SIZE {
+    for _ in 0..AGGREGATION_STAGE3_SIZE {
         let validators_sub_root = builder.add_virtual_hash();
         let has_participation = builder.add_virtual_bool_target_safe();
-        let proof_target = builder.add_virtual_proof_with_pis(&atts_agg2_circuit_data.common);
+        let proof_target = builder.add_virtual_proof_with_pis(&atts_agg2_common_data);
 
         // Verify proof if has participation
-        builder.verify_proof::<Config>(&proof_target, &atts_agg2_verifier, &atts_agg2_circuit_data.common);
+        builder.verify_proof::<Config>(&proof_target, &atts_agg2_verifier, &atts_agg2_common_data);
 
         // Determine applicable validator node
         let proof_validators_sub_root = HashOutTarget {
@@ -207,7 +202,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_circuit_da
         total_stake = builder.mul_add(has_participation.target, proof_target.public_inputs[PIS_AGG2_TOTAL_STAKE], total_stake);
         num_participants = builder.mul_add(has_participation.target, proof_target.public_inputs[PIS_AGG2_NUM_PARTICIPANTS], num_participants);
 
-        atts_agg2_data.push(AttsAgg3Agg2Targets {
+        atts_agg2_data.push(AttAgg3Agg2Targets {
             validators_sub_root,
             has_participation,
             proof: proof_target,
@@ -215,7 +210,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_circuit_da
     }
 
     // Compute the validators sub root
-    for h in (0..VALIDATORS_TREE_AGG3_SUB_HEIGHT).rev() {
+    for h in (0..AGGREGATION_STAGE3_SUB_TREE_HEIGHT).rev() {
         let start = validator_nodes.len() - (1 << (h + 1));
         for i in 0..(1 << h) {
             let data = [validator_nodes[start + (i * 2)].elements.to_vec(), validator_nodes[start + (i * 2) + 1].elements.to_vec()].concat();
@@ -225,7 +220,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_circuit_da
     let validators_sub_root = validator_nodes.last().unwrap();
 
     // Compute the participation sub root
-    for h in (0..VALIDATORS_TREE_AGG3_SUB_HEIGHT).rev() {
+    for h in (0..AGGREGATION_STAGE3_SUB_TREE_HEIGHT).rev() {
         let start = participation_nodes.len() - (1 << (h + 1));
         for i in 0..(1 << h) {
             let data = [participation_nodes[start + (i * 2)].elements.to_vec(), participation_nodes[start + (i * 2) + 1].elements.to_vec()].concat();
@@ -241,7 +236,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_circuit_da
     builder.register_public_input(block_slot);
     builder.register_public_input(total_stake);
 
-    AttsAgg3Targets {
+    AttAgg3Targets {
         block_slot,
         atts_agg2_verifier,
         atts_agg2_data,
@@ -249,23 +244,23 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg2_circuit_da
 }
 
 #[derive(Clone)]
-pub struct AttestationsAggregator3Data {
+pub struct AttestationAggregatorThirdStageData {
     pub block_slot: usize,
-    pub agg2_data: Vec<AttestationsAggregator3Agg2Data>,
+    pub agg2_data: Vec<AttestationAggregatorThirdStageAgg2Data>,
 }
 #[derive(Clone)]
-pub struct AttestationsAggregator3Agg2Data {
+pub struct AttestationAggregatorThirdStageAgg2Data {
     pub validators_sub_root: [Field; 4],
-    pub agg2_proof: Option<AttestationsAggregator2Proof>,
+    pub agg2_proof: Option<AttestationAggregatorSecondStageProof>,
 }
 
-fn generate_partial_witness(targets: &AttsAgg3Targets, data: &AttestationsAggregator3Data, atts_agg2_circuit_data: &CircuitData<Field, Config, D>) -> Result<PartialWitness<Field>> {
-    if data.agg2_data.len() != ATTESTATION_AGGREGATION_PASS3_SIZE {
-        return Err(anyhow!("Must include {} datas in attestation aggregation third pass", ATTESTATION_AGGREGATION_PASS3_SIZE));
+fn generate_partial_witness(targets: &AttAgg3Targets, data: &AttestationAggregatorThirdStageData, atts_agg2_verifier: &VerifierOnlyCircuitData<Config, D>) -> Result<PartialWitness<Field>> {
+    if data.agg2_data.len() != AGGREGATION_STAGE3_SIZE {
+        return Err(anyhow!("Must include {} datas in attestation aggregation third pass", AGGREGATION_STAGE3_SIZE));
     }
 
     //find a proof to use as a dummy proof
-    let mut dummy_proof: Option<AttestationsAggregator2Proof> = None;
+    let mut dummy_proof: Option<AttestationAggregatorSecondStageProof> = None;
     for d in &data.agg2_data {
         if d.agg2_proof.is_some() {
             dummy_proof = d.agg2_proof.clone();
@@ -280,7 +275,7 @@ fn generate_partial_witness(targets: &AttsAgg3Targets, data: &AttestationsAggreg
     //create partial witness
     let mut pw = PartialWitness::new();
     pw.set_target(targets.block_slot, Field::from_canonical_u64(data.block_slot as u64));
-    pw.set_verifier_data_target(&targets.atts_agg2_verifier, &atts_agg2_circuit_data.verifier_only);
+    pw.set_verifier_data_target(&targets.atts_agg2_verifier, atts_agg2_verifier);
 
     for (t, v) in targets.atts_agg2_data.iter().zip(data.agg2_data.clone()) {
         let validators_sub_root: HashOut<Field> = HashOut::<Field> { elements: v.validators_sub_root };
@@ -301,7 +296,7 @@ fn generate_partial_witness(targets: &AttsAgg3Targets, data: &AttestationsAggreg
 }
 
 #[inline]
-fn write_targets(buffer: &mut Vec<u8>, targets: &AttsAgg3Targets) -> IoResult<()> {
+fn write_targets(buffer: &mut Vec<u8>, targets: &AttAgg3Targets) -> IoResult<()> {
     buffer.write_target(targets.block_slot)?;
     buffer.write_target_verifier_circuit(&targets.atts_agg2_verifier)?;
     buffer.write_usize(targets.atts_agg2_data.len())?;
@@ -315,23 +310,23 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &AttsAgg3Targets) -> IoResult<()
 }
 
 #[inline]
-fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg3Targets> {
+fn read_targets(buffer: &mut Buffer) -> IoResult<AttAgg3Targets> {
     let block_slot = buffer.read_target()?;
     let atts_agg2_verifier = buffer.read_target_verifier_circuit()?;
-    let mut atts_agg2_data: Vec<AttsAgg3Agg2Targets> = Vec::new();
+    let mut atts_agg2_data: Vec<AttAgg3Agg2Targets> = Vec::new();
     let atts_agg1_data_length = buffer.read_usize()?;
     for _ in 0..atts_agg1_data_length {
         let validators_sub_root = buffer.read_target_hash()?;
         let has_participation = buffer.read_target_bool()?;
         let proof = buffer.read_target_proof_with_public_inputs()?;
-        atts_agg2_data.push(AttsAgg3Agg2Targets {
+        atts_agg2_data.push(AttAgg3Agg2Targets {
             validators_sub_root,
             has_participation,
             proof,
         });
     }
 
-    Ok(AttsAgg3Targets {
+    Ok(AttAgg3Targets {
         block_slot,
         atts_agg2_verifier,
         atts_agg2_data,
@@ -339,7 +334,7 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg3Targets> {
 }
 
 fn build_empty_participation_sub_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
-    let root = empty_participation_sub_root(AGGREGATION_PASS2_SUB_TREE_HEIGHT);
+    let root = empty_participation_sub_root(AGGREGATION_STAGE2_SUB_TREE_HEIGHT);
     HashOutTarget {
         elements: root.map(|f| { builder.constant(f) }),
     }

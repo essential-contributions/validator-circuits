@@ -8,7 +8,7 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use anyhow::{anyhow, Result};
 
 use crate::circuits::participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof, PIS_PARTICIPATION_ROUNDS_TREE_ROOT, PIS_PARTICIPATION_STATE_INPUTS_HASH};
-use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
+use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
 use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR};
 use crate::{Config, Field, D};
 
@@ -328,22 +328,4 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggEndCir
         participation_state_proof,
         participation_state_verifier,
     })
-}
-
-#[inline]
-fn write_verifier(buffer: &mut Vec<u8>, verifier: &VerifierOnlyCircuitData<Config, D>) -> IoResult<()> {
-    let bytes = verifier.to_bytes()?;
-    buffer.write_usize(bytes.len())?;
-    buffer.write_all(&bytes)?;
-
-    Ok(())
-}
-
-#[inline]
-fn read_verifier(buffer: &mut Buffer) -> IoResult<VerifierOnlyCircuitData<Config, D>> {
-    let len = buffer.read_usize()?;
-    let mut bytes = vec![0u8; len];
-    buffer.read_exact(&mut bytes)?;
-
-    VerifierOnlyCircuitData::<Config, D>::from_bytes(bytes)
 }

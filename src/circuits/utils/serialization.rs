@@ -18,13 +18,13 @@ use plonky2::{
         ConstantGenerator, 
         RandomValueGenerator
     }, plonk::{
-        circuit_data::CircuitData, 
+        circuit_data::{CircuitData, VerifierOnlyCircuitData}, 
         config::{
             AlgebraicHasher, 
             GenericConfig
         }
     }, recursion::dummy_circuit::DummyProofGenerator, util::serialization::{
-        Buffer, DefaultGateSerializer, Read, WitnessGeneratorSerializer
+        Buffer, DefaultGateSerializer, IoResult, Read, WitnessGeneratorSerializer, Write
     }
 };
 use plonky2::{get_generator_tag_impl, impl_generator_serializer, read_generator_impl};
@@ -94,4 +94,22 @@ pub fn deserialize_circuit(bytes: &Vec<u8>) -> anyhow::Result<(CircuitData<Field
     }
 
     Ok((circuit_data.unwrap(), buffer))
+}
+
+#[inline]
+pub fn write_verifier(buffer: &mut Vec<u8>, verifier: &VerifierOnlyCircuitData<Config, D>) -> IoResult<()> {
+    let bytes = verifier.to_bytes()?;
+    buffer.write_usize(bytes.len())?;
+    buffer.write_all(&bytes)?;
+
+    Ok(())
+}
+
+#[inline]
+pub fn read_verifier(buffer: &mut Buffer) -> IoResult<VerifierOnlyCircuitData<Config, D>> {
+    let len = buffer.read_usize()?;
+    let mut bytes = vec![0u8; len];
+    buffer.read_exact(&mut bytes)?;
+
+    VerifierOnlyCircuitData::<Config, D>::from_bytes(bytes)
 }

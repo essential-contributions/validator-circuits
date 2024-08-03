@@ -5,15 +5,15 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
-use crate::{field_hash, field_hash_two, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS2_SIZE, AGGREGATION_PASS2_SUB_TREE_HEIGHT, AGGREGATION_PASS3_SIZE, AGGREGATION_PASS3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT};
+use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE, AGGREGATION_STAGE3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT};
 use crate::Field;
 
-pub const PARTICIPATION_TREE_SIZE: usize = AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE;
-pub const PARTICIPATION_TREE_HEIGHT: usize = AGGREGATION_PASS2_SUB_TREE_HEIGHT + AGGREGATION_PASS3_SUB_TREE_HEIGHT;
+pub const PARTICIPATION_TREE_SIZE: usize = AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE;
+pub const PARTICIPATION_TREE_HEIGHT: usize = AGGREGATION_STAGE2_SUB_TREE_HEIGHT + AGGREGATION_STAGE3_SUB_TREE_HEIGHT;
 
 pub const PARTICIPANTS_PER_FIELD: usize = 62;
-pub const PARTICIPATION_FIELDS_PER_LEAF: usize = div_ceil(AGGREGATION_PASS1_SIZE, PARTICIPANTS_PER_FIELD);
-pub const PARTICIPATION_BITS_BYTE_SIZE: usize = (AGGREGATION_PASS1_SIZE * AGGREGATION_PASS2_SIZE * AGGREGATION_PASS3_SIZE) / 8;
+pub const PARTICIPATION_FIELDS_PER_LEAF: usize = div_ceil(AGGREGATION_STAGE1_SIZE, PARTICIPANTS_PER_FIELD);
+pub const PARTICIPATION_BITS_BYTE_SIZE: usize = (AGGREGATION_STAGE1_SIZE * AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE) / 8;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: store participation_bits in disk rather than memory
@@ -270,7 +270,7 @@ pub fn leaf_fields(participation: Vec<bool>) -> Vec<Field> {
     for _ in 0..PARTICIPATION_FIELDS_PER_LEAF {
         let mut field_u64: u64 = 0;
         for _ in 0..PARTICIPANTS_PER_FIELD {
-            if b < AGGREGATION_PASS1_SIZE {
+            if b < AGGREGATION_STAGE1_SIZE {
                 field_u64 = field_u64 << 1;
                 if participation[b] {
                     field_u64 += 1;
@@ -295,7 +295,7 @@ pub struct ParticipationMerkleData {
 }
 
 pub fn participation_merkle_data(participation_bits: &Vec<u8>, validator_index: usize) -> ParticipationMerkleData {
-    let participation_root_index = validator_index / AGGREGATION_PASS1_SIZE;
+    let participation_root_index = validator_index / AGGREGATION_STAGE1_SIZE;
     let mut leaf_fields = Vec::new();
 
     let mut nodes: Vec<[Field; 4]> = Vec::new();
@@ -334,12 +334,12 @@ pub fn participation_merkle_data(participation_bits: &Vec<u8>, validator_index: 
 }
 
 fn participation_fields(participation_bits: &Vec<u8>, group_index: usize) -> Vec<Field> {
-    let mut b = group_index * AGGREGATION_PASS1_SIZE;
+    let mut b = group_index * AGGREGATION_STAGE1_SIZE;
     let mut participation_bits_u64: Vec<u64> = Vec::new();
     for _ in 0..PARTICIPATION_FIELDS_PER_LEAF {
         let mut field_u64: u64 = 0;
         for _ in 0..PARTICIPANTS_PER_FIELD {
-            if b < (group_index + 1) * AGGREGATION_PASS1_SIZE {
+            if b < (group_index + 1) * AGGREGATION_STAGE1_SIZE {
                 field_u64 = field_u64 << 1;
                 if bit_from_field(participation_bits, b) {
                     field_u64 += 1;

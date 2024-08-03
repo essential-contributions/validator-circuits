@@ -27,7 +27,7 @@ fn main() {
         actions::benchmark_prove_participation_state(args.full);
         actions::benchmark_prove_validators_state(args.full);
     } else if args.action.eq("attestations")  {
-        actions::benchmark_prove_attestations_aggregation(args.full);
+        actions::benchmark_prove_attestation_aggregation(args.full);
     } else if args.action.eq("participation")  {
         actions::benchmark_validator_prove_participation(args.full);
     } else {

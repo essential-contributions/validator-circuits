@@ -13,12 +13,12 @@ use plonky2::recursion::dummy_circuit::cyclic_base_proof;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 
 use crate::circuits::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
-use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
+use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
 use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof, PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT, PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED, PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT};
 use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, VALIDATORS_STATE_CIRCUIT_DIR};
 use crate::participation::{empty_participation_root, participation_merkle_data, PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF, PARTICIPATION_TREE_HEIGHT};
 use crate::validators::{empty_validators_tree_proof, empty_validators_tree_root};
-use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
+use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
 pub const PIS_AGG_PR_TREE_ROOT: [usize; 4] = [0, 1, 2, 3];
@@ -213,7 +213,7 @@ impl Proof for ValidatorParticipationAggProof {
 fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_data: &CommonCircuitData<Field, D>) -> ValidatorParticipationAggCircuitTargets {
     let empty_participation_root = build_empty_participation_root(builder);
     let empty_stake_validators_root = build_empty_stake_root(builder);
-    let agg_pass1_size = builder.constant(Field::from_canonical_usize(AGGREGATION_PASS1_SIZE));
+    let agg_pass1_size = builder.constant(Field::from_canonical_usize(AGGREGATION_STAGE1_SIZE));
     let x1000000 = builder.constant(Field::from_canonical_u32(1000000));
     let null = builder.constant(Field::ZERO.sub_one());
     let zero = builder.zero();
@@ -376,7 +376,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
             //Break participation into bits
             let mut participation_bits: Vec<BoolTarget> = Vec::new();
             for i in 0..PARTICIPATION_FIELDS_PER_LEAF {
-                let num_bits = PARTICIPANTS_PER_FIELD.min(AGGREGATION_PASS1_SIZE - (i * PARTICIPANTS_PER_FIELD));
+                let num_bits = PARTICIPANTS_PER_FIELD.min(AGGREGATION_STAGE1_SIZE - (i * PARTICIPANTS_PER_FIELD));
                 let part = builder.add_virtual_target();
                 let part_bits = builder.split_le(part, num_bits);
                 
@@ -387,11 +387,11 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
             }
 
             //Determine if participated
-            let validator_bit_index_bits: Vec<BoolTarget> = builder.split_le(validator_bit_index, AGGREGATION_PASS1_SUB_TREE_HEIGHT);
+            let validator_bit_index_bits: Vec<BoolTarget> = builder.split_le(validator_bit_index, AGGREGATION_STAGE1_SUB_TREE_HEIGHT);
             let validator_bit_index_bits_inv: Vec<BoolTarget> = validator_bit_index_bits.iter().map(|b| builder.not(b.clone())).collect();
             for (index, participant_bit) in participation_bits.iter().enumerate() {
                 let mut participant_bit_with_index_mask = participant_bit.clone();
-                for b in 0..AGGREGATION_PASS1_SUB_TREE_HEIGHT {
+                for b in 0..AGGREGATION_STAGE1_SUB_TREE_HEIGHT {
                     if ((1 << b) & index) > 0 {
                         participant_bit_with_index_mask = builder.and(participant_bit_with_index_mask, validator_bit_index_bits[b]);
                     } else {
@@ -586,8 +586,8 @@ fn generate_partial_witness(
     //account validator index
     match &data.validator {
         Some(validator) => {
-            let validator_field_index = validator.index / AGGREGATION_PASS1_SIZE;
-            let validator_bit_index = validator.index % AGGREGATION_PASS1_SIZE;
+            let validator_field_index = validator.index / AGGREGATION_STAGE1_SIZE;
+            let validator_bit_index = validator.index % AGGREGATION_STAGE1_SIZE;
             pw.set_target(targets.validator_index, Field::from_canonical_usize(validator.index));
             pw.set_target(targets.validator_field_index, Field::from_canonical_usize(validator_field_index));
             pw.set_target(targets.validator_bit_index, Field::from_canonical_usize(validator_bit_index));
@@ -852,22 +852,4 @@ fn integer_sqrt(n: u64) -> u64 {
     }
 
     result
-}
-
-#[inline]
-fn write_verifier(buffer: &mut Vec<u8>, verifier: &VerifierOnlyCircuitData<Config, D>) -> IoResult<()> {
-    let bytes = verifier.to_bytes()?;
-    buffer.write_usize(bytes.len())?;
-    buffer.write_all(&bytes)?;
-
-    Ok(())
-}
-
-#[inline]
-fn read_verifier(buffer: &mut Buffer) -> IoResult<VerifierOnlyCircuitData<Config, D>> {
-    let len = buffer.read_usize()?;
-    let mut bytes = vec![0u8; len];
-    buffer.read_exact(&mut bytes)?;
-
-    VerifierOnlyCircuitData::<Config, D>::from_bytes(bytes)
 }

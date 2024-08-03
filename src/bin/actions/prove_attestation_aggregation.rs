@@ -1,9 +1,9 @@
 use std::time::Instant;
 
 use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, Circuit, Proof, ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR}, commitment::example_commitment_proof, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::{example_validator_set, ValidatorCommitmentReveal}, Field, MAX_VALIDATORS};
-use validator_circuits::circuits::attestations_aggregator_circuit::AttestationsAggregatorCircuit;
+use validator_circuits::circuits::attestation_aggregation_circuit::AttestationAggregationCircuit;
 
-pub fn benchmark_prove_attestations_aggregation(full: bool) {
+pub fn benchmark_prove_attestation_aggregation(full: bool) {
     //make sure circuits have been built
     if full {
         if !bn128_wrapper_circuit_data_exists(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR) || !groth16_wrapper_circuit_data_exists(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR) {
@@ -16,14 +16,14 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
     //generate the circuits
     println!("Building Atestation Aggregation Circuit(s)... ");
     let start = Instant::now();
-    let attestations_circuit = load_or_create_circuit::<AttestationsAggregatorCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR);
+    let attestations_circuit = load_or_create_circuit::<AttestationAggregationCircuit>(ATTESTATIONS_AGGREGATOR_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
     println!();
     
     //create a quick validator set
     println!("Generating Test Validator Set... ");
     let start = Instant::now();
-    let validators = example_validator_set();
+    let validators_tree = example_validator_set();
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -43,7 +43,7 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
     //prove
     println!("Generating Proof...");
     let start = Instant::now();
-    let proof = validators.prove_attestations(&attestations_circuit, &reveals).unwrap();
+    let proof = attestations_circuit.generate_proof(&reveals, &validators_tree).unwrap();
     println!("(finished in {:?})", start.elapsed());
     if attestations_circuit.verify_proof(&proof).is_ok() {
         println!(
@@ -54,7 +54,7 @@ pub fn benchmark_prove_attestations_aggregation(full: bool) {
             proof.validators_root(),
             proof.participation_root(),
         );
-        println!("expected validator root: {:?}", validators.root());
+        println!("expected validator root: {:?}", validators_tree.root());
         println!("expected participation root: {:?}", calculate_participation_root(num_attestations));
     } else {
         log::error!("Proof failed verification.");

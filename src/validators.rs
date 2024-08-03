@@ -3,9 +3,8 @@ use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 use anyhow::{anyhow, Result};
 
-use crate::circuits::attestations_aggregator_circuit::{AttestationsAggregatorCircuit, AttestationsAggregatorCircuitData, AttestationsAggregatorProof, ValidatorData, ValidatorPrimaryGroupData, ValidatorRevealData, ValidatorSecondaryGroupData, ATTESTATION_AGGREGATION_PASS1_SIZE, ATTESTATION_AGGREGATION_PASS2_SIZE, ATTESTATION_AGGREGATION_PASS3_SIZE};
 use crate::commitment::{example_commitment_root, EXAMPLE_COMMITMENTS_REPEAT};
-use crate::{field_hash, field_hash_two, AGGREGATION_PASS1_SUB_TREE_HEIGHT, AGGREGATION_PASS2_SUB_TREE_HEIGHT, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
+use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
@@ -71,100 +70,12 @@ impl ValidatorsTree {
         self.validators[index].clone()
     }
 
-    pub fn prove_attestations(&self, circuit: &AttestationsAggregatorCircuit, reveals: &Vec<ValidatorCommitmentReveal>) -> Result<AttestationsAggregatorProof> {
-        let max_attestations = ATTESTATION_AGGREGATION_PASS1_SIZE * ATTESTATION_AGGREGATION_PASS2_SIZE * ATTESTATION_AGGREGATION_PASS3_SIZE;
-        if reveals.len() == 0 {
-            return Err(anyhow!("At least one reveal must be provided for the attestations proof"));
-        }
-        if reveals.len() > max_attestations {
-            return Err(anyhow!("Only {} reveals can be proven per attestations proof", max_attestations));
-        }
-
-        //verify all are for the same slot
-        let block_slot = reveals[0].block_slot;
-        for reveal in reveals.iter() {
-            if reveal.block_slot != block_slot {
-                return Err(anyhow!("All reveals do not have the same block_slot"));
-            }
-        }
-
-        //place the validator reveals in data
-        let mut validator_data: Vec<ValidatorPrimaryGroupData> = vec![ValidatorPrimaryGroupData::ValidatorGroupRoot([Field::ZERO; 4]); ATTESTATION_AGGREGATION_PASS3_SIZE];
-        for reveal in reveals.iter() {
-            let validator_primary_group_index = reveal.validator_index / (ATTESTATION_AGGREGATION_PASS1_SIZE * ATTESTATION_AGGREGATION_PASS2_SIZE);
-            let primary_group = &validator_data[validator_primary_group_index];
-            //add full primary group if it is currently just a root
-            if let ValidatorPrimaryGroupData::ValidatorGroupRoot(_) = primary_group {
-                let validator_group_data: Vec<ValidatorSecondaryGroupData> = vec![ValidatorSecondaryGroupData::ValidatorGroupRoot([Field::ZERO; 4]); ATTESTATION_AGGREGATION_PASS2_SIZE];
-                validator_data[validator_primary_group_index] = ValidatorPrimaryGroupData::ValidatorGroupData(validator_group_data);
-            }
-            let primary_group = &mut validator_data[validator_primary_group_index];
-            if let ValidatorPrimaryGroupData::ValidatorGroupData(primary_group) = primary_group {
-                let validator_secondary_group_index = (reveal.validator_index / ATTESTATION_AGGREGATION_PASS1_SIZE) % ATTESTATION_AGGREGATION_PASS2_SIZE;
-                let secondary_group = &primary_group[validator_secondary_group_index];
-                //add full secondary group if it is currently just a root
-                if let ValidatorSecondaryGroupData::ValidatorGroupRoot(_) = secondary_group {
-                    let validators: Vec<ValidatorData> = vec![ValidatorData {stake: 0, commitment_root: [Field::ZERO; 4], reveal: None}; ATTESTATION_AGGREGATION_PASS1_SIZE];
-                    primary_group[validator_secondary_group_index] = ValidatorSecondaryGroupData::ValidatorGroupData(validators);
-                }
-                let secondary_group = &mut primary_group[validator_secondary_group_index];
-                if let ValidatorSecondaryGroupData::ValidatorGroupData(secondary_group) = secondary_group {
-                    //add the validator reveal data
-                    let validator_group_index = reveal.validator_index % ATTESTATION_AGGREGATION_PASS1_SIZE;
-                    secondary_group[validator_group_index].reveal = Some(ValidatorRevealData {
-                        reveal: reveal.reveal,
-                        reveal_proof: reveal.proof.clone(),
-                    });
-                }
-            }
-        }
-
-        //fill in group roots and validator data
-        for (i, primary_group) in validator_data.iter_mut().enumerate() {
-            match primary_group {
-                ValidatorPrimaryGroupData::ValidatorGroupRoot(ref mut primary_group_root) => {
-                    //primary group root
-                    let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT + AGGREGATION_PASS2_SUB_TREE_HEIGHT;
-                    let index = i;
-                    *primary_group_root = self.sub_root(height, index);
-                },
-                ValidatorPrimaryGroupData::ValidatorGroupData(ref mut primary_group) => {
-                    for (j, secondary_group) in primary_group.iter_mut().enumerate() {
-                        match secondary_group {
-                            ValidatorSecondaryGroupData::ValidatorGroupRoot(ref mut secondary_group_root) => {
-                                //secondary group root
-                                let height = AGGREGATION_PASS1_SUB_TREE_HEIGHT;
-                                let index = (i * AGGREGATION_PASS2_SUB_TREE_HEIGHT) + j;
-                                *secondary_group_root = self.sub_root(height, index);
-                            },
-                            ValidatorSecondaryGroupData::ValidatorGroupData(ref mut secondary_group) => {
-                                for (k, validator) in secondary_group.iter_mut().enumerate() {
-                                    //validator data
-                                    let index = (i * AGGREGATION_PASS2_SUB_TREE_HEIGHT * AGGREGATION_PASS1_SUB_TREE_HEIGHT) + (j * AGGREGATION_PASS1_SUB_TREE_HEIGHT) + k;
-                                    let data = self.validator(index);
-                                    validator.stake = data.stake;
-                                    validator.commitment_root = data.commitment_root.clone();
-                                }
-                            },
-                        }
-                    }
-                },
-            }
-        }
-
-        //generate proof
-        circuit.generate_proof(&AttestationsAggregatorCircuitData {
-            block_slot,
-            validator_data,
-        })
-    }
-
     pub fn verify_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<bool> {
         if reveals.len() == 0 {
             return Err(anyhow!("At least one reveal must be provided for the batch"));
         }
-        if reveals.len() > ATTESTATION_AGGREGATION_PASS1_SIZE {
-            return Err(anyhow!("Only {} reveals can be proven per batch", ATTESTATION_AGGREGATION_PASS1_SIZE));
+        if reveals.len() > AGGREGATION_STAGE1_SIZE {
+            return Err(anyhow!("Only {} reveals can be proven per batch", AGGREGATION_STAGE1_SIZE));
         }
 
         //verify all are for the same slot

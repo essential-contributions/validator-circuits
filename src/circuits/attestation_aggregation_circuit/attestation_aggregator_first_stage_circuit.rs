@@ -14,43 +14,41 @@ use crate::circuits::extensions::{CircuitBuilderExtended, PartialWitnessExtended
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
 use crate::commitment::{empty_commitment, empty_commitment_root};
 use crate::participation::{leaf_fields, PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF};
-use crate::{Config, Field, AGGREGATION_PASS1_SIZE, AGGREGATION_PASS1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
+use crate::{Config, Field, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 use crate::Hash;
 
 use super::{Circuit, Proof, Serializeable};
 
-pub const VALIDATORS_TREE_AGG1_SUB_HEIGHT: usize = AGGREGATION_PASS1_SUB_TREE_HEIGHT;
-pub const ATTESTATION_AGGREGATION_PASS1_SIZE: usize = AGGREGATION_PASS1_SIZE;
 pub const PIS_AGG1_VALIDATORS_SUB_ROOT: [usize; 4] = [0, 1, 2, 3];
 pub const PIS_AGG1_PARTICIPATION_SUB_ROOT: [usize; 4] = [4, 5, 6, 7];
 pub const PIS_AGG1_NUM_PARTICIPANTS: usize = 8;
 pub const PIS_AGG1_BLOCK_SLOT: usize = 9;
 pub const PIS_AGG1_TOTAL_STAKE: usize = 10;
 
-pub struct AttestationsAggregator1Circuit {
+pub struct AttestationAggregatorFirstStageCircuit {
     circuit_data: CircuitData<Field, Config, D>,
-    targets: AttsAgg1Targets,
+    targets: AttAgg1Targets,
 }
-struct AttsAgg1Targets {
+struct AttAgg1Targets {
     block_slot: Target,
-    validators: Vec<AttsAgg1ValidatorTargets>,
+    validators: Vec<AttAgg1ValidatorTargets>,
     participation_bits_fields: Vec<Target>,
 }
-struct AttsAgg1ValidatorTargets {
+struct AttAgg1ValidatorTargets {
     stake: Target,
     commitment_root: HashOutTarget,
     reveal: Vec<Target>,
     reveal_proof: MerkleProofTarget,
 }
-impl AttestationsAggregator1Circuit {
-    pub fn generate_proof(&self, data: &AttestationsAggregator1Data) -> Result<AttestationsAggregator1Proof> {
+impl AttestationAggregatorFirstStageCircuit {
+    pub fn generate_proof(&self, data: &AttestationAggregatorFirstStageData) -> Result<AttestationAggregatorFirstStageProof> {
         let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
-        Ok(AttestationsAggregator1Proof { proof })
+        Ok(AttestationAggregatorFirstStageProof { proof })
     }
 }
-impl Circuit for AttestationsAggregator1Circuit {
-    type Proof = AttestationsAggregator1Proof;
+impl Circuit for AttestationAggregatorFirstStageCircuit {
+    type Proof = AttestationAggregatorFirstStageProof;
 
     fn new() -> Self {
         let config = CircuitConfig::standard_recursion_config();
@@ -77,7 +75,7 @@ impl Circuit for AttestationsAggregator1Circuit {
         None
     }
 }
-impl Serializeable for AttestationsAggregator1Circuit {
+impl Serializeable for AttestationAggregatorFirstStageCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = serialize_circuit(&self.circuit_data)?;
         if write_targets(&mut buffer, &self.targets).is_err() {
@@ -88,19 +86,19 @@ impl Serializeable for AttestationsAggregator1Circuit {
 
     fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
         let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
-        let targets = read_targets(&mut buffer);
-        if targets.is_err() {
-            return Err(anyhow!("Failed to deserialize circuit targets"));
-        }
-        Ok(Self { circuit_data, targets: targets.unwrap() })
+        let targets = match read_targets(&mut buffer) {
+            Ok(targets) => Ok(targets),
+            Err(_) => Err(anyhow!("Failed to deserialize circuit targets")),
+        }?;
+        Ok(Self { circuit_data, targets })
     }
 }
 
 #[derive(Clone)]
-pub struct AttestationsAggregator1Proof {
+pub struct AttestationAggregatorFirstStageProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
-impl AttestationsAggregator1Proof {
+impl AttestationAggregatorFirstStageProof {
     pub fn validators_sub_root(&self) -> [Field; 4] {
         [self.proof.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[0]], 
         self.proof.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[1]], 
@@ -127,7 +125,7 @@ impl AttestationsAggregator1Proof {
         self.proof.public_inputs[PIS_AGG1_TOTAL_STAKE].to_canonical_u64()
     }
 }
-impl Proof for AttestationsAggregator1Proof {
+impl Proof for AttestationAggregatorFirstStageProof {
     fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
         Self { proof }
     }
@@ -137,8 +135,8 @@ impl Proof for AttestationsAggregator1Proof {
     }
 }
 
-fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
-    let mut validator_targets: Vec<AttsAgg1ValidatorTargets> = Vec::new();
+fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttAgg1Targets {
+    let mut validator_targets: Vec<AttAgg1ValidatorTargets> = Vec::new();
 
     // Global targets
     let skip_root = build_skip_root(builder);
@@ -151,7 +149,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
     let mut participation_bits_fields: Vec<Target> = Vec::new();
     let mut participation_bits: Vec<BoolTarget> = Vec::new();
     for i in 0..PARTICIPATION_FIELDS_PER_LEAF {
-        let num_bits = PARTICIPANTS_PER_FIELD.min(ATTESTATION_AGGREGATION_PASS1_SIZE - (i * PARTICIPANTS_PER_FIELD));
+        let num_bits = PARTICIPANTS_PER_FIELD.min(AGGREGATION_STAGE1_SIZE - (i * PARTICIPANTS_PER_FIELD));
         let part = builder.add_virtual_target();
         let part_bits = builder.split_le(part, num_bits);
         
@@ -185,7 +183,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
         total_stake = builder.mul_add(stake, not_skip.target, total_stake);
         num_participants = builder.add(num_participants, not_skip.target);
 
-        validator_targets.push(AttsAgg1ValidatorTargets {
+        validator_targets.push(AttAgg1ValidatorTargets {
             stake,
             commitment_root,
             reveal,
@@ -199,7 +197,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
         let leaf_data = [validator.commitment_root.elements.to_vec(), vec![validator.stake]].concat();
         nodes.push(builder.hash_n_to_hash_no_pad::<Hash>(leaf_data));
     }
-    for h in (0..VALIDATORS_TREE_AGG1_SUB_HEIGHT).rev() {
+    for h in (0..AGGREGATION_STAGE1_SUB_TREE_HEIGHT).rev() {
         let start = nodes.len() - (1 << (h + 1));
         for i in 0..(1 << h) {
             let data = [nodes[start + (i * 2)].elements.to_vec(), nodes[start + (i * 2) + 1].elements.to_vec()].concat();
@@ -215,7 +213,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
     builder.register_public_input(block_slot);
     builder.register_public_input(total_stake);
 
-    AttsAgg1Targets {
+    AttAgg1Targets {
         block_slot,
         validators: validator_targets,
         participation_bits_fields,
@@ -223,25 +221,25 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttsAgg1Targets {
 }
 
 #[derive(Clone)]
-pub struct AttestationsAggregator1Data {
+pub struct AttestationAggregatorFirstStageData {
     pub block_slot: usize,
-    pub validators: Vec<AttestationsAggregator1ValidatorData>,
+    pub validators: Vec<AttestationAggregatorFirstStageValidatorData>,
 }
 #[derive(Clone)]
-pub struct AttestationsAggregator1ValidatorData {
+pub struct AttestationAggregatorFirstStageValidatorData {
     pub stake: u32,
     pub commitment_root: [Field; 4],
-    pub reveal: Option<AttestationsAggregator1RevealData>,
+    pub reveal: Option<AttestationAggregatorFirstStageRevealData>,
 }
 #[derive(Clone)]
-pub struct AttestationsAggregator1RevealData {
+pub struct AttestationAggregatorFirstStageRevealData {
     pub reveal: [Field; 4],
     pub reveal_proof: Vec<[Field; 4]>,
 }
 
-fn generate_partial_witness(targets: &AttsAgg1Targets, data: &AttestationsAggregator1Data) -> Result<PartialWitness<Field>> {
-    if data.validators.len() != ATTESTATION_AGGREGATION_PASS1_SIZE {
-        return Err(anyhow!("Must include {} validators in attestation aggregation first pass", ATTESTATION_AGGREGATION_PASS1_SIZE));
+fn generate_partial_witness(targets: &AttAgg1Targets, data: &AttestationAggregatorFirstStageData) -> Result<PartialWitness<Field>> {
+    if data.validators.len() != AGGREGATION_STAGE1_SIZE {
+        return Err(anyhow!("Must include {} validators in attestation aggregation first pass", AGGREGATION_STAGE1_SIZE));
     }
 
     //identify non-participating validators to skip (null reveal)
@@ -253,7 +251,7 @@ fn generate_partial_witness(targets: &AttsAgg1Targets, data: &AttestationsAggreg
             Some(_) => validator_participation.push(true),
             None => {
                 validator_participation.push(false);
-                validator.reveal = Some(AttestationsAggregator1RevealData {
+                validator.reveal = Some(AttestationAggregatorFirstStageRevealData {
                     reveal: empty_commit.reveal.clone(),
                     reveal_proof: empty_commit.proof.clone(),
                 });
@@ -281,7 +279,7 @@ fn generate_partial_witness(targets: &AttsAgg1Targets, data: &AttestationsAggreg
 }
 
 #[inline]
-fn write_targets(buffer: &mut Vec<u8>, targets: &AttsAgg1Targets) -> IoResult<()> {
+fn write_targets(buffer: &mut Vec<u8>, targets: &AttAgg1Targets) -> IoResult<()> {
     buffer.write_target(targets.block_slot)?;
     buffer.write_usize(targets.validators.len())?;
     for v in &targets.validators {
@@ -296,16 +294,16 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &AttsAgg1Targets) -> IoResult<()
 }
 
 #[inline]
-fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg1Targets> {
+fn read_targets(buffer: &mut Buffer) -> IoResult<AttAgg1Targets> {
     let block_slot = buffer.read_target()?;
-    let mut validators: Vec<AttsAgg1ValidatorTargets> = Vec::new();
+    let mut validators: Vec<AttAgg1ValidatorTargets> = Vec::new();
     let validators_length = buffer.read_usize()?;
     for _ in 0..validators_length {
         let stake = buffer.read_target()?;
         let commitment_root = buffer.read_target_hash()?;
         let reveal = buffer.read_target_vec()?;
         let reveal_proof = buffer.read_target_merkle_proof()?;
-        validators.push(AttsAgg1ValidatorTargets {
+        validators.push(AttAgg1ValidatorTargets {
             stake,
             commitment_root,
             reveal,
@@ -314,7 +312,7 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<AttsAgg1Targets> {
     }
     let participation_bits_fields = buffer.read_target_vec()?;
 
-    Ok(AttsAgg1Targets {
+    Ok(AttAgg1Targets {
         block_slot,
         validators,
         participation_bits_fields,
