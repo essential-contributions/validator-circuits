@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, save_proof_for_wrapping, validator_participation_circuit::{ValidatorPartAggPrevData, ValidatorPartAggRoundData, ValidatorPartAggStartData, ValidatorParticipationAggCircuit, ValidatorParticipationAggCircuitData, ValidatorParticipationAggEndCircuit, ValidatorParticipationAggEndCircuitData, ValidatorParticipationCircuit, ValidatorParticipationCircuitData, ValidatorParticipationValidatorData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{empty_participation_root, participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, validator_participation_circuit::{ValidatorParticipationCircuit, ValidatorParticipationCircuitData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field};
 
 const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
 const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
@@ -147,34 +147,6 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     println!("param_st - {:?}", proof.param_st());
     println!();
     
-
-/*
-    //data
-    let validator_index = 53;
-    let mut participation_bits = participation_bit_field(0);
-    participation_bits[6] = 0x04;
-
-    //prove
-    println!("Generating Proof...");
-    let start = Instant::now();
-    let proof = validator_participation_circuit.generate_proof(&ParticipationCircuitData {
-        participation_bits,
-        validator_index,
-    }).unwrap();
-    println!("(finished in {:?})", start.elapsed());
-    if validator_participation_circuit.verify_proof(&proof).is_ok() {
-        if proof.participated() {
-            println!("Proved validator {} participated in root {:?}!", proof.validator_index(), proof.participation_root());
-        } else {
-            println!("Proved validator {} did not participate in root {:?}!", proof.validator_index(), proof.participation_root());
-        }
-    } else {
-        log::error!("Proof failed verification.");
-        return;
-    }
-    save_proof_for_wrapping(&proof.proof(), VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
-    println!();
-
     if full {
         let inner_circuit = validator_participation_circuit.circuit_data();
         let inner_proof = proof.proof();
@@ -190,12 +162,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         let start = Instant::now();
         let proof = bn128_wrapper.generate_proof(inner_circuit, inner_proof).unwrap();
         println!("(finished in {:?})", start.elapsed());
-        if bn128_wrapper.verify_proof(&proof).is_ok() {
-            println!("Proved with BN128 wrapper!");
-        } else {
-            log::error!("BN128 wrapped proof failed verification.");
-            return;
-        }
+        assert!(bn128_wrapper.verify_proof(&proof).is_ok(), "BN128 wrapped proof verification failed.");
         save_bn128_wrapper_proof(&proof, VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
         println!();
 
@@ -208,7 +175,6 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         println!();
         println!("{}", proof);
     }
-    */
 }
 
 fn build_validators_state(
