@@ -8,6 +8,7 @@ use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
 use crate::circuits::extensions::{CircuitBuilderExtended, PartialWitnessExtended};
@@ -94,7 +95,7 @@ impl Serializeable for AttestationAggregatorFirstStageCircuit {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AttestationAggregatorFirstStageProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }

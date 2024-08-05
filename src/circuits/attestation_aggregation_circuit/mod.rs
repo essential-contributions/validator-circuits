@@ -8,8 +8,9 @@ pub use attestation_aggregator_third_stage_circuit::*;
 
 use plonky2::{field::types::Field as Plonky2_Field, plonk::circuit_data::CircuitData};
 use plonky2::plonk::proof::ProofWithPublicInputs;
-use anyhow::{anyhow, Result};
 use plonky2::util::serialization::Write;
+use serde::{Deserialize, Serialize};
+use anyhow::{anyhow, Result};
 
 use crate::accounts::{null_account_address, Account, AccountsTree};
 use crate::circuits::validators_state_circuit::ValidatorsStateCircuit;
@@ -145,7 +146,7 @@ impl Serializeable for AttestationAggregationCircuit {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AttestationAggregatorProof {
     proof: AttestationAggregatorThirdStageProof,
 }

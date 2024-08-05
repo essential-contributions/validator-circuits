@@ -5,6 +5,7 @@ use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, CommonCircuitData
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
 use crate::circuits::participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof, PIS_PARTICIPATION_ROUNDS_TREE_ROOT, PIS_PARTICIPATION_STATE_INPUTS_HASH};
@@ -133,7 +134,7 @@ impl Serializeable for ValidatorParticipationAggEndCircuit {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ValidatorParticipationAggEndProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }

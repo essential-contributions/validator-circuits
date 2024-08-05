@@ -7,10 +7,11 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, CommonCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
-use anyhow::{anyhow, Result};
 use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
 use plonky2::recursion::dummy_circuit::cyclic_base_proof;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use serde::{Deserialize, Serialize};
+use anyhow::{anyhow, Result};
 
 use crate::circuits::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
 use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
@@ -155,7 +156,7 @@ impl Serializeable for ValidatorParticipationAggCircuit {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ValidatorParticipationAggProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }

@@ -10,6 +10,7 @@ use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
 use plonky2::recursion::dummy_circuit::cyclic_base_proof;
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
 use crate::accounts::initial_accounts_tree_root;
@@ -114,7 +115,7 @@ impl Serializeable for ValidatorsStateCircuit {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ValidatorsStateProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }

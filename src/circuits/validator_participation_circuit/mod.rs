@@ -6,8 +6,9 @@ pub use validator_participation_aggregator_circuit::*;
 
 use plonky2::plonk::circuit_data::CircuitData;
 use plonky2::plonk::proof::ProofWithPublicInputs;
-use anyhow::{anyhow, Result};
 use plonky2::util::serialization::Write;
+use serde::{Deserialize, Serialize};
+use anyhow::{anyhow, Result};
 
 use crate::{accounts::{null_account_address, Account, AccountsTree}, circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 use super::{participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, Serializeable};
@@ -127,7 +128,7 @@ impl Serializeable for ValidatorParticipationCircuit {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ValidatorParticipationProof {
     proof: ValidatorParticipationAggEndProof,
 }
@@ -334,7 +335,6 @@ fn example_participation_state(
     for num in rounds {
         let round = ParticipationRound {
             num: *num,
-            state_inputs_hash,
             participation_root: participation_root(&bit_flags),
             participation_count: validator_indexes.len() as u32,
             participation_bits: Some(bit_flags.clone()),
@@ -342,10 +342,10 @@ fn example_participation_state(
         let current_round_data = participation_rounds_tree.round(round.num);
         let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
             round_num: round.num,
-            state_inputs_hash: round.state_inputs_hash,
+            state_inputs_hash: todo!(),
             participation_root: round.participation_root,
             participation_count: round.participation_count,
-            current_state_inputs_hash: current_round_data.state_inputs_hash,
+            current_state_inputs_hash: todo!(),
             current_participation_root: current_round_data.participation_root,
             current_participation_count: current_round_data.participation_count,
             participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
