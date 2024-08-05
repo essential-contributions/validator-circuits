@@ -4,6 +4,7 @@ pub mod groth16_wrapper;
 pub mod validators;
 pub mod accounts;
 pub mod participation;
+pub mod epochs;
 pub mod commitment;
 
 use plonky2::field::types::Field as Plonky2_Field;
@@ -19,6 +20,7 @@ pub type Config = PoseidonGoldilocksConfig;
 pub const VALIDATORS_TREE_HEIGHT: usize = 20; //1048576
 pub const VALIDATOR_COMMITMENT_TREE_HEIGHT: usize = 28; //102 years
 pub const PARTICIPATION_ROUNDS_TREE_HEIGHT: usize = 21; //102 years
+pub const VALIDATOR_EPOCHS_TREE_HEIGHT: usize = 15; //102 years
 pub const ACCOUNTS_TREE_HEIGHT: usize = 160;
 pub const PARTICIPATION_ROUNDS_PER_STATE_EPOCH: usize = 64;
 pub const AGGREGATION_STAGE1_SIZE: usize = 1024;

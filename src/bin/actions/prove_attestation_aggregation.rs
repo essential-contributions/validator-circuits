@@ -1,10 +1,10 @@
 use std::time::Instant;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, save_proof, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::{example_commitment_proof, example_commitment_root}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::{Validator, ValidatorCommitmentReveal, ValidatorsTree}, Field, MAX_VALIDATORS};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_proof, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::ValidatorCommitmentReveal, Field, MAX_VALIDATORS};
 use validator_circuits::circuits::attestation_aggregation_circuit::AttestationAggregationCircuit;
 
-const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
-const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
+use crate::actions::build_validators_state;
+
 const VALIDATORS_STATE_OUTPUT_FILE: &str = "attestation_aggregation_validators_state_proof.json";
 
 pub fn benchmark_prove_attestation_aggregation(full: bool) {
@@ -20,7 +20,6 @@ pub fn benchmark_prove_attestation_aggregation(full: bool) {
     //generate the circuits
     println!("Building Atestation Aggregation Circuit(s)... ");
     let start = Instant::now();
-    let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
     let attestation_agg_circuit = load_or_create_circuit::<AttestationAggregationCircuit>(ATTESTATION_AGGREGATION_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
     println!();
@@ -28,16 +27,16 @@ pub fn benchmark_prove_attestation_aggregation(full: bool) {
     //build proof for validator state
     println!("Building Validators State Data...");
     let start = Instant::now();
+    let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
     let accounts = [[11u8; 20], [22u8; 20], [33u8; 20], [44u8; 20], [55u8; 20], [66u8; 20]];
     let validator_indexes = [21, 22, 23, 24, 25, 26];
     let stakes = [64, 64, 64, 32, 32, 32];
-    let (validators_tree, 
-        validators_state_proof,
-    ) = build_validators_state(
+    let (validators_tree, _, validators_state_proof) = build_validators_state(
         &validators_state_circuit,
         &accounts,
         &validator_indexes,
         &stakes,
+        VALIDATORS_STATE_OUTPUT_FILE,
     );
     println!("(finished in {:?})", start.elapsed());
     println!();
@@ -103,108 +102,6 @@ fn calculate_participation_root(validator_indexes: &[usize]) -> [Field; 4] {
         bytes[validator_index / 8] += 0x80 >> (validator_index % 8);
     }
     participation_root(&bytes)
-}
-
-fn build_validators_state(
-    validators_state_circuit: &ValidatorsStateCircuit,
-    accounts: &[[u8; 20]],
-    validator_indexes: &[usize],
-    stakes: &[u32],
-) -> (
-    ValidatorsTree, //validators_tree
-    ValidatorsStateProof //validators_state_proof
-) {
-    let mut validators_tree = ValidatorsTree::new();
-    let mut accounts_tree = match load_accounts(&BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE) {
-        Ok(tree) => tree,
-        Err(_) => {
-            println!("  building accounts tree");
-            let tree = AccountsTree::new();
-            if save_accounts(&tree, &BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
-                log::warn!("Failed to save accounts tree to file.");
-            }
-            tree
-        },
-    };
-
-    let validators_state_proof = match load_proof(&BENCHMARKING_DATA_DIR, VALIDATORS_STATE_OUTPUT_FILE) {
-        Ok(proof) => {
-            for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
-                let commitment_root = example_commitment_root(validator_index);
-                validators_tree.set_validator(validator_index, Validator { commitment_root, stake });
-                accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
-            }
-            ValidatorsStateProof::from_proof(proof)
-        },
-        Err(_) => {
-            let mut previous_proof: Option<ValidatorsStateProof> = None;
-            for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
-                println!("  building proof");
-                let commitment = example_commitment_root(validator_index);
-                let data = compile_data_for_validators_state_circuit(
-                    &accounts_tree,
-                    &validators_tree,
-                    validator_index,
-                    stake,
-                    commitment,
-                    account,
-                    null_account_address(validator_index),
-                    account,
-                    previous_proof,
-                );
-                let proof = validators_state_circuit.generate_proof(&data).unwrap();
-                assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
-                validators_tree.set_validator(validator_index, Validator { commitment_root: commitment, stake });
-                accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
-                previous_proof = Some(proof);
-            }
-            let proof = previous_proof.unwrap();
-            if save_proof(&proof.proof(), &BENCHMARKING_DATA_DIR, VALIDATORS_STATE_OUTPUT_FILE).is_err() {
-                log::warn!("Failed to save validators state proof to file.");
-            }
-            proof
-        },
-    };
-            
-    (
-        validators_tree, //validators_tree
-        validators_state_proof, //validators_state_proof
-    )
-}
-
-fn compile_data_for_validators_state_circuit(
-    accounts_tree: &AccountsTree,
-    validators_tree: &ValidatorsTree,
-    index: usize,
-    stake: u32,
-    commitment: [Field; 4],
-    account: [u8; 20],
-    from_account: [u8; 20],
-    to_account: [u8; 20],
-    previous_proof: Option<ValidatorsStateProof>,
-) -> ValidatorsStateCircuitData {
-    let curr_validator = validators_tree.validator(index);
-    ValidatorsStateCircuitData {
-        index,
-        stake,
-        commitment,
-        account,
-
-        validator_index: index,
-        validator_stake: curr_validator.stake,
-        validator_commitment: curr_validator.commitment_root,
-        validator_proof: validators_tree.merkle_proof(index),
-
-        from_account,
-        from_acc_index: accounts_tree.account(from_account).validator_index,
-        from_acc_proof: accounts_tree.merkle_proof(from_account),
-
-        to_account,
-        to_acc_index: accounts_tree.account(to_account).validator_index,
-        to_acc_proof: accounts_tree.merkle_proof(to_account),
-
-        previous_proof,
-    }
 }
 
 fn to_hex(bytes: &[u8]) -> String {

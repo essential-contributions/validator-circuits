@@ -24,7 +24,7 @@ pub struct AccountData {
     pub validator_index: usize,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AccountsTree {
     nodes: Vec<[Field; 4]>,
     accounts: HashMap<[u8; 20], AccountData>,

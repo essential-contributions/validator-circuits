@@ -2,11 +2,10 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field as Plonky2_Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, circuits::{load_or_create_circuit, validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, VALIDATORS_STATE_CIRCUIT_DIR}, validators::{Validator, ValidatorsTree}, Field};
+use validator_circuits::{accounts::{null_account_address, Account}, circuits::{load_or_create_circuit, validators_state_circuit::ValidatorsStateCircuitData, Circuit, VALIDATORS_STATE_CIRCUIT_DIR}, validators::{Validator, ValidatorsTree}, Field};
 use validator_circuits::circuits::validators_state_circuit::ValidatorsStateCircuit;
 
-const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
-const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
+use crate::actions::{build_initial_accounts_tree, compile_data_for_validators_state_circuit};
 
 pub fn benchmark_prove_validators_state(full: bool) {
     if full {
@@ -23,21 +22,12 @@ pub fn benchmark_prove_validators_state(full: bool) {
     //build stake tracking structures
     println!("Building Accounts Tree...");
     let start = Instant::now();
-    let mut accounts_tree = match load_accounts(&BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE) {
-        Ok(tree) => tree,
-        Err(_) => {
-            let t = AccountsTree::new();
-            println!("(finished in {:?})", start.elapsed());
-            if save_accounts(&t, &BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
-                log::warn!("Failed to save accounts tree to file.");
-            }
-            t
-        },
-    };
     let mut total_staked = 0;
     let mut total_validators = 0;
     let mut validators_tree = ValidatorsTree::new();
+    let mut accounts_tree = build_initial_accounts_tree();
     let mut inputs_hash = [0u8; 32];
+    println!("(finished in {:?})", start.elapsed());
     println!();
 
     //generate the initial proof
@@ -48,7 +38,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let to_account = generate_account_address(12791283791);
     let stake = 64;
     let commitment = [Field::ONE, Field::TWO, Field::ZERO, Field::TWO];
-    let data = compile_data_for_circuit(
+    let data = compile_data_for_validators_state_circuit(
         &accounts_tree,
         &validators_tree,
         validator_index,
@@ -87,7 +77,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let to_account = generate_account_address(12791283791);
     let stake = 96;
     let commitment = [Field::ONE, Field::TWO, Field::ZERO, Field::TWO];
-    let data = compile_data_for_circuit(
+    let data = compile_data_for_validators_state_circuit(
         &accounts_tree,
         &validators_tree,
         validator_index,
@@ -124,7 +114,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let to_account = generate_account_address(987645436);
     let stake = 32;
     let commitment = [Field::TWO, Field::TWO, Field::TWO, Field::TWO];
-    let data = compile_data_for_circuit(
+    let data = compile_data_for_validators_state_circuit(
         &accounts_tree,
         &validators_tree,
         validator_index,
@@ -159,7 +149,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let to_account = generate_account_address(5554443332);
     let stake = 512;
     let commitment = [Field::ONE, Field::ONE, Field::ZERO, Field::ZERO];
-    let data = compile_data_for_circuit(
+    let data = compile_data_for_validators_state_circuit(
         &accounts_tree,
         &validators_tree,
         validator_index,
@@ -198,7 +188,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let to_account = generate_account_address(987645436);
     let stake = 128;
     let commitment = [Field::TWO, Field::TWO, Field::TWO, Field::TWO];
-    let data = compile_data_for_circuit(
+    let data = compile_data_for_validators_state_circuit(
         &accounts_tree,
         &validators_tree,
         validator_index,
@@ -233,7 +223,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let to_account = generate_account_address(5554443332);
     let stake = 544;
     let commitment = [Field::ZERO, Field::TWO, Field::ZERO, Field::ZERO];
-    let data = compile_data_for_circuit(
+    let data = compile_data_for_validators_state_circuit(
         &accounts_tree,
         &validators_tree,
         validator_index,
@@ -268,7 +258,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let to_account = null_account_address(validator_index);
     let stake = 0;
     let commitment = [Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO];
-    let data = compile_data_for_circuit(
+    let data = compile_data_for_validators_state_circuit(
         &accounts_tree,
         &validators_tree,
         validator_index,
@@ -307,7 +297,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let to_account = null_account_address(validator_index);
     let stake = 0;
     let commitment = [Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO];
-    let data = compile_data_for_circuit(
+    let data = compile_data_for_validators_state_circuit(
         &accounts_tree,
         &validators_tree,
         validator_index,
@@ -344,41 +334,6 @@ fn generate_account_address(seed: u64) -> [u8; 20] {
     let mut address = [0u8; 20];
     address.copy_from_slice(&hash[0..20]);
     address
-}
-
-fn compile_data_for_circuit(
-    accounts_tree: &AccountsTree,
-    validators_tree: &ValidatorsTree,
-    index: usize,
-    stake: u32,
-    commitment: [Field; 4],
-    account: [u8; 20],
-    from_account: [u8; 20],
-    to_account: [u8; 20],
-    previous_proof: Option<ValidatorsStateProof>,
-) -> ValidatorsStateCircuitData {
-    let curr_validator = validators_tree.validator(index);
-    ValidatorsStateCircuitData {
-        index,
-        stake,
-        commitment,
-        account,
-
-        validator_index: index,
-        validator_stake: curr_validator.stake,
-        validator_commitment: curr_validator.commitment_root,
-        validator_proof: validators_tree.merkle_proof(index),
-
-        from_account,
-        from_acc_index: accounts_tree.account(from_account).validator_index,
-        from_acc_proof: accounts_tree.merkle_proof(from_account),
-
-        to_account,
-        to_acc_index: accounts_tree.account(to_account).validator_index,
-        to_acc_proof: accounts_tree.merkle_proof(to_account),
-
-        previous_proof,
-    }
 }
 
 fn next_inputs_hash(previous_hash: [u8; 32], data: ValidatorsStateCircuitData) -> [u8; 32] {

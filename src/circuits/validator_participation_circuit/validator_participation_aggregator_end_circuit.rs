@@ -134,7 +134,7 @@ impl Serializeable for ValidatorParticipationAggEndCircuit {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ValidatorParticipationAggEndProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }

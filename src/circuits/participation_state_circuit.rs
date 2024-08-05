@@ -13,8 +13,9 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
+use crate::epochs::initial_validator_epochs_root;
 use crate::participation::initial_participation_rounds_root;
-use crate::{Config, Field, D, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
+use crate::{Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT, VALIDATOR_EPOCHS_TREE_HEIGHT};
 use crate::Hash;
 
 use super::extensions::{common_data_for_recursion, CircuitBuilderExtended, PartialWitnessExtended};
@@ -22,7 +23,8 @@ use super::serialization::{deserialize_circuit, serialize_circuit};
 use super::{Circuit, Proof, Serializeable};
 
 pub const PIS_PARTICIPATION_STATE_INPUTS_HASH: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
-pub const PIS_PARTICIPATION_ROUNDS_TREE_ROOT: [usize; 4] = [8, 9, 10, 11];
+pub const PIS_VALIDATOR_EPOCHS_TREE_ROOT: [usize; 4] = [8, 9, 10, 11];
+pub const PIS_PARTICIPATION_ROUNDS_TREE_ROOT: [usize; 4] = [12, 13, 14, 15];
 
 const MAX_GATES: usize = 1 << 14;
 
@@ -31,12 +33,14 @@ pub struct ParticipationStateCircuit {
     targets: ParticipationStateCircuitTargets,
 }
 struct ParticipationStateCircuitTargets {
+    epoch_num: Target,
+    val_state_inputs_hash: Vec<Target>,
     round_num: Target,
-    state_inputs_hash: Vec<Target>,
     participation_root: HashOutTarget,
     participation_count: Target,
 
-    current_state_inputs_hash: Vec<Target>,
+    current_val_state_inputs_hash: Vec<Target>,
+    validator_epoch_proof: MerkleProofTarget,
     current_participation_root: HashOutTarget,
     current_participation_count: Target,
     participation_round_proof: MerkleProofTarget,
@@ -105,7 +109,7 @@ impl Serializeable for ParticipationStateCircuit {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ParticipationStateProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
@@ -117,6 +121,13 @@ impl ParticipationStateProof {
             hash[(i * 4)..((i * 4) + 4)].copy_from_slice(&bytes);
         }
         hash
+    }
+
+    pub fn validator_epochs_tree_root(&self) -> [Field; 4] {
+        [self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[0]], 
+        self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[1]], 
+        self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[2]], 
+        self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[3]]]
     }
 
     pub fn participation_rounds_tree_root(&self) -> [Field; 4] {
@@ -137,24 +148,27 @@ impl Proof for ParticipationStateProof {
 }
 
 fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStateCircuitTargets {
+    let rounds_per_epoch = builder.constant(Field::from_canonical_usize(PARTICIPATION_ROUNDS_PER_STATE_EPOCH));
+
     //Init flag
     let init_zero = builder.add_virtual_bool_target_safe();
 
     //Inputs
     let round_num = builder.add_virtual_target();
-    let state_inputs_hash = builder.add_virtual_targets(8);
+    let val_state_inputs_hash = builder.add_virtual_targets(8);
     let participation_root = builder.add_virtual_hash();
     let participation_count = builder.add_virtual_target();
 
     //Current state targets (will be connected to inner proof later)
     let current_inputs_hash = builder.add_virtual_targets(8);
+    let current_epochs_tree_root = builder.add_virtual_hash();
     let current_pr_tree_root = builder.add_virtual_hash();
 
     //Compute the new inputs hash
     let mut inputs: Vec<Target> = Vec::new();
     current_inputs_hash.iter().for_each(|t| inputs.push(*t));
     inputs.push(round_num);
-    state_inputs_hash.iter().for_each(|t| inputs.push(*t));
+    val_state_inputs_hash.iter().for_each(|t| inputs.push(*t));
     participation_root.elements.iter().for_each(|t| {
         let parts = builder.split_low_high(*t, 32, 64);
         inputs.push(parts.1);
@@ -163,12 +177,26 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
     inputs.push(participation_count);
     let new_inputs_hash = builder.sha256_hash(inputs);
 
+    //Verify merkle proof for existing validator epoch data
+    let current_val_state_inputs_hash = builder.add_virtual_targets(8);
+    let current_epoch_hash = builder.hash_n_to_hash_no_pad::<Hash>(current_val_state_inputs_hash.clone());
+    let validator_epoch_proof = MerkleProofTarget {
+        siblings: builder.add_virtual_hashes(VALIDATOR_EPOCHS_TREE_HEIGHT),
+    };
+    let epoch_num = builder.add_virtual_target();
+    let epoch_num_bits = builder.split_le(epoch_num, VALIDATOR_EPOCHS_TREE_HEIGHT);
+    builder.verify_merkle_proof::<Hash>(
+        current_epoch_hash.elements.to_vec(), 
+        &epoch_num_bits, 
+        current_epochs_tree_root,
+        &validator_epoch_proof,
+    );
+    builder.div_round_down(round_num, rounds_per_epoch, epoch_num, 32);
+
     //Verify merkle proof for existing round data
-    let current_state_inputs_hash = builder.add_virtual_targets(8);
     let current_participation_root = builder.add_virtual_hash();
     let current_participation_count = builder.add_virtual_target();
     let current_round_hash = builder.hash_n_to_hash_no_pad::<Hash>([
-        &current_state_inputs_hash[..], 
         &current_participation_root.elements[..], 
         &[current_participation_count],
     ].concat());
@@ -183,13 +211,19 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
         &participation_round_proof,
     );
 
+    //Update the validator epoch tree
+    let new_epochs_tree_root = builder.merkle_root_from_prev_proof::<Hash>(
+        val_state_inputs_hash.clone(), 
+        &epoch_num_bits, 
+        &validator_epoch_proof
+    );
+
     //Determine the new round data based on the input and current participation count
     let input_is_less = builder.less_than(participation_count, current_participation_count, VALIDATORS_TREE_HEIGHT);
     let new_participation_root = builder.select_hash(input_is_less, current_participation_root, participation_root);
     let new_participation_count = builder.select(input_is_less, current_participation_count, participation_count);
     let new_pr_tree_root = builder.merkle_root_from_prev_proof::<Hash>(
         [
-            &state_inputs_hash[..], 
             &new_participation_root.elements[..], 
             &[new_participation_count],
         ].concat(), 
@@ -199,6 +233,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
 
     //Register all public inputs
     builder.register_public_inputs(&new_inputs_hash);
+    builder.register_public_inputs(&new_epochs_tree_root.elements);
     builder.register_public_inputs(&new_pr_tree_root.elements);
 
     //Unpack inner proof public inputs
@@ -208,13 +243,21 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
     let inner_cyclic_proof_with_pis = builder.add_virtual_proof_with_pis(&common_data);
     let inner_cyclic_pis = &inner_cyclic_proof_with_pis.public_inputs;
     let inner_proof_inputs_hash = inner_cyclic_pis[0..8].to_vec();
-    let inner_proof_pr_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[8..12]).unwrap();
+    let inner_proof_epochs_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[8..12]).unwrap();
+    let inner_proof_pr_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[12..16]).unwrap();
 
     //Connect the current inputs hash with inner proof or initial value
     inner_proof_inputs_hash.iter().zip(current_inputs_hash).for_each(|(inner_proof, prev)| {
         let inner_proof_or_init = builder.mul(*inner_proof, init_zero.target);
         builder.connect(prev, inner_proof_or_init);
     });
+
+    //Connect the current validator epochs tree root with inner proof or initial value
+    let initial_epochs_tree_root = HashOutTarget { 
+        elements: initial_validator_epochs_root().map(|f| builder.constant(f)) 
+    };
+    let inner_proof_epochs_tree_root_or_init = builder.select_hash(init_zero, inner_proof_epochs_tree_root, initial_epochs_tree_root);
+    builder.connect_hashes(current_epochs_tree_root, inner_proof_epochs_tree_root_or_init);
 
     //Connect the current participation rounds tree root with inner proof or initial value
     let initial_pr_tree_root = HashOutTarget { 
@@ -231,11 +274,13 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
     ).expect("cyclic proof verification failed");
 
     ParticipationStateCircuitTargets {
+        epoch_num,
+        val_state_inputs_hash,
         round_num,
-        state_inputs_hash,
         participation_root,
         participation_count,
-        current_state_inputs_hash,
+        current_val_state_inputs_hash,
+        validator_epoch_proof,
         current_participation_root,
         current_participation_count,
         participation_round_proof,
@@ -248,11 +293,12 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
 #[derive(Clone)]
 pub struct ParticipationStateCircuitData {
     pub round_num: usize,
-    pub state_inputs_hash: [u8; 32],
+    pub val_state_inputs_hash: [u8; 32],
     pub participation_root: [Field; 4],
     pub participation_count: u32,
 
-    pub current_state_inputs_hash: [u8; 32],
+    pub current_val_state_inputs_hash: [u8; 32],
+    pub validator_epoch_proof: Vec<[Field; 4]>,
     pub current_participation_root: [Field; 4],
     pub current_participation_count: u32,
     pub participation_round_proof: Vec<[Field; 4]>,
@@ -264,22 +310,23 @@ fn generate_partial_witness(
     circuit_data: &CircuitData<Field, Config, D>, 
     targets: &ParticipationStateCircuitTargets, 
     data: &ParticipationStateCircuitData,
-    
 ) -> Result<PartialWitness<Field>> {
     let mut pw = PartialWitness::new();
 
-    pw.set_target(targets.round_num, Field::from_canonical_usize(data.round_num));
-    data.state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
+    pw.set_target(targets.epoch_num, Field::from_canonical_usize(data.round_num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH));
+    data.val_state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
         let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
-        pw.set_target(targets.state_inputs_hash[i], value);
+        pw.set_target(targets.val_state_inputs_hash[i], value);
     });
+    pw.set_target(targets.round_num, Field::from_canonical_usize(data.round_num));
     pw.set_hash_target(targets.participation_root, HashOut::<Field> { elements: data.participation_root });
     pw.set_target(targets.participation_count, Field::from_canonical_u32(data.participation_count));
     
-    data.current_state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
+    data.current_val_state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
         let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
-        pw.set_target(targets.current_state_inputs_hash[i], value);
+        pw.set_target(targets.current_val_state_inputs_hash[i], value);
     });
+    pw.set_merkle_proof_target(targets.validator_epoch_proof.clone(), &data.validator_epoch_proof);
     pw.set_hash_target(targets.current_participation_root, HashOut::<Field> { elements: data.current_participation_root });
     pw.set_target(targets.current_participation_count, Field::from_canonical_u32(data.current_participation_count));
     pw.set_merkle_proof_target(targets.participation_round_proof.clone(), &data.participation_round_proof);
@@ -313,12 +360,14 @@ fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPubli
 
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ParticipationStateCircuitTargets) -> IoResult<()> {
+    buffer.write_target(targets.epoch_num)?;
+    buffer.write_target_vec(&targets.val_state_inputs_hash)?;
     buffer.write_target(targets.round_num)?;
-    buffer.write_target_vec(&targets.state_inputs_hash)?;
     buffer.write_target_hash(&targets.participation_root)?;
     buffer.write_target(targets.participation_count)?;
     
-    buffer.write_target_vec(&targets.current_state_inputs_hash)?;
+    buffer.write_target_vec(&targets.current_val_state_inputs_hash)?;
+    buffer.write_target_merkle_proof(&targets.validator_epoch_proof)?;
     buffer.write_target_hash(&targets.current_participation_root)?;
     buffer.write_target(targets.current_participation_count)?;
     buffer.write_target_merkle_proof(&targets.participation_round_proof)?;
@@ -332,12 +381,14 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &ParticipationStateCircuitTarget
 
 #[inline]
 fn read_targets(buffer: &mut Buffer) -> IoResult<ParticipationStateCircuitTargets> {
+    let epoch_num = buffer.read_target()?;
+    let val_state_inputs_hash = buffer.read_target_vec()?;
     let round_num = buffer.read_target()?;
-    let state_inputs_hash = buffer.read_target_vec()?;
     let participation_root = buffer.read_target_hash()?;
     let participation_count = buffer.read_target()?;
 
-    let current_state_inputs_hash = buffer.read_target_vec()?;
+    let current_val_state_inputs_hash = buffer.read_target_vec()?;
+    let validator_epoch_proof = buffer.read_target_merkle_proof()?;
     let current_participation_root = buffer.read_target_hash()?;
     let current_participation_count = buffer.read_target()?;
     let participation_round_proof = buffer.read_target_merkle_proof()?;
@@ -347,11 +398,13 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ParticipationStateCircuitTarget
     let previous_proof = buffer.read_target_proof_with_public_inputs()?;
 
     Ok(ParticipationStateCircuitTargets {
+        epoch_num,
+        val_state_inputs_hash,
         round_num,
-        state_inputs_hash,
         participation_root,
         participation_count,
-        current_state_inputs_hash,
+        current_val_state_inputs_hash,
+        validator_epoch_proof,
         current_participation_root,
         current_participation_count,
         participation_round_proof,

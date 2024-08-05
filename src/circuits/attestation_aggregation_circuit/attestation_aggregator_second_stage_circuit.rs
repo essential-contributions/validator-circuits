@@ -107,7 +107,7 @@ impl Serializeable for AttestationAggregatorSecondStageCircuit {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AttestationAggregatorSecondStageProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }

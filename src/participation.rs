@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
-use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE, AGGREGATION_STAGE3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT};
+use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE, AGGREGATION_STAGE3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_TREE_HEIGHT};
 use crate::Field;
 
 pub const PARTICIPATION_TREE_SIZE: usize = AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE;
@@ -21,46 +21,31 @@ pub const PARTICIPATION_BITS_BYTE_SIZE: usize = (AGGREGATION_STAGE1_SIZE * AGGRE
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ParticipationRound {
     pub num: usize,
-    pub state_inputs_hash: [u8; 32],
+    pub participation_root: [Field; 4],
+    pub participation_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+struct ParticipationRoundData {
     pub participation_root: [Field; 4],
     pub participation_count: u32,
     pub participation_bits: Option<Vec<u8>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ParticipationRoundData {
-    pub participation_root: [Field; 4],
-    pub participation_count: u32,
-    pub participation_bits: Option<Vec<u8>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ParticipationRoundsTree {
-    state_inputs_hashes: HashMap<usize, [u8; 32]>,
     rounds: HashMap<usize, ParticipationRoundData>,
     default_round_data: ParticipationRoundData,
 }
 
 impl ParticipationRoundsTree {
     pub fn new() -> Self {
-        Self::from_rounds(&Vec::<ParticipationRound>::new())
-    }
-
-    pub fn from_rounds(rounds: &[ParticipationRound]) -> Self {
         let default_round_data = ParticipationRoundData {
             participation_root: empty_participation_root(),
             participation_count: 0,
             participation_bits: None,
         };
-        let mut rounds_tree = Self { 
-            state_inputs_hashes: HashMap::new(), 
-            rounds: HashMap::new(),
-            default_round_data,
-        };
-        for round in rounds {
-            rounds_tree.update_round(round.clone());
-        }
-        rounds_tree
+        Self { rounds: HashMap::new(), default_round_data }
     }
 
     pub fn root(&self) -> [Field; 4] {
@@ -126,59 +111,40 @@ impl ParticipationRoundsTree {
     }
 
     pub fn round(&self, num: usize) -> ParticipationRound {
-        let state_epoch = num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
         match self.rounds.get(&num) {
             Some(round) => ParticipationRound {
                 num,
-                state_inputs_hash: match self.state_inputs_hashes.get(&state_epoch) {
-                    Some(state_inputs_hash) => state_inputs_hash.clone(),
-                    None => [0u8; 32],
-                },
                 participation_root: round.participation_root,
                 participation_count: round.participation_count,
-                participation_bits: round.participation_bits.clone(),
             },
             None => ParticipationRound {
                 num,
-                state_inputs_hash: [0u8; 32],
                 participation_root: self.default_round_data.participation_root,
                 participation_count: self.default_round_data.participation_count,
-                participation_bits: self.default_round_data.participation_bits.clone(),
             },
         }
     }
 
-    pub fn update_round(&mut self, round: ParticipationRound) {
-        let state_epoch = round.num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
-        match self.state_inputs_hashes.get(&state_epoch) {
-            Some(inputs_hash) => {
-                assert_eq!(
-                    inputs_hash.clone(), 
-                    round.state_inputs_hash, 
-                    "round update must have the same state_inputs_hash as previous updates within the same epoch"
-                );
-            },
-            _ => {},
+    pub fn round_participation_bits(&self, num: usize) -> Option<Vec<u8>> {
+        match self.rounds.get(&num) {
+            Some(round) => round.participation_bits.clone(),
+            None => None,
         }
+    }
 
+    pub fn update_round(&mut self, round: ParticipationRound, participation_bits: Option<Vec<u8>>) {
         let current_round = self.round(round.num);
         if round.participation_count >= current_round.participation_count {
-            self.state_inputs_hashes.insert(state_epoch, round.state_inputs_hash);
             self.rounds.insert(round.num, ParticipationRoundData {
                 participation_root: round.participation_root,
                 participation_count: round.participation_count,
-                participation_bits: round.participation_bits,
+                participation_bits,
             });
         }
     }
     
     fn hash_round(round: ParticipationRound) -> [Field; 4] {
-        let mut state_inputs_hash_as_fields = Vec::new();
-        for c in round.state_inputs_hash.chunks(4) {
-            state_inputs_hash_as_fields.push(Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])));
-        }
         let fields_to_hash = [
-            state_inputs_hash_as_fields,
             round.participation_root.to_vec(),
             vec!(Field::from_canonical_u32(round.participation_count)),
         ].concat();
@@ -194,10 +160,8 @@ impl ParticipationRoundsTree {
 
         let default_node = Self::hash_round(ParticipationRound {
             num: 0,
-            state_inputs_hash: [0u8; 32],
             participation_root: self.default_round_data.participation_root,
             participation_count: self.default_round_data.participation_count,
-            participation_bits: self.default_round_data.participation_bits.clone(),
         });
 
         (intermediary_nodes, default_node)

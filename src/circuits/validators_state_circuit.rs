@@ -115,7 +115,7 @@ impl Serializeable for ValidatorsStateCircuit {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ValidatorsStateProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }

@@ -25,7 +25,7 @@ pub struct ValidatorCommitmentReveal {
     pub proof: Vec<[Field; 4]>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ValidatorsTree {
     validators: Vec<Validator>,
     nodes: Vec<[Field; 4]>,
@@ -67,6 +67,10 @@ impl ValidatorsTree {
 
     pub fn validator(&self, index: usize) -> Validator {
         self.validators[index].clone()
+    }
+
+    pub fn validators(&self) -> Vec<Validator> {
+        self.validators.clone()
     }
 
     pub fn verify_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<bool> {

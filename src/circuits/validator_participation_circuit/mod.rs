@@ -128,7 +128,7 @@ impl Serializeable for ValidatorParticipationCircuit {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ValidatorParticipationProof {
     proof: ValidatorParticipationAggEndProof,
 }
@@ -228,7 +228,7 @@ fn generate_proof_from_data(
                 participation_root: round.participation_root,
                 participation_count: round.participation_count,
                 participation_round_proof: participation_rounds_tree.merkle_proof(round_num),
-                participation_bits: round.participation_bits,
+                participation_bits: participation_rounds_tree.round_participation_bits(round_num)
             }
         }).collect();
         let previous_data = match cyclical_proof {
@@ -337,22 +337,22 @@ fn example_participation_state(
             num: *num,
             participation_root: participation_root(&bit_flags),
             participation_count: validator_indexes.len() as u32,
-            participation_bits: Some(bit_flags.clone()),
         };
         let current_round_data = participation_rounds_tree.round(round.num);
         let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
             round_num: round.num,
-            state_inputs_hash: todo!(),
+            val_state_inputs_hash: todo!(),
             participation_root: round.participation_root,
             participation_count: round.participation_count,
-            current_state_inputs_hash: todo!(),
+            current_val_state_inputs_hash: todo!(),
+            validator_epoch_proof: todo!(),
             current_participation_root: current_round_data.participation_root,
             current_participation_count: current_round_data.participation_count,
             participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
             previous_proof,
         }).unwrap();
         assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
-        participation_rounds_tree.update_round(round.clone());
+        participation_rounds_tree.update_round(round.clone(), Some(bit_flags));
         previous_proof = Some(proof);
     }
     let participation_state_proof = previous_proof.unwrap();

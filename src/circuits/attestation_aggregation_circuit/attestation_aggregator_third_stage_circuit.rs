@@ -128,7 +128,7 @@ impl Serializeable for AttestationAggregatorThirdStageCircuit {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AttestationAggregatorThirdStageProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }

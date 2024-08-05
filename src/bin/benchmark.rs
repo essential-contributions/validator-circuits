@@ -24,8 +24,8 @@ fn main() {
     if args.action.eq("commitment")  {
         actions::benchmark_commitment_generation();
     } else if args.action.eq("state")  {
-        actions::benchmark_prove_participation_state(args.full);
         actions::benchmark_prove_validators_state(args.full);
+        actions::benchmark_prove_participation_state(args.full);
     } else if args.action.eq("attestations")  {
         actions::benchmark_prove_attestation_aggregation(args.full);
     } else if args.action.eq("participation")  {
