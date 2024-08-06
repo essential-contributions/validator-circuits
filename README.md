@@ -54,6 +54,7 @@ Prove Block Attestations:      66.13s
 Theoretical 1Year Participation Prove Time:  2260s (37.67m)
 [19s + 7s*(num_epochs - 1) + 1s]
 
-Theoretical 1M Attestation Prove Time:       5150s (85.83m)
-[4s*(num_att) + 32s*ceil(num_att/(1024*32)) + 32s*ceil(num_att/(1024*1024)) + 30s]
+Theoretical 100K Attestation Prove Time:  550s (9.17m)
+Theoretical 1M Attestation Prove Time:    5150s (85.83m)
+[4s*ceil(num_att/1024) + 32s*ceil(num_att/(1024*32)) + 32s*ceil(num_att/(1024*32*32)) + 30s]
 ```
