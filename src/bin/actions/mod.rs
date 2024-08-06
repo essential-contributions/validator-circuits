@@ -92,8 +92,9 @@ pub fn build_validators_state(
 pub fn build_participation_state(
     participation_state_circuit: &ParticipationStateCircuit,
     validators_state_proof: &ValidatorsStateProof,
-    validators: &Vec<Validator>,
-    validator_indexes: &[usize],
+    validators: &[Validator],
+    accounts: &[Account],
+    participating_validator_indexes: &[usize],
     rounds: &[usize],
     quick_load_filename: &str,
 ) -> (
@@ -103,8 +104,9 @@ pub fn build_participation_state(
 ) {
     let mut validator_epochs_tree = ValidatorEpochsTree::new();
     let mut participation_rounds_tree = ParticipationRoundsTree::new();
+
     let mut bit_flags: Vec<u8> = vec![0u8; PARTICIPATION_BITS_BYTE_SIZE];
-    for validator_index in validator_indexes {
+    for validator_index in participating_validator_indexes {
         bit_flags[validator_index / 8] += 0x80 >> (validator_index % 8);
     }
 
@@ -112,13 +114,13 @@ pub fn build_participation_state(
         Ok(proof) => {
             for num in rounds {
                 let epoch_num = num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
-                validator_epochs_tree.update_epoch(epoch_num, validators_state_proof.clone(), validators.clone());
+                validator_epochs_tree.update_epoch(epoch_num, validators_state_proof.clone(), validators, accounts);
 
                 let participation_root = participation_root(&bit_flags);
                 participation_rounds_tree.update_round(ParticipationRound {
                     num: *num,
                     participation_root,
-                    participation_count: validator_indexes.len() as u32,
+                    participation_count: participating_validator_indexes.len() as u32,
                 }, Some(bit_flags.clone()));
             }
             ParticipationStateProof::from_proof(proof)
@@ -131,7 +133,7 @@ pub fn build_participation_state(
                 let round = ParticipationRound {
                     num: *num,
                     participation_root: participation_root(&bit_flags),
-                    participation_count: validator_indexes.len() as u32,
+                    participation_count: participating_validator_indexes.len() as u32,
                 };
                 let current_epoch_data = validator_epochs_tree.epoch(epoch_num);
                 let current_round_data = participation_rounds_tree.round(round.num);
@@ -148,7 +150,7 @@ pub fn build_participation_state(
                     previous_proof,
                 }).unwrap();
                 assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
-                validator_epochs_tree.update_epoch(epoch_num, validators_state_proof.clone(), validators.clone());
+                validator_epochs_tree.update_epoch(epoch_num, validators_state_proof.clone(), validators, accounts);
                 participation_rounds_tree.update_round(round.clone(), Some(bit_flags.clone()));
                 previous_proof = Some(proof);
             }

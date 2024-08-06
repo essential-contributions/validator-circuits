@@ -10,7 +10,7 @@ use plonky2::util::serialization::Write;
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
-use crate::{accounts::{null_account_address, Account, AccountsTree}, circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use crate::{accounts::{null_account_address, Account, AccountsTree}, circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, epochs::ValidatorEpochsTree, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 use super::{participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, Serializeable};
 
 //TODO: proof generation needs to be able to reference validators_tree at specific epochs (see todo in validators.rs)
@@ -23,11 +23,10 @@ impl ValidatorParticipationCircuit {
     pub fn generate_proof(
         &self,
         data: &ValidatorParticipationCircuitData,
-        validators_tree: &ValidatorsTree,
-        accounts_tree: &AccountsTree,
+        validator_epochs_tree: &ValidatorEpochsTree,
         participation_rounds_tree: &ParticipationRoundsTree,
     ) -> Result<ValidatorParticipationProof> {
-        generate_proof_from_data(&self, data, validators_tree, accounts_tree, participation_rounds_tree)
+        generate_proof_from_data(&self, data, validator_epochs_tree, participation_rounds_tree)
     }
 }
 impl Circuit for ValidatorParticipationCircuit {
@@ -73,12 +72,14 @@ impl Circuit for ValidatorParticipationCircuit {
             &validator_indexes,
             &stakes,
         );
-        let (participation_rounds_tree, 
+        let (validator_epochs_tree,
+            participation_rounds_tree, 
             participation_state_proof,
         ) = example_participation_state(
             &participation_state_circuit,
-            &validator_indexes,
-            validators_state_proof.inputs_hash(),
+            &validators_state_proof,
+            &validators_tree.validators(),
+            &accounts_tree.accounts(),
             &rounds,
         );
 
@@ -89,10 +90,9 @@ impl Circuit for ValidatorParticipationCircuit {
             to_epoch: 1,
             rf: 13093,
             st: 84,
-            validators_state_proof: validators_state_proof.clone(),
             participation_state_proof: participation_state_proof.clone(),
         };
-        Some(generate_proof_from_data(&self, &data, &validators_tree, &accounts_tree, &participation_rounds_tree).unwrap())
+        Some(generate_proof_from_data(&self, &data, &validator_epochs_tree, &participation_rounds_tree).unwrap())
     }
 }
 impl Serializeable for ValidatorParticipationCircuit {
@@ -183,22 +183,17 @@ pub struct ValidatorParticipationCircuitData {
     pub rf: u64,
     pub st: u64,
 
-    pub validators_state_proof: ValidatorsStateProof,
     pub participation_state_proof: ParticipationStateProof,
 }
 
 fn generate_proof_from_data(
     circuits: &ValidatorParticipationCircuit, 
     data: &ValidatorParticipationCircuitData,
-    validators_tree: &ValidatorsTree,
-    accounts_tree: &AccountsTree,
+    validator_epochs_tree: &ValidatorEpochsTree,
     participation_rounds_tree: &ParticipationRoundsTree,
 ) -> Result<ValidatorParticipationProof> {
-    if data.validators_state_proof.validators_tree_root() != validators_tree.root() {
-        return Err(anyhow!("Validators tree root does not match the given validators state proof."));
-    }
-    if data.validators_state_proof.accounts_tree_root() != accounts_tree.root() {
-        return Err(anyhow!("Accounts tree root does not match the given validators state proof."));
+    if data.participation_state_proof.validator_epochs_tree_root() != validator_epochs_tree.root() {
+        return Err(anyhow!("Validator epochs tree root does not match the given participation state proof."));
     }
     if data.participation_state_proof.participation_rounds_tree_root() != participation_rounds_tree.root() {
         return Err(anyhow!("Participation rounds tree root does not match the given participation state proof."));
@@ -206,8 +201,21 @@ fn generate_proof_from_data(
 
     //generate cyclical proof for each epoch
     let mut cyclical_proof = None;
-    for epoch in data.from_epoch..data.to_epoch {
-        log::info!("Generating proof for epoch {}", epoch);
+    for epoch_num in (data.from_epoch as usize)..(data.to_epoch as usize) {
+        log::info!("Generating proof for epoch {}", epoch_num);
+        let validators_state_proof = match validator_epochs_tree.epoch_validators_state_proof(epoch_num) {
+            Some(proof) => proof,
+            None => return Err(anyhow!("Failed to retrieve validators state proof for epoch {}.", epoch_num)),
+        };
+        let validators_tree = match validator_epochs_tree.epoch_validators_tree(epoch_num) {
+            Some(proof) => proof,
+            None => return Err(anyhow!("Failed to retrieve validators for epoch {}.", epoch_num)),
+        };
+        let accounts_tree = match validator_epochs_tree.epoch_accounts_tree(epoch_num) {
+            Some(proof) => proof,
+            None => return Err(anyhow!("Failed to retrieve accounts for epoch {}.", epoch_num)),
+        };
+
         let account = accounts_tree.account(data.account_address);
         let validator = match account.validator_index {
             Some(index) => {
@@ -222,7 +230,7 @@ fn generate_proof_from_data(
             None => None,
         };
         let participation_rounds = (0..PARTICIPATION_ROUNDS_PER_STATE_EPOCH).map(|n| {
-            let round_num = ((epoch as usize) * PARTICIPATION_ROUNDS_PER_STATE_EPOCH) + n;
+            let round_num = (epoch_num * PARTICIPATION_ROUNDS_PER_STATE_EPOCH) + n;
             let round = participation_rounds_tree.round(round_num);
             ValidatorPartAggRoundData {
                 participation_root: round.participation_root,
@@ -234,9 +242,10 @@ fn generate_proof_from_data(
         let previous_data = match cyclical_proof {
             Some(proof) => ValidatorPartAggPrevData::Continue(proof),
             None => ValidatorPartAggPrevData::Start(ValidatorPartAggStartData {
+                val_epochs_tree_root: validator_epochs_tree.root(),
                 pr_tree_root: participation_rounds_tree.root(),
                 account: data.account_address,
-                epoch: epoch as u32,
+                epoch: epoch_num as u32,
                 param_rf: data.rf,
                 param_st: data.st,
             }),
@@ -244,7 +253,8 @@ fn generate_proof_from_data(
         let data = ValidatorParticipationAggCircuitData {
             validator,
             account_validator_proof: accounts_tree.merkle_proof(data.account_address),
-            validators_state_proof: data.validators_state_proof.clone(),
+            validators_state_proof,
+            validator_epochs_proof: validator_epochs_tree.merkle_proof(epoch_num),
             participation_rounds,
             previous_data,
         };
@@ -315,50 +325,65 @@ fn example_validators_state(
     )
 }
 
-fn example_participation_state(
+pub fn example_participation_state(
     participation_state_circuit: &ParticipationStateCircuit,
-    validator_indexes: &[usize],
-    state_inputs_hash: [u8; 32],
+    validators_state_proof: &ValidatorsStateProof,
+    validators: &[Validator],
+    accounts: &[Account],
     rounds: &[usize],
 ) -> (
+    ValidatorEpochsTree, //validator_epochs_tree
     ParticipationRoundsTree, //participation_rounds_tree
     ParticipationStateProof //participation_state_proof
 ) {
+    let mut validator_epochs_tree = ValidatorEpochsTree::new();
     let mut participation_rounds_tree = ParticipationRoundsTree::new();
+
+    let mut validator_indexes: Vec<usize> = Vec::new();
+    for (i, v) in validators.iter().enumerate() {
+        if v.stake > 0 {
+            validator_indexes.push(i);
+        }
+    }
+
     let mut bit_flags: Vec<u8> = vec![0u8; PARTICIPATION_BITS_BYTE_SIZE];
-    for validator_index in validator_indexes {
+    for validator_index in &validator_indexes {
         bit_flags[validator_index / 8] += 0x80 >> (validator_index % 8);
     }
 
     log::info!("Generating example participation state sub proof");
     let mut previous_proof: Option<ParticipationStateProof> = None;
     for num in rounds {
+        let epoch_num = num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
         let round = ParticipationRound {
             num: *num,
             participation_root: participation_root(&bit_flags),
             participation_count: validator_indexes.len() as u32,
         };
+        let current_epoch_data = validator_epochs_tree.epoch(epoch_num);
         let current_round_data = participation_rounds_tree.round(round.num);
         let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
             round_num: round.num,
-            val_state_inputs_hash: todo!(),
+            val_state_inputs_hash: validators_state_proof.inputs_hash(),
             participation_root: round.participation_root,
             participation_count: round.participation_count,
-            current_val_state_inputs_hash: todo!(),
-            validator_epoch_proof: todo!(),
+            current_val_state_inputs_hash: current_epoch_data.validators_state_inputs_hash,
+            validator_epoch_proof: validator_epochs_tree.merkle_proof(epoch_num),
             current_participation_root: current_round_data.participation_root,
             current_participation_count: current_round_data.participation_count,
             participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
             previous_proof,
         }).unwrap();
         assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
-        participation_rounds_tree.update_round(round.clone(), Some(bit_flags));
+        validator_epochs_tree.update_epoch(epoch_num, validators_state_proof.clone(), validators, accounts);
+        participation_rounds_tree.update_round(round.clone(), Some(bit_flags.clone()));
         previous_proof = Some(proof);
     }
     let participation_state_proof = previous_proof.unwrap();
     
     (
-        participation_rounds_tree, //accounts_tree
+        validator_epochs_tree, //validator_epochs_tree
+        participation_rounds_tree, //participation_rounds_tree
         participation_state_proof, //participation_state_proof
     )
 }

@@ -5,6 +5,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
+use crate::accounts::{Account, AccountsTree};
 use crate::circuits::validators_state_circuit::ValidatorsStateProof;
 use crate::validators::{Validator, ValidatorsTree};
 use crate::{field_hash, field_hash_two, VALIDATOR_EPOCHS_TREE_HEIGHT};
@@ -27,6 +28,7 @@ pub struct ValidatorEpoch {
 struct ValidatorEpochData {
     pub validators_state_proof: ValidatorsStateProof,
     pub validators: Vec<Validator>,
+    pub accounts: Vec<Account>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -131,15 +133,23 @@ impl ValidatorEpochsTree {
 
     pub fn epoch_validators_tree(&self, num: usize) -> Option<ValidatorsTree> {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(ValidatorsTree::from_validators(epoch.validators.clone())),
+            Some(epoch) => Some(ValidatorsTree::from_validators(&epoch.validators)),
             None => None,
         }
     }
 
-    pub fn update_epoch(&mut self, epoch_num: usize, validators_state_proof: ValidatorsStateProof, validators: Vec<Validator>) {
+    pub fn epoch_accounts_tree(&self, num: usize) -> Option<AccountsTree> {
+        match self.epochs.get(&num) {
+            Some(epoch) => Some(AccountsTree::from_accounts(&epoch.accounts)),
+            None => None,
+        }
+    }
+
+    pub fn update_epoch(&mut self, epoch_num: usize, validators_state_proof: ValidatorsStateProof, validators: &[Validator], accounts: &[Account]) {
         self.epochs.insert(epoch_num, ValidatorEpochData {
             validators_state_proof,
-            validators,
+            validators: validators.to_vec(),
+            accounts: accounts.to_vec(),
         });
     }
     

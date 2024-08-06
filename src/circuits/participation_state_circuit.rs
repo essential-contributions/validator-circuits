@@ -349,8 +349,13 @@ fn generate_partial_witness(
 
 fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPublicInputs<Field, Config, D> {
     let initial_inputs_hash = [Field::ZERO; 8];
+    let initial_validator_epochs_root = initial_validator_epochs_root();
     let initial_participation_rounds_root = initial_participation_rounds_root();
-    let initial_public_inputs = [&initial_inputs_hash[..], &initial_participation_rounds_root[..]].concat();
+    let initial_public_inputs = [
+        &initial_inputs_hash[..],
+        &initial_validator_epochs_root[..],
+        &initial_participation_rounds_root[..]
+    ].concat();
     cyclic_base_proof(
         &circuit_data.common,
         &circuit_data.verifier_only,

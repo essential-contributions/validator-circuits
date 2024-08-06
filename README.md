@@ -8,10 +8,10 @@ These circuits and proofs are intended to maintain a small rollup that can be up
 
 ### TODOs
 
-- [ ] support for proving validator inactivity
-- [ ] more parallelization
+- [ ] memory efficient data trees (particularly participation.rs and epochs.rs)
+- [ ] use custom gates for sha256 hash
+- [ ] include already compiled circuits in repo
 - [ ] review security
-- [ ] include already compile circuits in repo
 
 ## Building
 The circuits should be built/compiled ahead of time in order to speed up the benchmarking. This is especially relevant when benchmarking with full wrapping to groth16. Please make sure you have both Rust [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) and [Go (1.19+)](https://go.dev/doc/install) installed. It can take around 30 minutes to finish building since the groth16 circuits need to go through the full generation routine with mock trusted setup ceremony and everything.

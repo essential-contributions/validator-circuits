@@ -40,13 +40,13 @@ impl ValidatorsTree {
                 stake: 0,
             });
         }
-        Self::from_validators(validators)
+        Self::from_validators(&validators)
     }
 
-    pub fn from_validators(validators: Vec<Validator>) -> Self {
+    pub fn from_validators(validators: &[Validator]) -> Self {
         let num_nodes = (1 << (VALIDATORS_TREE_HEIGHT + 1)) - 1;
         let nodes: Vec<[Field; 4]> = vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
-        let mut validator_set = Self { validators, nodes };
+        let mut validator_set = Self { validators: validators.to_vec(), nodes };
         validator_set.fill_nodes();
 
         validator_set

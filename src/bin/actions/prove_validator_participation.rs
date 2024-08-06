@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, validator_participation_circuit::{ValidatorParticipationCircuit, ValidatorParticipationCircuitData}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, commitment::example_commitment_root, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::{self, participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuit, validator_participation_circuit::{ValidatorParticipationCircuit, ValidatorParticipationCircuitData}, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}};
 
 use crate::actions::{build_participation_state, build_validators_state};
 
@@ -55,6 +55,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         &participation_state_circuit,
         &validators_state_proof,
         &validators_tree.validators(),
+        &accounts_tree.accounts(),
         &validator_indexes[0..2],
         &[32, 48, 67, 100],
         PARTICIPATION_STATE_OUTPUT_FILE,
@@ -73,11 +74,9 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             to_epoch: 1,
             rf: 13093,
             st: 84,
-            validators_state_proof: validators_state_proof.clone(),
             participation_state_proof: participation_state_proof.clone(),
         },
-        &validators_tree,
-        &accounts_tree,
+        &validator_epochs_tree,
         &participation_rounds_tree,
     ).unwrap();
     assert!(validator_participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
@@ -103,11 +102,9 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             to_epoch: 1,
             rf: 13093,
             st: 84,
-            validators_state_proof: validators_state_proof.clone(),
             participation_state_proof: participation_state_proof.clone(),
         },
-        &validators_tree,
-        &accounts_tree,
+        &validator_epochs_tree,
         &participation_rounds_tree,
     ).unwrap();
     assert!(validator_participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
@@ -132,11 +129,9 @@ pub fn benchmark_validator_prove_participation(full: bool) {
             to_epoch: 2,
             rf: 13093,
             st: 84,
-            validators_state_proof: validators_state_proof.clone(),
             participation_state_proof: participation_state_proof.clone(),
         },
-        &validators_tree,
-        &accounts_tree,
+        &validator_epochs_tree,
         &participation_rounds_tree,
     ).unwrap();
     assert!(validator_participation_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");

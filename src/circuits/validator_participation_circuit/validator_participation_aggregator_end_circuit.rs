@@ -8,12 +8,12 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
-use crate::circuits::participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof, PIS_PARTICIPATION_ROUNDS_TREE_ROOT, PIS_PARTICIPATION_STATE_INPUTS_HASH};
+use crate::circuits::participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof, PIS_PARTICIPATION_ROUNDS_TREE_ROOT, PIS_PARTICIPATION_STATE_INPUTS_HASH, PIS_VALIDATOR_EPOCHS_TREE_ROOT};
 use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
 use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR};
 use crate::{Config, Field, D};
 
-use super::{ValidatorParticipationAggCircuit, ValidatorParticipationAggProof, PIS_AGG_ACCOUNT_ADDRESS, PIS_AGG_FROM_EPOCH, PIS_AGG_PARAM_RF, PIS_AGG_PARAM_ST, PIS_AGG_PR_TREE_ROOT, PIS_AGG_TO_EPOCH, PIS_AGG_WITHDRAW_MAX, PIS_AGG_WITHDRAW_UNEARNED};
+use super::{ValidatorParticipationAggCircuit, ValidatorParticipationAggProof, PIS_AGG_ACCOUNT_ADDRESS, PIS_AGG_EPOCHS_TREE_ROOT, PIS_AGG_FROM_EPOCH, PIS_AGG_PARAM_RF, PIS_AGG_PARAM_ST, PIS_AGG_PR_TREE_ROOT, PIS_AGG_TO_EPOCH, PIS_AGG_WITHDRAW_MAX, PIS_AGG_WITHDRAW_UNEARNED};
 
 pub const PIS_END_PARTICIPATION_INPUTS_HASH: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 pub const PIS_END_ACCOUNT_ADDRESS: [usize; 5] = [8, 9, 10, 11, 12];
@@ -207,6 +207,12 @@ fn generate_circuit(
         &participation_agg_verifier, 
         participation_agg_common_data
     );
+    let participation_agg_val_epochs_tree_root = vec![
+        participation_agg_proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[0]],
+        participation_agg_proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[1]],
+        participation_agg_proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[2]],
+        participation_agg_proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[3]],
+    ];
     let participation_agg_pr_tree_root = vec![
         participation_agg_proof.public_inputs[PIS_AGG_PR_TREE_ROOT[0]],
         participation_agg_proof.public_inputs[PIS_AGG_PR_TREE_ROOT[1]],
@@ -248,6 +254,12 @@ fn generate_circuit(
         participation_state_proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[6]],
         participation_state_proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[7]],
     ];
+    let participation_state_val_epochs_tree_root = vec![
+        participation_state_proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[0]],
+        participation_state_proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[1]],
+        participation_state_proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[2]],
+        participation_state_proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[3]],
+    ];
     let participation_state_pr_tree_root = vec![
         participation_state_proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[0]],
         participation_state_proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[1]],
@@ -256,6 +268,9 @@ fn generate_circuit(
     ];
 
     //Connect data between proofs
+    for (&a, s) in participation_agg_val_epochs_tree_root.iter().zip(participation_state_val_epochs_tree_root) {
+        builder.connect(a, s);
+    }
     for (&a, s) in participation_agg_pr_tree_root.iter().zip(participation_state_pr_tree_root) {
         builder.connect(a, s);
     }

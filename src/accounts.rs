@@ -187,6 +187,15 @@ impl AccountsTree {
         }
     }
 
+    pub fn accounts(&self) -> Vec<Account> {
+        self.accounts.iter().map(|(k, v)| {
+            Account {
+                address: k.clone(),
+                validator_index: Some(v.validator_index),
+            }
+        }).collect()
+    }
+
     pub fn account_with_index(&self, validator_index: usize) -> Option<Account> {
         let account_entry = self.accounts.iter().find(|(_, a) | {
             return a.validator_index == validator_index;

@@ -19,17 +19,18 @@ use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, Validato
 use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, VALIDATORS_STATE_CIRCUIT_DIR};
 use crate::participation::{empty_participation_root, participation_merkle_data, PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF, PARTICIPATION_TREE_HEIGHT};
 use crate::validators::{empty_validators_tree_proof, empty_validators_tree_root};
-use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT};
+use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT, VALIDATOR_EPOCHS_TREE_HEIGHT};
 use crate::Hash;
 
-pub const PIS_AGG_PR_TREE_ROOT: [usize; 4] = [0, 1, 2, 3];
-pub const PIS_AGG_ACCOUNT_ADDRESS: [usize; 5] = [4, 5, 6, 7, 8];
-pub const PIS_AGG_FROM_EPOCH: usize = 9;
-pub const PIS_AGG_TO_EPOCH: usize = 10;
-pub const PIS_AGG_WITHDRAW_MAX: usize = 11;
-pub const PIS_AGG_WITHDRAW_UNEARNED: usize = 12;
-pub const PIS_AGG_PARAM_RF: usize = 13;
-pub const PIS_AGG_PARAM_ST: usize = 14;
+pub const PIS_AGG_EPOCHS_TREE_ROOT: [usize; 4] = [0, 1, 2, 3];
+pub const PIS_AGG_PR_TREE_ROOT: [usize; 4] = [4, 5, 6, 7];
+pub const PIS_AGG_ACCOUNT_ADDRESS: [usize; 5] = [8, 9, 10, 11, 12];
+pub const PIS_AGG_FROM_EPOCH: usize = 13;
+pub const PIS_AGG_TO_EPOCH: usize = 14;
+pub const PIS_AGG_WITHDRAW_MAX: usize = 15;
+pub const PIS_AGG_WITHDRAW_UNEARNED: usize = 16;
+pub const PIS_AGG_PARAM_RF: usize = 17;
+pub const PIS_AGG_PARAM_ST: usize = 18;
 
 const MAX_GATES: usize = 1 << 15;
 
@@ -40,6 +41,7 @@ pub struct ValidatorParticipationAggCircuit {
     validators_state_verifier: VerifierOnlyCircuitData<Config, D>,
 }
 struct ValidatorParticipationAggCircuitTargets {
+    init_val_epochs_tree_root: HashOutTarget,
     init_pr_tree_root: HashOutTarget,
     init_account_address: Vec<Target>,
     init_epoch: Target,
@@ -48,6 +50,7 @@ struct ValidatorParticipationAggCircuitTargets {
 
     validators_state_verifier: VerifierCircuitTarget,
     validators_state_proof: ProofWithPublicInputsTarget<D>,
+    validator_epochs_proof: MerkleProofTarget,
 
     validator_index: Target,
     validator_bit_index: Target,
@@ -161,7 +164,14 @@ pub struct ValidatorParticipationAggProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
 }
 impl ValidatorParticipationAggProof {
-    pub fn pr_tree_root(&self) -> [Field; 4] {
+    pub fn validator_epochs_tree_root(&self) -> [Field; 4] {
+        [self.proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[0]], 
+        self.proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[1]], 
+        self.proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[2]], 
+        self.proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[3]]]
+    }
+    
+    pub fn participation_rounds_tree_root(&self) -> [Field; 4] {
         [self.proof.public_inputs[PIS_AGG_PR_TREE_ROOT[0]], 
         self.proof.public_inputs[PIS_AGG_PR_TREE_ROOT[1]], 
         self.proof.public_inputs[PIS_AGG_PR_TREE_ROOT[2]], 
@@ -222,6 +232,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
 
     //Init flag and starting values
     let init_zero = builder.add_virtual_bool_target_safe();
+    let init_val_epochs_tree_root = builder.add_virtual_hash();
     let init_pr_tree_root = builder.add_virtual_hash();
     let init_account_address = builder.add_virtual_targets(5);
     let init_param_rf = builder.add_virtual_target();
@@ -229,6 +240,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     let init_epoch = builder.add_virtual_target();
 
     //Current aggregation state targets (will be connected to inner proof later)
+    let current_val_epochs_tree_root = builder.add_virtual_hash();
     let current_pr_tree_root = builder.add_virtual_hash();
     let current_account_address = builder.add_virtual_targets(5);
     let current_from_epoch = builder.add_virtual_target();
@@ -262,7 +274,20 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
         &validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT[0]..(PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT[3] + 1)]
     ).unwrap();
     let total_staked = validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_TOTAL_STAKED];
-    
+
+    //Verify the validators state inputs hash in the validator epochs tree
+    let epoch = current_to_epoch;
+    let epoch_bits = builder.split_le(epoch, VALIDATOR_EPOCHS_TREE_HEIGHT);
+    let validator_epochs_proof = MerkleProofTarget {
+        siblings: builder.add_virtual_hashes(VALIDATOR_EPOCHS_TREE_HEIGHT),
+    };
+    builder.verify_merkle_proof::<Hash>(
+        validators_state_inputs_hash, 
+        &epoch_bits, 
+        current_val_epochs_tree_root,
+        &validator_epochs_proof,
+    );
+
     //Verify the validator index
     let validator_index = builder.add_virtual_target();
     let validator_index_is_null = builder.is_equal(validator_index, null);
@@ -330,7 +355,6 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     let mut new_withdraw_unearned = current_withdraw_unearned;
 
     //Loop through each participation round in the epoch (the epoch last left off on)
-    let epoch = current_to_epoch;
     let mut participation_rounds_targets: Vec<ValidatorParticipationRoundTargets> = Vec::new();
     for i in 0..PARTICIPATION_ROUNDS_PER_STATE_EPOCH {
         //Participation round data
@@ -340,11 +364,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
         let round_has_participation = builder.not(round_has_no_participation);
 
         //Verify participation round
-        let round_validators_state_inputs_hash: Vec<Target> = validators_state_inputs_hash.iter().map(|t| {
-            builder.mul(round_has_participation.target, *t)
-        }).collect();
         let participation_round_hash = builder.hash_n_to_hash_no_pad::<Hash>([
-            &round_validators_state_inputs_hash[..], 
             &participation_root.elements[..], 
             &[participation_count],
         ].concat());
@@ -441,6 +461,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     let new_to_epoch = builder.add(current_to_epoch, one);
 
     //Register all public inputs
+    builder.register_public_inputs(&current_val_epochs_tree_root.elements);
     builder.register_public_inputs(&current_pr_tree_root.elements);
     builder.register_public_inputs(&current_account_address);
     builder.register_public_input(current_from_epoch);
@@ -456,14 +477,19 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     common_data.num_public_inputs = builder.num_public_inputs();
     let inner_cyclic_proof_with_pis = builder.add_virtual_proof_with_pis(&common_data);
     let inner_cyclic_pis = &inner_cyclic_proof_with_pis.public_inputs;
-    let inner_proof_pr_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[0..4]).unwrap();
-    let inner_proof_account_address = inner_cyclic_pis[4..9].to_vec();
-    let inner_proof_from_epoch = inner_cyclic_pis[9];
-    let inner_proof_to_epoch = inner_cyclic_pis[10];
-    let inner_proof_withdraw_max = inner_cyclic_pis[11];
-    let inner_proof_withdraw_unearned = inner_cyclic_pis[12];
-    let inner_proof_param_rf = inner_cyclic_pis[13];
-    let inner_proof_param_st = inner_cyclic_pis[14];
+    let inner_proof_val_epochs_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[0..4]).unwrap();
+    let inner_proof_pr_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[4..8]).unwrap();
+    let inner_proof_account_address = inner_cyclic_pis[8..13].to_vec();
+    let inner_proof_from_epoch = inner_cyclic_pis[13];
+    let inner_proof_to_epoch = inner_cyclic_pis[14];
+    let inner_proof_withdraw_max = inner_cyclic_pis[15];
+    let inner_proof_withdraw_unearned = inner_cyclic_pis[16];
+    let inner_proof_param_rf = inner_cyclic_pis[17];
+    let inner_proof_param_st = inner_cyclic_pis[18];
+
+    //Connect the current validators epochs tree root with inner proof or initial value
+    let inner_proof_val_epochs_tree_root_or_init = builder.select_hash(init_zero, inner_proof_val_epochs_tree_root, init_val_epochs_tree_root);
+    builder.connect_hashes(current_val_epochs_tree_root, inner_proof_val_epochs_tree_root_or_init);
 
     //Connect the current participation rounds tree root with inner proof or initial value
     let inner_proof_pr_tree_root_or_init = builder.select_hash(init_zero, inner_proof_pr_tree_root, init_pr_tree_root);
@@ -495,6 +521,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     ).expect("cyclic proof verification failed");
 
     ValidatorParticipationAggCircuitTargets {
+        init_val_epochs_tree_root,
         init_pr_tree_root,
         init_account_address,
         init_epoch,
@@ -503,6 +530,7 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, val_state_common_dat
     
         validators_state_verifier,
         validators_state_proof,
+        validator_epochs_proof,
     
         validator_index,
         validator_bit_index,
@@ -528,6 +556,7 @@ pub struct ValidatorParticipationAggCircuitData {
     pub validator: Option<ValidatorParticipationValidatorData>,
     pub account_validator_proof: Vec<[Field; 4]>,
     pub validators_state_proof: ValidatorsStateProof,
+    pub validator_epochs_proof: Vec<[Field; 4]>,
 
     pub participation_rounds: Vec<ValidatorPartAggRoundData>,
 
@@ -550,6 +579,7 @@ pub struct ValidatorPartAggRoundData {
 }
 #[derive(Clone)]
 pub struct ValidatorPartAggStartData {
+    pub val_epochs_tree_root: [Field; 4],
     pub pr_tree_root: [Field; 4],
     pub account: [u8; 20],
     pub epoch: u32,
@@ -583,6 +613,7 @@ fn generate_partial_witness(
     //validators state proof
     pw.set_verifier_data_target(&targets.validators_state_verifier, validators_state_verifier);
     pw.set_proof_with_pis_target(&targets.validators_state_proof, data.validators_state_proof.proof());
+    pw.set_merkle_proof_target(targets.validator_epochs_proof.clone(), &data.validator_epochs_proof);
 
     //account validator index
     match &data.validator {
@@ -653,6 +684,7 @@ fn generate_partial_witness(
     //previous data to build off of
     match &data.previous_data {
         ValidatorPartAggPrevData::Start(start_data) => {
+            pw.set_hash_target(targets.init_val_epochs_tree_root, HashOut::<Field> { elements: start_data.val_epochs_tree_root });
             pw.set_hash_target(targets.init_pr_tree_root, HashOut::<Field> { elements: start_data.pr_tree_root });
             pw.set_target_arr(&targets.init_account_address, &account_to_fields(start_data.account));
             pw.set_target(targets.init_epoch, Field::from_canonical_u32(start_data.epoch));
@@ -669,6 +701,7 @@ fn generate_partial_witness(
             pw.set_proof_with_pis_target(&targets.previous_proof, &previous_proof.proof);
 
             //blank out init data
+            pw.set_hash_target(targets.init_val_epochs_tree_root, HashOut::<Field> { elements: [Field::ZERO; 4] });
             pw.set_hash_target(targets.init_pr_tree_root, HashOut::<Field> { elements: [Field::ZERO; 4] });
             pw.set_target_arr(&targets.init_account_address, &[Field::ZERO; 5]);
             pw.set_target(targets.init_epoch, Field::ZERO);
@@ -683,6 +716,7 @@ fn generate_partial_witness(
 
 fn initial_proof(circuit_data: &CircuitData<Field, Config, D>, init_data: &ValidatorPartAggStartData) -> ProofWithPublicInputs<Field, Config, D> {
     let initial_public_inputs = [
+        &init_data.val_epochs_tree_root[..], 
         &init_data.pr_tree_root[..], 
         &account_to_fields(init_data.account)[..], 
         &[Field::from_canonical_u32(init_data.epoch)],
@@ -709,6 +743,7 @@ fn account_to_fields(account: [u8; 20]) -> [Field; 5] {
 
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCircuitTargets) -> IoResult<()> {
+    buffer.write_target_hash(&targets.init_val_epochs_tree_root)?;
     buffer.write_target_hash(&targets.init_pr_tree_root)?;
     buffer.write_target_vec(&targets.init_account_address)?;
     buffer.write_target(targets.init_epoch)?;
@@ -717,6 +752,7 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCircui
 
     buffer.write_target_verifier_circuit(&targets.validators_state_verifier)?;
     buffer.write_target_proof_with_public_inputs(&targets.validators_state_proof)?;
+    buffer.write_target_merkle_proof(&targets.validator_epochs_proof)?;
 
     buffer.write_target(targets.validator_index)?;
     buffer.write_target(targets.validator_bit_index)?;
@@ -749,6 +785,7 @@ fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCircui
 
 #[inline]
 fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCircuitTargets> {
+    let init_val_epochs_tree_root = buffer.read_target_hash()?;
     let init_pr_tree_root = buffer.read_target_hash()?;
     let init_account_address = buffer.read_target_vec()?;
     let init_epoch = buffer.read_target()?;
@@ -757,6 +794,7 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCircui
 
     let validators_state_verifier = buffer.read_target_verifier_circuit()?;
     let validators_state_proof = buffer.read_target_proof_with_public_inputs()?;
+    let validator_epochs_proof = buffer.read_target_merkle_proof()?;
 
     let validator_index = buffer.read_target()?;
     let validator_bit_index = buffer.read_target()?;
@@ -795,6 +833,7 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCircui
     let previous_proof = buffer.read_target_proof_with_public_inputs()?;
 
     Ok(ValidatorParticipationAggCircuitTargets {
+        init_val_epochs_tree_root,
         init_pr_tree_root,
         init_account_address,
         init_epoch,
@@ -802,6 +841,7 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCircui
         init_param_st,
         validators_state_verifier,
         validators_state_proof,
+        validator_epochs_proof,
         validator_index,
         validator_bit_index,
         validator_field_index,
