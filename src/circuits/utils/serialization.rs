@@ -1,11 +1,8 @@
 use std::{collections::HashSet, marker::PhantomData};
 use plonky2::{
-    field::extension::Extendable, 
-    gadgets::{
-        arithmetic_extension::QuotientGeneratorExtension, 
-        split_join::WireSplitGenerator
-    }, 
-    gates::{
+    field::extension::Extendable, gadgets::{
+        arithmetic::EqualityGenerator, arithmetic_extension::QuotientGeneratorExtension, range_check::LowHighGenerator, split_base::BaseSumGenerator, split_join::WireSplitGenerator
+    }, gates::{
         arithmetic_base::ArithmeticBaseGenerator, 
         arithmetic_extension::ArithmeticExtensionGenerator, 
         base_sum::BaseSplitGenerator, 
@@ -17,21 +14,17 @@ use plonky2::{
         random_access::RandomAccessGenerator, 
         reducing::ReducingGenerator, 
         reducing_extension::ReducingGenerator as ReducingExtensionGenerator
-    }, 
-    hash::hash_types::RichField, 
-    iop::generator::{
+    }, hash::hash_types::RichField, iop::generator::{
         ConstantGenerator, 
         RandomValueGenerator
-    }, 
-    plonk::{
-        circuit_data::CircuitData, 
+    }, plonk::{
+        circuit_data::{CircuitData, VerifierOnlyCircuitData}, 
         config::{
             AlgebraicHasher, 
             GenericConfig
         }
-    }, 
-    util::serialization::{
-        Buffer, DefaultGateSerializer, Read, WitnessGeneratorSerializer
+    }, recursion::dummy_circuit::DummyProofGenerator, util::serialization::{
+        Buffer, DefaultGateSerializer, IoResult, Read, WitnessGeneratorSerializer, Write
     }
 };
 use plonky2::{get_generator_tag_impl, impl_generator_serializer, read_generator_impl};
@@ -50,13 +43,17 @@ where
     C::Hasher: AlgebraicHasher<F>,
 {
     impl_generator_serializer! {
-        CustomGeneratorSerializer,
+        CustomGeneratorSerializer, 
+        DummyProofGenerator<F, C, D>, 
+        EqualityGenerator, 
         ArithmeticBaseGenerator<F, D>,
         ArithmeticExtensionGenerator<F, D>,
         BaseSplitGenerator<2>,
+        BaseSumGenerator<2>,
         ConstantGenerator<F>,
         ExponentiationGenerator<F, D>,
         InterpolationGenerator<F, D>,
+        LowHighGenerator,
         MulExtensionGenerator<F, D>,
         PoseidonGenerator<F, D>,
         PoseidonMdsGenerator<D>,
@@ -97,4 +94,22 @@ pub fn deserialize_circuit(bytes: &Vec<u8>) -> anyhow::Result<(CircuitData<Field
     }
 
     Ok((circuit_data.unwrap(), buffer))
+}
+
+#[inline]
+pub fn write_verifier(buffer: &mut Vec<u8>, verifier: &VerifierOnlyCircuitData<Config, D>) -> IoResult<()> {
+    let bytes = verifier.to_bytes()?;
+    buffer.write_usize(bytes.len())?;
+    buffer.write_all(&bytes)?;
+
+    Ok(())
+}
+
+#[inline]
+pub fn read_verifier(buffer: &mut Buffer) -> IoResult<VerifierOnlyCircuitData<Config, D>> {
+    let len = buffer.read_usize()?;
+    let mut bytes = vec![0u8; len];
+    buffer.read_exact(&mut bytes)?;
+
+    VerifierOnlyCircuitData::<Config, D>::from_bytes(bytes)
 }

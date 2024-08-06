@@ -10,7 +10,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[arg(help = "The action to benchmark (commitment/attestations/participation/update)")]
+    #[arg(help = "The action to benchmark (commitment/state/attestations/participation)")]
     action: String,
 
     #[arg(short, long, default_value_t = false, help = "Build full circuits including wrappers")]
@@ -23,12 +23,13 @@ fn main() {
     let args = Args::parse();
     if args.action.eq("commitment")  {
         actions::benchmark_commitment_generation();
+    } else if args.action.eq("state")  {
+        actions::benchmark_prove_validators_state(args.full);
+        actions::benchmark_prove_participation_state(args.full);
     } else if args.action.eq("attestations")  {
-        actions::benchmark_prove_attestations_aggregation(args.full);
+        actions::benchmark_prove_attestation_aggregation(args.full);
     } else if args.action.eq("participation")  {
-        actions::benchmark_prove_participation(args.full);
-    } else if args.action.eq("update")  {
-        actions::benchmark_prove_validators_update(args.full);
+        actions::benchmark_validator_prove_participation(args.full);
     } else {
         log::error!("Invalid action [{}]", args.action);
     }

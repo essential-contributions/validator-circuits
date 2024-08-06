@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use validator_circuits::{load_commitment, save_commitment, Commitment};
+use validator_circuits::commitment::{load_commitment, save_commitment, Commitment};
 
 pub fn benchmark_commitment_generation() {
     println!("Generating Commitment...");
