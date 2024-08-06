@@ -42,27 +42,18 @@ RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- commitmen
 ### Benchmark Results
 
 ```
-CPU:          Rockchip RK3588 (OrangePi5Plus 16GB)
-
-results
-Generate Commitment:  438.357194521s (7.3m)
-Generate Circuits:    118.091063397s
-Prove Attestation Aggregation1:    8.345273417s
-Prove Attestation Aggregation2:   71.388797726s
-Prove Attestation Aggregation3:   71.951521909s
-
-Theoretical 1M Prove Time:     10901.9530281s (181.7m)
-```
-```
 CPU:          Intel Core i7-8700 3.2GHz
 
 results
-Generate Commitment:  146.920017455s
-Generate Circuits:    122.938929116s
-Prove Attestation Aggregation1:    3.919908366s
-Prove Attestation Aggregation2:   43.232141139s
-Prove Attestation Aggregation3:   38.024451707s
+Generate Commitment:           144.7s
+Update Validators State:       3.26
+Update Participation State:    3.1s
+Prove Validator Participation: 26.89s 
+Prove Block Attestations:      66.13s 
 
-Theoretical 1M Prove Time:     5435.43913494s (90.59065m)
+Theoretical 1Year Participation Prove Time:  2260s (37.67m)
+[19s + 7s*(num_epochs - 1) + 1s]
+
+Theoretical 1M Attestation Prove Time:       5150s (85.83m)
+[4s*(num_att) + 32s*ceil(num_att/(1024*32)) + 32s*ceil(num_att/(1024*1024)) + 30s]
 ```
-
