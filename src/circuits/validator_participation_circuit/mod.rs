@@ -78,8 +78,8 @@ impl Circuit for ValidatorParticipationCircuit {
         ) = example_participation_state(
             &participation_state_circuit,
             &validators_state_proof,
-            &validators_tree.validators(),
-            &accounts_tree.accounts(),
+            &validators_tree,
+            &accounts_tree,
             &rounds,
         );
 
@@ -328,8 +328,8 @@ fn example_validators_state(
 pub fn example_participation_state(
     participation_state_circuit: &ParticipationStateCircuit,
     validators_state_proof: &ValidatorsStateProof,
-    validators: &[Validator],
-    accounts: &[Account],
+    validators_tree: &ValidatorsTree,
+    accounts_tree: &AccountsTree,
     rounds: &[usize],
 ) -> (
     ValidatorEpochsTree, //validator_epochs_tree
@@ -340,7 +340,7 @@ pub fn example_participation_state(
     let mut participation_rounds_tree = ParticipationRoundsTree::new();
 
     let mut validator_indexes: Vec<usize> = Vec::new();
-    for (i, v) in validators.iter().enumerate() {
+    for (i, v) in validators_tree.validators().iter().enumerate() {
         if v.stake > 0 {
             validator_indexes.push(i);
         }
@@ -375,7 +375,7 @@ pub fn example_participation_state(
             previous_proof,
         }).unwrap();
         assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
-        validator_epochs_tree.update_epoch(epoch_num, validators_state_proof.clone(), validators, accounts);
+        validator_epochs_tree.update_epoch(epoch_num, validators_state_proof, validators_tree, accounts_tree);
         participation_rounds_tree.update_round(round.clone(), Some(bit_flags.clone()));
         previous_proof = Some(proof);
     }

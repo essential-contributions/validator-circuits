@@ -5,14 +5,14 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
-use crate::accounts::{Account, AccountsTree};
+use crate::accounts::AccountsTree;
 use crate::circuits::validators_state_circuit::ValidatorsStateProof;
-use crate::validators::{Validator, ValidatorsTree};
+use crate::validators::ValidatorsTree;
 use crate::{field_hash, field_hash_two, VALIDATOR_EPOCHS_TREE_HEIGHT};
 use crate::Field;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
-//TODO: store validators_state_proof and validators in disk rather than memory (will need an efficient compression strategy)
+//TODO: store validators_state_proof, validators_tree and accounts_tree in disk rather than memory (will need an efficient compression strategy)
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ValidatorEpoch {
@@ -27,8 +27,8 @@ pub struct ValidatorEpoch {
 #[derive(Clone, Serialize, Deserialize)]
 struct ValidatorEpochData {
     pub validators_state_proof: ValidatorsStateProof,
-    pub validators: Vec<Validator>,
-    pub accounts: Vec<Account>,
+    pub validators_tree: ValidatorsTree,
+    pub accounts_tree: AccountsTree,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -133,23 +133,23 @@ impl ValidatorEpochsTree {
 
     pub fn epoch_validators_tree(&self, num: usize) -> Option<ValidatorsTree> {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(ValidatorsTree::from_validators(&epoch.validators)),
+            Some(epoch) => Some(epoch.validators_tree.clone()),
             None => None,
         }
     }
 
     pub fn epoch_accounts_tree(&self, num: usize) -> Option<AccountsTree> {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(AccountsTree::from_accounts(&epoch.accounts)),
+            Some(epoch) => Some(epoch.accounts_tree.clone()),
             None => None,
         }
     }
 
-    pub fn update_epoch(&mut self, epoch_num: usize, validators_state_proof: ValidatorsStateProof, validators: &[Validator], accounts: &[Account]) {
+    pub fn update_epoch(&mut self, epoch_num: usize, validators_state_proof: &ValidatorsStateProof, validators_tree: &ValidatorsTree, accounts_tree: &AccountsTree) {
         self.epochs.insert(epoch_num, ValidatorEpochData {
-            validators_state_proof,
-            validators: validators.to_vec(),
-            accounts: accounts.to_vec(),
+            validators_state_proof: validators_state_proof.clone(),
+            validators_tree: validators_tree.clone(),
+            accounts_tree: accounts_tree.clone(),
         });
     }
     

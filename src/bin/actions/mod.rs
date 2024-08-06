@@ -92,8 +92,8 @@ pub fn build_validators_state(
 pub fn build_participation_state(
     participation_state_circuit: &ParticipationStateCircuit,
     validators_state_proof: &ValidatorsStateProof,
-    validators: &[Validator],
-    accounts: &[Account],
+    validators_tree: &ValidatorsTree,
+    accounts_tree: &AccountsTree,
     participating_validator_indexes: &[usize],
     rounds: &[usize],
     quick_load_filename: &str,
@@ -114,7 +114,7 @@ pub fn build_participation_state(
         Ok(proof) => {
             for num in rounds {
                 let epoch_num = num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
-                validator_epochs_tree.update_epoch(epoch_num, validators_state_proof.clone(), validators, accounts);
+                validator_epochs_tree.update_epoch(epoch_num, validators_state_proof, validators_tree, accounts_tree);
 
                 let participation_root = participation_root(&bit_flags);
                 participation_rounds_tree.update_round(ParticipationRound {
@@ -150,7 +150,7 @@ pub fn build_participation_state(
                     previous_proof,
                 }).unwrap();
                 assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Participation state proof verification failed.");
-                validator_epochs_tree.update_epoch(epoch_num, validators_state_proof.clone(), validators, accounts);
+                validator_epochs_tree.update_epoch(epoch_num, validators_state_proof, validators_tree, accounts_tree);
                 participation_rounds_tree.update_round(round.clone(), Some(bit_flags.clone()));
                 previous_proof = Some(proof);
             }

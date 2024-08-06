@@ -77,9 +77,9 @@ pub fn benchmark_prove_participation_state(full: bool) {
     println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     validator_epochs_tree.update_epoch(
         epoch_num, 
-        validators_state_proof1.clone(), 
-        &validators_tree1.validators(), 
-        &accounts_tree1.accounts(),
+        &validators_state_proof1,
+        &validators_tree1, 
+        &accounts_tree1,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
     assert_eq!(proof.validator_epochs_tree_root(), validator_epochs_tree.root(), "Unexpected validator epochs tree root.");
@@ -119,9 +119,9 @@ pub fn benchmark_prove_participation_state(full: bool) {
     println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     validator_epochs_tree.update_epoch(
         epoch_num, 
-        validators_state_proof2.clone(), 
-        &validators_tree2.validators(), 
-        &accounts_tree2.accounts(),
+        &validators_state_proof2,
+        &validators_tree2, 
+        &accounts_tree2,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
     assert_eq!(proof.validator_epochs_tree_root(), validator_epochs_tree.root(), "Unexpected validator epochs tree root.");
@@ -161,9 +161,9 @@ pub fn benchmark_prove_participation_state(full: bool) {
     println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     validator_epochs_tree.update_epoch(
         epoch_num, 
-        validators_state_proof1.clone(), 
-        &validators_tree1.validators(), 
-        &accounts_tree1.accounts(),
+        &validators_state_proof1,
+        &validators_tree1, 
+        &accounts_tree1,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
     assert_eq!(proof.validator_epochs_tree_root(), validator_epochs_tree.root(), "Unexpected validator epochs tree root.");
@@ -203,9 +203,9 @@ pub fn benchmark_prove_participation_state(full: bool) {
     println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     validator_epochs_tree.update_epoch(
         epoch_num, 
-        validators_state_proof1.clone(), 
-        &validators_tree1.validators(), 
-        &accounts_tree1.accounts(),
+        &validators_state_proof1,
+        &validators_tree1, 
+        &accounts_tree1,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
     assert_eq!(proof.validator_epochs_tree_root(), validator_epochs_tree.root(), "Unexpected validator epochs tree root.");
@@ -245,9 +245,9 @@ pub fn benchmark_prove_participation_state(full: bool) {
     println!("participation_rounds_tree_root - {:?}", proof.participation_rounds_tree_root());
     validator_epochs_tree.update_epoch(
         epoch_num, 
-        validators_state_proof1.clone(), 
-        &validators_tree1.validators(), 
-        &accounts_tree1.accounts(),
+        &validators_state_proof1,
+        &validators_tree1, 
+        &accounts_tree1,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
     assert_eq!(proof.validator_epochs_tree_root(), validator_epochs_tree.root(), "Unexpected validator epochs tree root.");

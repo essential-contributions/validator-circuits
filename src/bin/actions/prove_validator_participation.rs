@@ -54,8 +54,8 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     ) = build_participation_state(
         &participation_state_circuit,
         &validators_state_proof,
-        &validators_tree.validators(),
-        &accounts_tree.accounts(),
+        &validators_tree,
+        &accounts_tree,
         &validator_indexes[0..2],
         &[32, 48, 67, 100],
         PARTICIPATION_STATE_OUTPUT_FILE,
