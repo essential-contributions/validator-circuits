@@ -119,6 +119,16 @@ impl Circuit for ValidatorParticipationAggCircuit {
         return &self.circuit_data;
     }
 
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
+        Ok(proof.proof.to_bytes())
+    }
+
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
+        let common_data = &self.circuit_data.common;
+        let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(bytes, common_data)?;
+        Ok(Self::Proof { proof })
+    }
+
     fn is_wrappable() -> bool {
         false
     }
@@ -203,19 +213,15 @@ impl ValidatorParticipationAggProof {
         self.proof.public_inputs[PIS_AGG_WITHDRAW_UNEARNED].to_canonical_u64()
     }
 
-    pub fn param_rf(&self) -> u64 {
-        self.proof.public_inputs[PIS_AGG_PARAM_RF].to_canonical_u64()
+    pub fn param_rf(&self) -> u32 {
+        self.proof.public_inputs[PIS_AGG_PARAM_RF].to_canonical_u64() as u32
     }
 
-    pub fn param_st(&self) -> u64 {
-        self.proof.public_inputs[PIS_AGG_PARAM_ST].to_canonical_u64()
+    pub fn param_st(&self) -> u32 {
+        self.proof.public_inputs[PIS_AGG_PARAM_ST].to_canonical_u64() as u32
     }
 }
 impl Proof for ValidatorParticipationAggProof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
-        Self { proof }
-    }
-    
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }
@@ -583,8 +589,8 @@ pub struct ValidatorPartAggStartData {
     pub pr_tree_root: [Field; 4],
     pub account: [u8; 20],
     pub epoch: u32,
-    pub param_rf: u64,
-    pub param_st: u64,
+    pub param_rf: u32,
+    pub param_st: u32,
 }
 #[derive(Clone)]
 pub enum ValidatorPartAggPrevData {
@@ -641,8 +647,8 @@ fn generate_partial_witness(
 
     //participation round issuance
     let (rf, st) = match &data.previous_data {
-        ValidatorPartAggPrevData::Start(start_data) => (start_data.param_rf, start_data.param_st),
-        ValidatorPartAggPrevData::Continue(previous_proof) => (previous_proof.param_rf(), previous_proof.param_st()),
+        ValidatorPartAggPrevData::Start(start_data) => (start_data.param_rf as u64, start_data.param_st as u64),
+        ValidatorPartAggPrevData::Continue(previous_proof) => (previous_proof.param_rf() as u64, previous_proof.param_st() as u64),
     };
     let validator_stake = match &data.validator {
         Some(validator) => validator.stake as u64,
@@ -688,8 +694,8 @@ fn generate_partial_witness(
             pw.set_hash_target(targets.init_pr_tree_root, HashOut::<Field> { elements: start_data.pr_tree_root });
             pw.set_target_arr(&targets.init_account_address, &account_to_fields(start_data.account));
             pw.set_target(targets.init_epoch, Field::from_canonical_u32(start_data.epoch));
-            pw.set_target(targets.init_param_rf, Field::from_canonical_u64(start_data.param_rf));
-            pw.set_target(targets.init_param_st, Field::from_canonical_u64(start_data.param_st));
+            pw.set_target(targets.init_param_rf, Field::from_canonical_u32(start_data.param_rf));
+            pw.set_target(targets.init_param_st, Field::from_canonical_u32(start_data.param_st));
 
             //create starter proof initial state (no previous proof)
             let base_proof = initial_proof(circuit_data, start_data);
@@ -723,8 +729,8 @@ fn initial_proof(circuit_data: &CircuitData<Field, Config, D>, init_data: &Valid
         &[Field::from_canonical_u32(init_data.epoch)],
         &[Field::ZERO],
         &[Field::ZERO],
-        &[Field::from_canonical_u64(init_data.param_rf)],
-        &[Field::from_canonical_u64(init_data.param_st)],
+        &[Field::from_canonical_u32(init_data.param_rf)],
+        &[Field::from_canonical_u32(init_data.param_st)],
     ].concat();
     cyclic_base_proof(
         &circuit_data.common,

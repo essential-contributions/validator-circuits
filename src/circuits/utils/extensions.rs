@@ -10,6 +10,12 @@ pub trait CircuitBuilderExtended {
     /// Computes the sha256 hash treating each target like a u32.
     fn sha256_hash(&mut self, inputs: Vec<Target>) -> Vec<Target>;
 
+    /// Compresses the given u32 hash output into just 4 field elements.
+    fn compress_hash(&mut self, u32_hash: Vec<Target>) -> HashOutTarget;
+
+    /// Returns the big endian representation of the given target in u32s.
+    fn to_u32s(&mut self, input: Target) -> Vec<Target>;
+
     /// Computes the arithmetic generalization of `xor(x, y)`, i.e. `x + y - 2 x y`.
     fn xor(&mut self, x: BoolTarget, y: BoolTarget) -> BoolTarget;
 
@@ -65,6 +71,27 @@ pub trait CircuitBuilderExtended {
 impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
     fn sha256_hash(&mut self, inputs: Vec<Target>) -> Vec<Target> {
         build_sha256_hash(self, inputs)
+    }
+
+    fn to_u32s(&mut self, input: Target) -> Vec<Target> {
+        let split = self.split_low_high(input, 32, 64);
+        vec![split.1, split.0]
+    }
+
+    fn compress_hash(&mut self, u32_hash: Vec<Target>) -> HashOutTarget {
+        debug_assert_eq!(u32_hash.len(), 8, "given u32_hash does not have 8 elements");
+        let compressed: Vec<Target> = u32_hash.chunks(2).map(|e| {
+            let low_bits = self.split_le(e[1], 32);
+            let high_bits = self.split_le(e[0], 32);
+
+            let mut combined: Vec<BoolTarget> = Vec::new();
+            combined.extend(&low_bits[0..32]);
+            combined.extend(&high_bits[0..31]);
+
+            self.le_sum(combined.into_iter())
+        }).collect();
+
+        HashOutTarget { elements: [compressed[0], compressed[1], compressed[2], compressed[3]] }
     }
 
     fn xor(&mut self, x: BoolTarget, y: BoolTarget) -> BoolTarget {

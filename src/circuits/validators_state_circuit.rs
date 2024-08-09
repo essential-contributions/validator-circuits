@@ -87,6 +87,16 @@ impl Circuit for ValidatorsStateCircuit {
         return &self.circuit_data;
     }
 
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
+        Ok(proof.proof.to_bytes())
+    }
+
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
+        let common_data = &self.circuit_data.common;
+        let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(bytes, common_data)?;
+        Ok(Self::Proof { proof })
+    }
+
     fn is_wrappable() -> bool {
         false
     }
@@ -129,8 +139,8 @@ impl ValidatorsStateProof {
         hash
     }
 
-    pub fn total_staked(&self) -> u32 {
-        self.proof.public_inputs[PIS_VALIDATORS_STATE_TOTAL_STAKED].to_canonical_u64() as u32
+    pub fn total_staked(&self) -> u64 {
+        self.proof.public_inputs[PIS_VALIDATORS_STATE_TOTAL_STAKED].to_canonical_u64()
     }
 
     pub fn total_validators(&self) -> u32 {
@@ -152,10 +162,6 @@ impl ValidatorsStateProof {
     }
 }
 impl Proof for ValidatorsStateProof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
-        Self { proof }
-    }
-
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }

@@ -1,11 +1,13 @@
 use std::time::Instant;
 
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_proof, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::ValidatorCommitmentReveal, Field, MAX_VALIDATORS};
+use plonky2::field::types::PrimeField64;
+use sha2::{Digest, Sha256};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestation_aggregation_circuit::AttestationAggregatorProof, load_or_create_circuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_proof, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::ValidatorCommitmentReveal, Field, MAX_VALIDATORS};
 use validator_circuits::circuits::attestation_aggregation_circuit::AttestationAggregationCircuit;
 
 use crate::actions::build_validators_state;
 
-const VALIDATORS_STATE_OUTPUT_FILE: &str = "attestation_aggregation_validators_state_proof.json";
+const VALIDATORS_STATE_OUTPUT_FILE: &str = "attestation_aggregation_validators_state.proof";
 
 pub fn benchmark_prove_attestation_aggregation(full: bool) {
     //make sure circuits have been built
@@ -58,12 +60,14 @@ pub fn benchmark_prove_attestation_aggregation(full: bool) {
     let start = Instant::now();
     let proof = attestation_agg_circuit.generate_proof(&validators_state_proof, &reveals, &validators_tree).unwrap();
     println!("(finished in {:?})", start.elapsed());
+    assert!(verify_public_inputs_hash(&proof), "Unexpected public inputs hash from proof.");
     assert_eq!(proof.participation_root(), calculate_participation_root(&validator_indexes), "Unexpected participation root from proof.");
-    println!("Proved attestations at inputs hash 0x{}", to_hex(&proof.validator_inputs_hash()));
-    println!("participation_root - {:?}", proof.participation_root());
-    println!("num_participants - {:?}", proof.num_participants());
+    println!("Proved attestations at inputs hash 0x{}", to_hex(&proof.validators_inputs_hash()));
+    println!("total_staked - {:?}", proof.total_staked());
     println!("block_slot - {:?}", proof.block_slot());
-    println!("total_stake - {:?}", proof.total_stake());
+    println!("participation_root - {:?}", proof.participation_root());
+    println!("participation_count - {:?}", proof.participation_count());
+    println!("attestations_stake - {:?}", proof.attestations_stake());
     println!();
 
     if full {
@@ -79,20 +83,31 @@ pub fn benchmark_prove_attestation_aggregation(full: bool) {
 
         println!("Generating BN128 Wrapper Proof...");
         let start = Instant::now();
-        let proof = bn128_wrapper.generate_proof(inner_circuit, inner_proof).unwrap();
+        let bn128_proof = bn128_wrapper.generate_proof(inner_circuit, inner_proof).unwrap();
         println!("(finished in {:?})", start.elapsed());
-        assert!(bn128_wrapper.verify_proof(&proof).is_ok(), "BN128 wrapped proof verification failed.");
+        assert!(bn128_wrapper.verify_proof(&bn128_proof).is_ok(), "BN128 wrapped proof verification failed.");
         println!();
 
         //wrap proof to groth16
         println!("Generating Groth16 Wrapper Proof...");
         let start = Instant::now();
-        save_bn128_wrapper_proof(&proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR);
-        let proof = generate_groth16_wrapper_proof(ATTESTATION_AGGREGATION_CIRCUIT_DIR).unwrap();
+        save_bn128_wrapper_proof(&bn128_proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR);
+        let groth16_proof = generate_groth16_wrapper_proof(ATTESTATION_AGGREGATION_CIRCUIT_DIR).unwrap();
         println!("Proved with Groth16 wrapper!");
         println!("(finished in {:?})", start.elapsed());
         println!();
-        println!("{}", proof);
+
+        //print final proof
+        for i in 0..13 {
+            println!("\"0x{}\",", to_hex(&groth16_proof[i]));
+        }
+        println!();
+        println!("\"validatorInputsHash\": \"0x{}\",", to_hex(&proof.validators_inputs_hash()));
+        println!("\"totalStaked\": {},", proof.total_staked());
+        println!("\"blockSlot\": {},", proof.block_slot());
+        println!("\"participationRoot\": \"0x{}\",", to_hex_from_fields(&proof.participation_root()));
+        println!("\"participationCount\": {},", proof.participation_count());
+        println!("\"attestationsStake\": {},", proof.attestations_stake());
     }
 }
 
@@ -107,4 +122,42 @@ fn calculate_participation_root(validator_indexes: &[usize]) -> [Field; 4] {
 fn to_hex(bytes: &[u8]) -> String {
     let hex_string: String = bytes.iter().map(|byte| format!("{:02x}", byte)).collect();
     hex_string
+}
+
+fn to_hex_from_fields(fileds: &[Field]) -> String {
+    let hex_string: String = fileds.iter().map(|f| format!("{:016x}", f.to_canonical_u64())).collect();
+    hex_string
+}
+
+fn verify_public_inputs_hash(proof: &AttestationAggregatorProof) -> bool {
+    let mut public_inputs_hash = [0u8; 32];
+    for i in 0..4 {
+        let bytes = proof.public_inputs_hash()[i].to_canonical_u64().to_be_bytes();
+        public_inputs_hash[(i * 8)..((i * 8) + 8)].copy_from_slice(&bytes);
+    }
+
+    //manually hash
+    let mut to_hash = [0u8; 88];
+    to_hash[0..32].copy_from_slice(&proof.validators_inputs_hash());
+    to_hash[32..40].copy_from_slice(&proof.total_staked().to_be_bytes());
+    to_hash[40..44].copy_from_slice(&(proof.block_slot() as u32).to_be_bytes());
+    to_hash[44..52].copy_from_slice(&proof.participation_root()[0].to_canonical_u64().to_be_bytes());
+    to_hash[52..60].copy_from_slice(&proof.participation_root()[1].to_canonical_u64().to_be_bytes());
+    to_hash[60..68].copy_from_slice(&proof.participation_root()[2].to_canonical_u64().to_be_bytes());
+    to_hash[68..76].copy_from_slice(&proof.participation_root()[3].to_canonical_u64().to_be_bytes());
+    to_hash[76..80].copy_from_slice(&(proof.participation_count() as u32).to_be_bytes());
+    to_hash[80..88].copy_from_slice(&proof.attestations_stake().to_be_bytes());
+    let mut hasher = Sha256::new();
+    hasher.update(&to_hash);
+    let result = hasher.finalize();
+    let computed_hash: [u8; 32] = result.into();
+
+    //apply mask to hash
+    let mut masked_hash = computed_hash;
+    masked_hash[0] = masked_hash[0] & 0x7f;
+    masked_hash[8] = masked_hash[8] & 0x7f;
+    masked_hash[16] = masked_hash[16] & 0x7f;
+    masked_hash[24] = masked_hash[24] & 0x7f;
+
+    public_inputs_hash == masked_hash
 }

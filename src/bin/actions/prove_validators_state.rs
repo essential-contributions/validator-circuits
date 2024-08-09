@@ -52,7 +52,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
     println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
-    total_staked = total_staked + stake;
+    total_staked = total_staked + (stake as u64);
     assert_eq!(proof.total_staked(), total_staked, "Unexpected total staked value from proof.");
     total_validators = total_validators + 1;
     assert_eq!(proof.total_validators(), total_validators, "Unexpected total validators value from proof.");
@@ -164,7 +164,7 @@ pub fn benchmark_prove_validators_state(full: bool) {
     println!("(finished in {:?})", start.elapsed());
     assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
     println!("Proved validators state at inputs hash 0x{}", to_hex(&proof.inputs_hash()));
-    total_staked = total_staked + stake;
+    total_staked = total_staked + (stake as u64);
     assert_eq!(proof.total_staked(), total_staked, "Unexpected total staked value from proof.");
     total_validators = total_validators + 1;
     assert_eq!(proof.total_validators(), total_validators, "Unexpected total validators value from proof.");

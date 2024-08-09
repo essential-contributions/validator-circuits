@@ -18,7 +18,7 @@ use crate::Field;
 pub struct ValidatorEpoch {
     pub num: u32,
     pub validators_state_inputs_hash: [u8; 32],
-    pub total_staked: u32,
+    pub total_staked: u64,
     pub total_validators: u32,
     pub validators_tree_root: [Field; 4],
     pub accounts_tree_root: [Field; 4],

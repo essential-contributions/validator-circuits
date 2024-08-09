@@ -81,6 +81,16 @@ impl Circuit for ParticipationStateCircuit {
         return &self.circuit_data;
     }
 
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
+        Ok(proof.proof.to_bytes())
+    }
+
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
+        let common_data = &self.circuit_data.common;
+        let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(bytes, common_data)?;
+        Ok(Self::Proof { proof })
+    }
+
     fn is_wrappable() -> bool {
         false
     }
@@ -138,10 +148,6 @@ impl ParticipationStateProof {
     }
 }
 impl Proof for ParticipationStateProof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
-        Self { proof }
-    }
-    
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }

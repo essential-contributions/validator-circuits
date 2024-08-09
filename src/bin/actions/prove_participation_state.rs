@@ -7,8 +7,8 @@ use validator_circuits::circuits::participation_state_circuit::ParticipationStat
 
 use crate::actions::build_validators_state;
 
-const VALIDATORS_STATE_OUTPUT_FILE1: &str = "participation_state_validators_state_proof1.json";
-const VALIDATORS_STATE_OUTPUT_FILE2: &str = "participation_state_validators_state_proof2.json";
+const VALIDATORS_STATE_OUTPUT_FILE1: &str = "participation_state_validators_state1.proof";
+const VALIDATORS_STATE_OUTPUT_FILE2: &str = "participation_state_validators_state2.proof";
 
 pub fn benchmark_prove_participation_state(full: bool) {
     if full {

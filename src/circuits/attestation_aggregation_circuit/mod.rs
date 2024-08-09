@@ -64,6 +64,15 @@ impl Circuit for AttestationAggregationCircuit {
         return &self.attestations_aggregator3.circuit_data();
     }
 
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
+        Ok(self.attestations_aggregator3.proof_to_bytes(&proof.proof)?)
+    }
+
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
+        let proof = self.attestations_aggregator3.proof_from_bytes(bytes)?;
+        Ok(Self::Proof { proof })
+    }
+
     fn is_wrappable() -> bool {
         true
     }
@@ -151,31 +160,35 @@ pub struct AttestationAggregatorProof {
     proof: AttestationAggregatorThirdStageProof,
 }
 impl AttestationAggregatorProof {
-    pub fn validator_inputs_hash(&self) -> [u8; 32] {
-        self.proof.validator_inputs_hash()
+    pub fn public_inputs_hash(&self) -> [Field; 4] {
+        self.proof.public_inputs_hash()
     }
 
-    pub fn participation_root(&self) -> [Field; 4] {
-        self.proof.participation_root()
+    pub fn validators_inputs_hash(&self) -> [u8; 32] {
+        self.proof.validators_inputs_hash()
     }
 
-    pub fn num_participants(&self) -> usize{
-        self.proof.num_participants()
+    pub fn total_staked(&self) -> u64 {
+        self.proof.total_staked()
     }
 
     pub fn block_slot(&self) -> usize{
         self.proof.block_slot()
     }
 
-    pub fn total_stake(&self) -> u64 {
-        self.proof.total_stake()
+    pub fn participation_root(&self) -> [Field; 4] {
+        self.proof.participation_root()
+    }
+
+    pub fn participation_count(&self) -> usize{
+        self.proof.participation_count()
+    }
+
+    pub fn attestations_stake(&self) -> u64 {
+        self.proof.attestations_stake()
     }
 }
 impl Proof for AttestationAggregatorProof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
-        Self { proof: AttestationAggregatorThirdStageProof::from_proof(proof) }
-    }
-    
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof.proof()
     }

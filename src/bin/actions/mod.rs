@@ -10,7 +10,7 @@ pub use prove_participation_state::*;
 pub use prove_validator_participation::*;
 pub use prove_attestation_aggregation::*;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, circuits::{load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof}, commitment::example_commitment_root, epochs::ValidatorEpochsTree, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, circuits::{load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit}, commitment::example_commitment_root, epochs::ValidatorEpochsTree, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
 pub const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
 pub const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
@@ -43,14 +43,14 @@ pub fn build_validators_state(
     let mut validators_tree = ValidatorsTree::new();
     let mut accounts_tree = build_initial_accounts_tree();
 
-    let validators_state_proof = match load_proof(&BENCHMARKING_DATA_DIR, quick_load_filename) {
+    let validators_state_proof = match load_proof(validators_state_circuit, &BENCHMARKING_DATA_DIR, quick_load_filename) {
         Ok(proof) => {
             for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
                 let commitment_root = example_commitment_root(validator_index);
                 validators_tree.set_validator(validator_index, Validator { commitment_root, stake });
                 accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
             }
-            ValidatorsStateProof::from_proof(proof)
+            proof
         },
         Err(_) => {
             let mut previous_proof: Option<ValidatorsStateProof> = None;
@@ -75,7 +75,7 @@ pub fn build_validators_state(
                 previous_proof = Some(proof);
             }
             let proof = previous_proof.unwrap();
-            if save_proof(&proof.proof(), &BENCHMARKING_DATA_DIR, quick_load_filename).is_err() {
+            if save_proof(validators_state_circuit, &proof, &BENCHMARKING_DATA_DIR, quick_load_filename).is_err() {
                 log::warn!("Failed to save validators state proof to file.");
             }
             proof
@@ -110,7 +110,7 @@ pub fn build_participation_state(
         bit_flags[validator_index / 8] += 0x80 >> (validator_index % 8);
     }
 
-    let participation_state_proof = match load_proof(&BENCHMARKING_DATA_DIR, quick_load_filename) {
+    let participation_state_proof = match load_proof(participation_state_circuit, &BENCHMARKING_DATA_DIR, quick_load_filename) {
         Ok(proof) => {
             for num in rounds {
                 let epoch_num = num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
@@ -123,7 +123,7 @@ pub fn build_participation_state(
                     participation_count: participating_validator_indexes.len() as u32,
                 }, Some(bit_flags.clone()));
             }
-            ParticipationStateProof::from_proof(proof)
+            proof
         },
         Err(_) => {
             let mut previous_proof: Option<ParticipationStateProof> = None;
@@ -155,7 +155,7 @@ pub fn build_participation_state(
                 previous_proof = Some(proof);
             }
             let proof = previous_proof.unwrap();
-            if save_proof(&proof.proof(), &BENCHMARKING_DATA_DIR, quick_load_filename).is_err() {
+            if save_proof(participation_state_circuit, &proof, &BENCHMARKING_DATA_DIR, quick_load_filename).is_err() {
                 log::warn!("Failed to save participation state proof to file.");
             }
             proof

@@ -30,6 +30,9 @@ pub trait Circuit {
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()>;
     fn circuit_data(&self) -> &CircuitData<Field, Config, D>;
 
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>>;
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof>;
+
     fn is_wrappable() -> bool;
     fn wrappable_example_proof(&self) -> Option<Self::Proof>;
 }
@@ -42,7 +45,6 @@ pub trait Serializeable {
 }
 
 pub trait Proof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self;
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D>;
 }
 
@@ -137,36 +139,22 @@ where
     }
 }
 
-pub fn save_proof(proof: &ProofWithPublicInputs<Field, Config, D>, path: &[&str], filename: &str) -> Result<()> {
-    let proof_serialized = serde_json::to_string(proof);
-    match proof_serialized {
-        Ok(json) => {
-            let bytes = json.as_bytes().to_vec();
-            match write_file(&bytes, path, filename) {
-                Ok(_) => {
-                    log::info!("Saved proof [/{}/{}]", path.join("/"), filename);
-                    Ok(())
-                },
-                Err(e) => Err(anyhow!("{}", e)),
-            }
+pub fn save_proof<C: Circuit>(circuit: &C, proof: &C::Proof, path: &[&str], filename: &str) -> Result<()> {
+    let bytes = circuit.proof_to_bytes(proof)?;
+    match write_file(&bytes, path, filename) {
+        Ok(_) => {
+            log::info!("Saved proof [/{}/{}]", path.join("/"), filename);
+            Ok(())
         },
         Err(e) => Err(anyhow!("{}", e)),
     }
 }
 
-pub fn load_proof(path: &[&str], filename: &str) -> Result<ProofWithPublicInputs<Field, Config, D>> {
+pub fn load_proof<C: Circuit>(circuit: &C, path: &[&str], filename: &str) -> Result<C::Proof> {
     match read_file(path, filename) {
         Ok(bytes) => {
-            match std::str::from_utf8(&bytes) {
-                Ok(serialized_str) => {
-                    let proof: Result<ProofWithPublicInputs<Field, Config, D>, serde_json::Error> = serde_json::from_str(serialized_str);
-                    match proof {
-                        Ok(proof) => Ok(proof),
-                        Err(e) => Err(anyhow!("{}", e)),
-                    }
-                },
-                Err(e) => Err(anyhow!("{}", e)),
-            }
+            let proof = circuit.proof_from_bytes(bytes)?;
+            Ok(proof)
         },
         Err(e) => Err(anyhow!("{}", e)),
     }
@@ -188,7 +176,7 @@ pub fn clear_data_and_proof(dir: &str) {
 }
 
 #[inline]
-fn write_file(bytes: &Vec<u8>, path: &[&str], filename: &str) -> io::Result<()> {
+fn write_file(bytes: &[u8], path: &[&str], filename: &str) -> io::Result<()> {
     let mut path_buf = PathBuf::new();
     for &p in path {
         path_buf.push(p);

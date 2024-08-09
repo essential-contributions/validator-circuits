@@ -49,6 +49,15 @@ impl Circuit for ValidatorParticipationCircuit {
         return &self.participation_agg_end.circuit_data();
     }
 
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
+        Ok(self.participation_agg_end.proof_to_bytes(&proof.proof)?)
+    }
+
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
+        let proof = self.participation_agg_end.proof_from_bytes(bytes)?;
+        Ok(Self::Proof { proof })
+    }
+
     fn is_wrappable() -> bool {
         true
     }
@@ -133,6 +142,10 @@ pub struct ValidatorParticipationProof {
     proof: ValidatorParticipationAggEndProof,
 }
 impl ValidatorParticipationProof {
+    pub fn public_inputs_hash(&self) -> [Field; 4] {
+        self.proof.public_inputs_hash()
+    }
+
     pub fn participation_inputs_hash(&self) -> [u8; 32] {
         self.proof.participation_inputs_hash()
     }
@@ -157,19 +170,15 @@ impl ValidatorParticipationProof {
         self.proof.withdraw_unearned()
     }
 
-    pub fn param_rf(&self) -> u64 {
+    pub fn param_rf(&self) -> u32 {
         self.proof.param_rf()
     }
 
-    pub fn param_st(&self) -> u64 {
+    pub fn param_st(&self) -> u32 {
         self.proof.param_st()
     }
 }
 impl Proof for ValidatorParticipationProof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
-        Self { proof: ValidatorParticipationAggEndProof::from_proof(proof) }
-    }
-    
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof.proof()
     }
@@ -180,8 +189,8 @@ pub struct ValidatorParticipationCircuitData {
     pub account_address: [u8; 20],
     pub from_epoch: u32,
     pub to_epoch: u32,
-    pub rf: u64,
-    pub st: u64,
+    pub rf: u32,
+    pub st: u32,
 
     pub participation_state_proof: ParticipationStateProof,
 }
