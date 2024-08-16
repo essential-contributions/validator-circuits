@@ -12,11 +12,11 @@ use plonky2::util::serialization::Write;
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
-use crate::accounts::{null_account_address, Account, AccountsTree};
+use crate::accounts::{initial_accounts_tree, null_account_address, Account, AccountsTree};
 use crate::circuits::validators_state_circuit::ValidatorsStateCircuit;
-use crate::circuits::{load_or_create_circuit, VALIDATORS_STATE_CIRCUIT_DIR};
+use crate::circuits::{load_or_create_circuit, load_or_create_init_proof, VALIDATORS_STATE_CIRCUIT_DIR};
 use crate::commitment::example_commitment_root;
-use crate::validators::Validator;
+use crate::validators::{initial_validators_tree, Validator};
 use crate::{AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE3_SIZE};
 use crate::{commitment::example_commitment_proof, validators::{ValidatorCommitmentReveal, ValidatorsTree}, Config, Field, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, D};
 use super::validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof};
@@ -71,6 +71,14 @@ impl Circuit for AttestationAggregationCircuit {
     fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
         let proof = self.attestations_aggregator3.proof_from_bytes(bytes)?;
         Ok(Self::Proof { proof })
+    }
+
+    fn is_cyclical() -> bool {
+        false
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        None
     }
 
     fn is_wrappable() -> bool {
@@ -394,11 +402,11 @@ fn example_validators_state(
     ValidatorsStateProof //validators_state_proof
 ) {
     log::info!("Generating example accounts");
-    let mut validators_tree = ValidatorsTree::new();
-    let mut accounts_tree = AccountsTree::new();
+    let mut validators_tree = initial_validators_tree();
+    let mut accounts_tree = initial_accounts_tree();
 
     log::info!("Generating example validator state sub proof");
-    let mut previous_proof: Option<ValidatorsStateProof> = None;
+    let mut previous_proof: Option<ValidatorsStateProof> = Some(load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR));
     for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
         let commitment = example_commitment_root(validator_index);
         let data = compile_data_for_validators_state_circuit(

@@ -10,7 +10,7 @@ use plonky2::util::serialization::Write;
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
-use crate::{accounts::{null_account_address, Account, AccountsTree}, circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, epochs::ValidatorEpochsTree, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use crate::{accounts::{initial_accounts_tree, null_account_address, Account, AccountsTree}, circuits::{load_or_create_circuit, load_or_create_init_proof, participation_state_circuit::ParticipationStateCircuitData, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, epochs::{initial_validator_epochs_tree, ValidatorEpochsTree}, participation::{initial_participation_rounds_tree, participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{initial_validators_tree, Validator, ValidatorsTree}, Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 use super::{participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, Serializeable};
 
 //TODO: proof generation needs to be able to reference validators_tree at specific epochs (see todo in validators.rs)
@@ -56,6 +56,14 @@ impl Circuit for ValidatorParticipationCircuit {
     fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
         let proof = self.participation_agg_end.proof_from_bytes(bytes)?;
         Ok(Self::Proof { proof })
+    }
+
+    fn is_cyclical() -> bool {
+        false
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        None
     }
 
     fn is_wrappable() -> bool {
@@ -214,15 +222,15 @@ fn generate_proof_from_data(
         log::info!("Generating proof for epoch {}", epoch_num);
         let validators_state_proof = match validator_epochs_tree.epoch_validators_state_proof(epoch_num) {
             Some(proof) => proof,
-            None => return Err(anyhow!("Failed to retrieve validators state proof for epoch {}.", epoch_num)),
+            None => load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR),
         };
         let validators_tree = match validator_epochs_tree.epoch_validators_tree(epoch_num) {
             Some(proof) => proof,
-            None => return Err(anyhow!("Failed to retrieve validators for epoch {}.", epoch_num)),
+            None => initial_validators_tree(),
         };
         let accounts_tree = match validator_epochs_tree.epoch_accounts_tree(epoch_num) {
             Some(proof) => proof,
-            None => return Err(anyhow!("Failed to retrieve accounts for epoch {}.", epoch_num)),
+            None => initial_accounts_tree(),
         };
 
         let account = accounts_tree.account(data.account_address);
@@ -301,11 +309,11 @@ fn example_validators_state(
     ValidatorsStateProof //validators_state_proof
 ) {
     log::info!("Generating example accounts");
-    let mut validators_tree = ValidatorsTree::new();
-    let mut accounts_tree = AccountsTree::new();
+    let mut validators_tree = initial_validators_tree();
+    let mut accounts_tree = initial_accounts_tree();
 
     log::info!("Generating example validator state sub proof");
-    let mut previous_proof: Option<ValidatorsStateProof> = None;
+    let mut previous_proof: Option<ValidatorsStateProof> = Some(load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR));
     for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
         let commitment = example_commitment_root(validator_index);
         let data = compile_data_for_validators_state_circuit(
@@ -345,8 +353,8 @@ pub fn example_participation_state(
     ParticipationRoundsTree, //participation_rounds_tree
     ParticipationStateProof //participation_state_proof
 ) {
-    let mut validator_epochs_tree = ValidatorEpochsTree::new();
-    let mut participation_rounds_tree = ParticipationRoundsTree::new();
+    let mut validator_epochs_tree = initial_validator_epochs_tree();
+    let mut participation_rounds_tree = initial_participation_rounds_tree();
 
     let mut validator_indexes: Vec<usize> = Vec::new();
     for (i, v) in validators_tree.validators().iter().enumerate() {
@@ -361,7 +369,7 @@ pub fn example_participation_state(
     }
 
     log::info!("Generating example participation state sub proof");
-    let mut previous_proof: Option<ParticipationStateProof> = None;
+    let mut previous_proof: Option<ParticipationStateProof> = Some(load_or_create_init_proof::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR));
     for num in rounds {
         let epoch_num = num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
         let round = ParticipationRound {

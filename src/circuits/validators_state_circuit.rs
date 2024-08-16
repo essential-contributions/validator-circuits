@@ -13,8 +13,8 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
-use crate::accounts::initial_accounts_tree_root;
-use crate::validators::initial_validators_tree_root;
+use crate::accounts::{initial_accounts_tree, initial_accounts_tree_root, null_account_address};
+use crate::validators::{initial_validators_tree, initial_validators_tree_root};
 use crate::{Config, Field, ACCOUNTS_TREE_HEIGHT, D, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Hash;
 
@@ -95,6 +95,17 @@ impl Circuit for ValidatorsStateCircuit {
         let common_data = &self.circuit_data.common;
         let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(bytes, common_data)?;
         Ok(Self::Proof { proof })
+    }
+
+    fn is_cyclical() -> bool {
+        true
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        let data = generate_initial_data();
+        let pw = generate_partial_witness(&self.circuit_data, &self.targets, &data).unwrap();
+        let proof = self.circuit_data.prove(pw).unwrap();
+        Some(ValidatorsStateProof { proof })
     }
 
     fn is_wrappable() -> bool {
@@ -367,12 +378,25 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsStateCi
         &to_acc_proof,
     );
 
+    //Select between new values or initial values (initial proof)
+    let initial_validators_tree_root = HashOutTarget { 
+        elements: initial_validators_tree_root().map(|f| builder.constant(f)) 
+    };
+    let initial_accounts_tree_root = HashOutTarget { 
+        elements: initial_accounts_tree_root().map(|f| builder.constant(f)) 
+    };
+    let new_inputs_hash_or_init: Vec<Target> = new_inputs_hash.iter().map(|&h| builder.mul(h, init_zero.target)).collect();
+    let new_total_staked_or_init = builder.mul(new_total_staked, init_zero.target);
+    let new_total_validators_or_init = builder.mul(new_total_validators, init_zero.target);
+    let new_validators_tree_root_or_init = builder.select_hash(init_zero, new_validators_tree_root, initial_validators_tree_root);
+    let new_accounts_tree_root_or_init = builder.select_hash(init_zero, new_accounts_tree_root, initial_accounts_tree_root);
+
     //Register all public inputs
-    builder.register_public_inputs(&new_inputs_hash);
-    builder.register_public_input(new_total_staked);
-    builder.register_public_input(new_total_validators);
-    builder.register_public_inputs(&new_validators_tree_root.elements);
-    builder.register_public_inputs(&new_accounts_tree_root.elements);
+    builder.register_public_inputs(&new_inputs_hash_or_init);
+    builder.register_public_input(new_total_staked_or_init);
+    builder.register_public_input(new_total_validators_or_init);
+    builder.register_public_inputs(&new_validators_tree_root_or_init.elements);
+    builder.register_public_inputs(&new_accounts_tree_root_or_init.elements);
 
     //Unpack inner proof public inputs
     let mut common_data = common_data_for_recursion(MAX_GATES);
@@ -386,31 +410,12 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsStateCi
     let inner_proof_validators_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[10..14]).unwrap();
     let inner_proof_accounts_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[14..18]).unwrap();
 
-    //Connect the current inputs hash with inner proof or initial value
-    inner_proof_inputs_hash.iter().zip(current_inputs_hash).for_each(|(inner_proof, prev)| {
-        let inner_proof_or_init = builder.mul(*inner_proof, init_zero.target);
-        builder.connect(prev, inner_proof_or_init);
-    });
-
-    //Connect the current totals with inner proof or initial values
-    let inner_proof_total_staked_or_init = builder.mul(inner_proof_total_staked, init_zero.target);
-    builder.connect(current_total_staked, inner_proof_total_staked_or_init);
-    let inner_proof_total_validators_or_init = builder.mul(inner_proof_total_validators, init_zero.target);
-    builder.connect(current_total_validators, inner_proof_total_validators_or_init);
-
-    //Connect the current validators tree root with inner proof or initial value
-    let initial_validators_tree_root = HashOutTarget { 
-        elements: initial_validators_tree_root().map(|f| builder.constant(f)) 
-    };
-    let inner_proof_validators_tree_root_or_init = builder.select_hash(init_zero, inner_proof_validators_tree_root, initial_validators_tree_root);
-    builder.connect_hashes(current_validators_tree_root, inner_proof_validators_tree_root_or_init);
-
-    //Connect the current accounts tree root with inner proof or initial value
-    let initial_accounts_tree_root = HashOutTarget { 
-        elements: initial_accounts_tree_root().map(|f| builder.constant(f)) 
-    };
-    let inner_proof_accounts_tree_root_or_init = builder.select_hash(init_zero, inner_proof_accounts_tree_root, initial_accounts_tree_root);
-    builder.connect_hashes(current_accounts_tree_root, inner_proof_accounts_tree_root_or_init);
+    //Connect the current inputs with proof public inputs
+    builder.connect_many(&current_inputs_hash, &inner_proof_inputs_hash);
+    builder.connect(current_total_staked, inner_proof_total_staked);
+    builder.connect(current_total_validators, inner_proof_total_validators);
+    builder.connect_hashes(current_validators_tree_root, inner_proof_validators_tree_root);
+    builder.connect_hashes(current_accounts_tree_root, inner_proof_accounts_tree_root);
 
     //Finally verify the previous (inner) proof
     builder.conditionally_verify_cyclic_proof_or_dummy::<Config>(
@@ -511,6 +516,37 @@ fn generate_partial_witness(
         },
     };
     Ok(pw)
+}
+
+fn generate_initial_data() -> ValidatorsStateCircuitData {
+    let validators_tree = initial_validators_tree();
+    let accounts_tree = initial_accounts_tree();
+
+    let index = 0;
+    let from_account = null_account_address(index);
+    let to_account = [12u8; 20];
+    let validator = validators_tree.validator(index);
+    ValidatorsStateCircuitData {
+        index,
+        stake: 32,
+        commitment: [Field::ZERO, Field::ONE, Field::TWO, Field::TWO],
+        account: to_account,
+
+        validator_index: index,
+        validator_stake: validator.stake,
+        validator_commitment: validator.commitment_root,
+        validator_proof: validators_tree.merkle_proof(index),
+
+        from_account,
+        from_acc_index: accounts_tree.account(from_account).validator_index,
+        from_acc_proof: accounts_tree.merkle_proof(from_account),
+
+        to_account,
+        to_acc_index: accounts_tree.account(to_account).validator_index,
+        to_acc_proof: accounts_tree.merkle_proof(to_account),
+
+        previous_proof: None,
+    }
 }
 
 fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPublicInputs<Field, Config, D> {

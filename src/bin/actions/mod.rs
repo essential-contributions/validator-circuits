@@ -1,33 +1,20 @@
 mod commitment_generation;
+mod example_proofs;
 mod prove_validators_state;
 mod prove_participation_state;
 mod prove_validator_participation;
 mod prove_attestation_aggregation;
 
 pub use commitment_generation::*;
+pub use example_proofs::*;
 pub use prove_validators_state::*;
 pub use prove_participation_state::*;
 pub use prove_validator_participation::*;
 pub use prove_attestation_aggregation::*;
 
-use validator_circuits::{accounts::{load_accounts, null_account_address, save_accounts, Account, AccountsTree}, circuits::{load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit}, commitment::example_commitment_root, epochs::ValidatorEpochsTree, participation::{participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{Validator, ValidatorsTree}, Field, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use validator_circuits::{accounts::{initial_accounts_tree, null_account_address, Account, AccountsTree}, circuits::{load_or_create_init_proof, load_proof, participation_state_circuit::{ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof}, save_proof, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, epochs::{initial_validator_epochs_tree, ValidatorEpochsTree}, participation::{initial_participation_rounds_tree, participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{initial_validators_tree, Validator, ValidatorsTree}, Field, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
 pub const BENCHMARKING_DATA_DIR: [&str; 2] = ["data", "benchmarking"];
-pub const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
-
-pub fn build_initial_accounts_tree() -> AccountsTree {
-    match load_accounts(&BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE) {
-        Ok(tree) => tree,
-        Err(_) => {
-            println!("  building accounts tree");
-            let tree = AccountsTree::new();
-            if save_accounts(&tree, &BENCHMARKING_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
-                log::warn!("Failed to save accounts tree to file.");
-            }
-            tree
-        },
-    }
-}
 
 pub fn build_validators_state(
     validators_state_circuit: &ValidatorsStateCircuit,
@@ -40,8 +27,8 @@ pub fn build_validators_state(
     AccountsTree, //accounts_tree
     ValidatorsStateProof //validators_state_proof
 ) {
-    let mut validators_tree = ValidatorsTree::new();
-    let mut accounts_tree = build_initial_accounts_tree();
+    let mut validators_tree = initial_validators_tree();
+    let mut accounts_tree = initial_accounts_tree();
 
     let validators_state_proof = match load_proof(validators_state_circuit, &BENCHMARKING_DATA_DIR, quick_load_filename) {
         Ok(proof) => {
@@ -53,9 +40,8 @@ pub fn build_validators_state(
             proof
         },
         Err(_) => {
-            let mut previous_proof: Option<ValidatorsStateProof> = None;
+            let mut previous_proof = Some(load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR));
             for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
-                println!("  building proof");
                 let commitment = example_commitment_root(validator_index);
                 let data = compile_data_for_validators_state_circuit(
                     &accounts_tree,
@@ -102,8 +88,8 @@ pub fn build_participation_state(
     ParticipationRoundsTree, //participation_rounds_tree
     ParticipationStateProof //participation_state_proof
 ) {
-    let mut validator_epochs_tree = ValidatorEpochsTree::new();
-    let mut participation_rounds_tree = ParticipationRoundsTree::new();
+    let mut validator_epochs_tree = initial_validator_epochs_tree();
+    let mut participation_rounds_tree = initial_participation_rounds_tree();
 
     let mut bit_flags: Vec<u8> = vec![0u8; PARTICIPATION_BITS_BYTE_SIZE];
     for validator_index in participating_validator_indexes {
@@ -126,9 +112,8 @@ pub fn build_participation_state(
             proof
         },
         Err(_) => {
-            let mut previous_proof: Option<ParticipationStateProof> = None;
+            let mut previous_proof = Some(load_or_create_init_proof::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR));
             for num in rounds {
-                println!("  building proof");
                 let epoch_num = num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
                 let round = ParticipationRound {
                     num: *num,
@@ -181,8 +166,9 @@ pub fn compile_data_for_validators_state_circuit(
     previous_proof: Option<ValidatorsStateProof>,
 ) -> ValidatorsStateCircuitData {
     let curr_validator = validators_tree.validator(index);
+    let index_or_zero = if stake > 0 { index } else { 0 };
     ValidatorsStateCircuitData {
-        index,
+        index: index_or_zero,
         stake,
         commitment,
         account,

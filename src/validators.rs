@@ -169,9 +169,12 @@ impl ValidatorsTree {
     }
 }
 
+pub fn initial_validators_tree() -> ValidatorsTree {
+    ValidatorsTree::new()
+}
+
 pub fn initial_validators_tree_root() -> [Field; 4] {
-    let validators_tree = ValidatorsTree::new();
-    validators_tree.root()
+    initial_validators_tree().root()
 }
 
 pub fn empty_validators_tree_root() -> [Field; 4] {

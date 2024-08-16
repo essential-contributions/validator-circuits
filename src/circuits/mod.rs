@@ -17,6 +17,7 @@ pub const CIRCUIT_FILENAME: &str = "circuit.bin";
 pub const COMMON_DATA_FILENAME: &str = "common_circuit_data.json";
 pub const VERIFIER_ONLY_DATA_FILENAME: &str = "verifier_only_circuit_data.json";
 pub const PROOF_FILENAME: &str = "proof_with_public_inputs.json";
+const INIT_PROOF_FILENAME: &str = "initial.proof";
 
 pub const VALIDATORS_STATE_CIRCUIT_DIR: &str = "validators_state";
 pub const PARTICIPATION_STATE_CIRCUIT_DIR: &str = "participation_state";
@@ -32,6 +33,9 @@ pub trait Circuit {
 
     fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>>;
     fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof>;
+
+    fn is_cyclical() -> bool;
+    fn cyclical_init_proof(&self) -> Option<Self::Proof>;
 
     fn is_wrappable() -> bool;
     fn wrappable_example_proof(&self) -> Option<Self::Proof>;
@@ -77,6 +81,31 @@ where
     let circuit = C::new();
     save_circuit(&circuit, dir);
     circuit
+}
+
+pub fn load_or_create_init_proof<C>(dir: &str) -> C::Proof 
+where
+    C: Circuit + Serializeable,
+{
+    assert!(C::is_cyclical(), "Circuit is not cyclical (no initial proof).");
+    let circuit = load_or_create_circuit::<C>(dir);
+    if circuit_init_proof_exists(dir) {
+        match load_proof(&circuit, &[CIRCUIT_OUTPUT_FOLDER, dir], INIT_PROOF_FILENAME) {
+            Ok(proof) => {
+                log::info!("Loaded proof [/{}]", dir);
+                return proof;
+            },
+            Err(e) => {
+                log::error!("Failed to deserialize proof data [/{}]", dir);
+                log::error!("{}", e);
+            },
+        }
+    }
+    let proof = circuit.cyclical_init_proof().unwrap();
+    if save_proof(&circuit, &proof, &[CIRCUIT_OUTPUT_FOLDER, dir], INIT_PROOF_FILENAME).is_err() {
+        log::warn!("Failed to save init proof [/{}]", dir);
+    }
+    proof
 }
 
 pub fn save_circuit<C>(circuit: &C, dir: &str) 
@@ -164,15 +193,15 @@ pub fn circuit_data_exists(dir: &str) -> bool {
     file_exists(dir, CIRCUIT_FILENAME) && file_exists(dir, COMMON_DATA_FILENAME) && file_exists(dir, VERIFIER_ONLY_DATA_FILENAME)
 }
 
-pub fn circuit_proof_exists(dir: &str) -> bool {
-    file_exists(dir, PROOF_FILENAME)
+pub fn circuit_init_proof_exists(dir: &str) -> bool {
+    file_exists(dir, INIT_PROOF_FILENAME)
 }
 
 pub fn clear_data_and_proof(dir: &str) {
     delete_file(dir, CIRCUIT_FILENAME);
     delete_file(dir, COMMON_DATA_FILENAME);
     delete_file(dir, VERIFIER_ONLY_DATA_FILENAME);
-    delete_file(dir, PROOF_FILENAME);
+    delete_file(dir, INIT_PROOF_FILENAME);
 }
 
 #[inline]

@@ -223,7 +223,10 @@ impl ValidatorEpochsTree {
     }
 }
 
-pub fn initial_validator_epochs_root() -> [Field; 4] {
-    let validator_epochs_tree = ValidatorEpochsTree::new();
-    validator_epochs_tree.root()
+pub fn initial_validator_epochs_tree() -> ValidatorEpochsTree {
+    ValidatorEpochsTree::new()
+}
+
+pub fn initial_validator_epochs_tree_root() -> [Field; 4] {
+    initial_validator_epochs_tree().root()
 }

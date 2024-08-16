@@ -129,6 +129,14 @@ impl Circuit for ValidatorParticipationAggCircuit {
         Ok(Self::Proof { proof })
     }
 
+    fn is_cyclical() -> bool {
+        false
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        None
+    }
+
     fn is_wrappable() -> bool {
         false
     }
@@ -655,9 +663,14 @@ fn generate_partial_witness(
         None => 0,
     };
     let total_staked = data.validators_state_proof.total_staked() as u64;
-    let gamma = integer_sqrt(total_staked * 1000000); //`sqrt(total_staked * 1000000)` rounded down
-    let lambda = (rf * st * validator_stake * 1000000) / gamma; //`(rf * st * stake * 1000000) / gamma` rounded down
-    let round_issuance = (lambda * 1000000) / (total_staked + (st * 1000000)); //`(lambda * 1000000) / (total_staked + (st * 1000000))` rounded down
+    let mut gamma = 0;
+    let mut lambda = 0;
+    let mut round_issuance = 0;
+    if total_staked > 0 {
+        gamma = integer_sqrt(total_staked * 1000000); //`sqrt(total_staked * 1000000)` rounded down
+        lambda = (rf * st * validator_stake * 1000000) / gamma; //`(rf * st * stake * 1000000) / gamma` rounded down
+        round_issuance = (lambda * 1000000) / (total_staked + (st * 1000000)); //`(lambda * 1000000) / (total_staked + (st * 1000000))` rounded down
+    }
     pw.set_target(targets.gamma, Field::from_canonical_u64(gamma));
     pw.set_target(targets.lambda, Field::from_canonical_u64(lambda));
     pw.set_target(targets.round_issuance, Field::from_canonical_u64(round_issuance));

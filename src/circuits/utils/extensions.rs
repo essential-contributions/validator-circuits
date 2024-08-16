@@ -31,7 +31,7 @@ pub trait CircuitBuilderExtended {
     /// Computes the arithmetic generalization of `x < y`
     fn less_than(&mut self, x: Target, y: Target, num_bits: usize) -> BoolTarget;
 
-    /// Asserts that `r` is equal to `x / y` rounded to the nearest whole number.
+    /// Asserts that `r` is equal to `x / y` rounded to the nearest whole number (0 if `y == 0`).
     fn div_round_down(&mut self, x: Target, y: Target, r: Target, num_bits: usize);
 
     /// Asserts that `r` is equal to `sqrt(x)` rounded to the nearest whole number.
@@ -155,15 +155,22 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
     }
 
     fn div_round_down(&mut self, x: Target, y: Target, r: Target, num_bits: usize) {
+        let zero = self.zero();
         let one = self.one();
+
         let r2 = self.add(r, one);
         let low = self.mul(y, r);
         let high = self.mul(y, r2);
         let low_is_greater = self.greater_than(low, x, num_bits);
         let high_is_greater = self.greater_than(high, x, num_bits);
+        
+        let r_is_zero = self.is_equal(r, zero);
+        let y_is_zero = self.is_equal(y, zero);
+        let y_is_not_zero = self.not(y_is_zero);
 
         self.assert_zero(low_is_greater.target);
-        self.assert_one(high_is_greater.target);
+        self.assert_true_if(y_is_not_zero, &[high_is_greater]);
+        self.assert_true_if(y_is_zero, &[r_is_zero]);
     }
 
     fn sqrt_round_down(&mut self, x: Target, r: Target, num_bits: usize) {

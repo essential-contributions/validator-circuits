@@ -17,6 +17,8 @@ pub type Field = GoldilocksField;
 pub type Hash = PoseidonHash;
 pub type Config = PoseidonGoldilocksConfig;
 
+pub const CACHE_DATA_DIR: [&str; 2] = ["data", "cache"];
+
 pub const VALIDATORS_TREE_HEIGHT: usize = 20; //1048576
 pub const VALIDATOR_COMMITMENT_TREE_HEIGHT: usize = 28; //102 years
 pub const PARTICIPATION_ROUNDS_TREE_HEIGHT: usize = 21; //102 years

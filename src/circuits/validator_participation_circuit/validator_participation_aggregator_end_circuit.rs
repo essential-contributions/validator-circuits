@@ -103,6 +103,14 @@ impl Circuit for ValidatorParticipationAggEndCircuit {
         Ok(Self::Proof { proof, data: proof_data })
     }
 
+    fn is_cyclical() -> bool {
+        false
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        None
+    }
+
     fn is_wrappable() -> bool {
         false
     }

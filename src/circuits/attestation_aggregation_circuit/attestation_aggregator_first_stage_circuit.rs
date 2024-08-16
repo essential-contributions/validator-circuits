@@ -78,6 +78,14 @@ impl Circuit for AttestationAggregatorFirstStageCircuit {
         Ok(Self::Proof { proof })
     }
 
+    fn is_cyclical() -> bool {
+        false
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        None
+    }
+
     fn is_wrappable() -> bool {
         false
     }
