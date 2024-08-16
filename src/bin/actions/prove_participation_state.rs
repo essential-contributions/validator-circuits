@@ -2,13 +2,13 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::{circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuitData, validators_state_circuit::ValidatorsStateCircuit, Circuit, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, epochs::ValidatorEpochsTree, participation::{ParticipationRound, ParticipationRoundsTree}, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
+use validator_circuits::{circuits::{load_or_create_circuit, load_or_create_init_proof, participation_state_circuit::ParticipationStateCircuitData, validators_state_circuit::ValidatorsStateCircuit, Circuit, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, epochs::initial_validator_epochs_tree, participation::{initial_participation_rounds_tree, ParticipationRound}, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 use validator_circuits::circuits::participation_state_circuit::ParticipationStateCircuit;
 
 use crate::actions::build_validators_state;
 
-const VALIDATORS_STATE_OUTPUT_FILE1: &str = "participation_state_validators_state_proof1.json";
-const VALIDATORS_STATE_OUTPUT_FILE2: &str = "participation_state_validators_state_proof2.json";
+const VALIDATORS_STATE_OUTPUT_FILE1: &str = "participation_state_validators_state1.proof";
+const VALIDATORS_STATE_OUTPUT_FILE2: &str = "participation_state_validators_state2.proof";
 
 pub fn benchmark_prove_participation_state(full: bool) {
     if full {
@@ -19,8 +19,8 @@ pub fn benchmark_prove_participation_state(full: bool) {
     println!("Building Participation State Circuit... ");
     let start = Instant::now();
     let participation_state_circuit = load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
-    let mut validator_epochs_tree = ValidatorEpochsTree::new();
-    let mut participation_rounds_tree = ParticipationRoundsTree::new();
+    let mut validator_epochs_tree = initial_validator_epochs_tree();
+    let mut participation_rounds_tree = initial_participation_rounds_tree();
     let mut inputs_hash = [0u8; 32];
     println!("(finished in {:?})", start.elapsed());
     println!();
@@ -47,6 +47,17 @@ pub fn benchmark_prove_participation_state(full: bool) {
     println!();
 
     //generate the initial proof
+    println!("Building Initial Proof...");
+    let start = Instant::now();
+    let proof = load_or_create_init_proof::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
+    println!("(finished in {:?})", start.elapsed());
+    assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");
+    assert_eq!(proof.validator_epochs_tree_root(), validator_epochs_tree.root(), "Unexpected validator epochs tree root.");
+    assert_eq!(proof.participation_rounds_tree_root(), participation_rounds_tree.root(), "Unexpected participation rounds tree root.");
+    assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
+    println!();
+    
+    //generate the first real proof
     let participation_bits = Some(vec![7, 8, 9, 10]);
     let round = ParticipationRound {
         num: 32,
@@ -56,7 +67,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
     let epoch_num = round.num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
     let current_epoch_data = validator_epochs_tree.epoch(epoch_num);
     let current_round_data = participation_rounds_tree.round(round.num);
-    println!("Generating 1st Proof (from initial state)...");
+    println!("Generating 1st Round Proof...");
     let start = Instant::now();
     let proof = participation_state_circuit.generate_proof(&ParticipationStateCircuitData {
         round_num: round.num,
@@ -68,7 +79,7 @@ pub fn benchmark_prove_participation_state(full: bool) {
         current_participation_root: current_round_data.participation_root,
         current_participation_count: current_round_data.participation_count,
         participation_round_proof: participation_rounds_tree.merkle_proof(round.num),
-        previous_proof: None,
+        previous_proof: Some(proof),
     }).unwrap();
     println!("(finished in {:?})", start.elapsed());
     assert!(participation_state_circuit.verify_proof(&proof).is_ok(), "Proof failed verification.");

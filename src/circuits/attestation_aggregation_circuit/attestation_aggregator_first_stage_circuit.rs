@@ -22,9 +22,9 @@ use super::{Circuit, Proof, Serializeable};
 
 pub const PIS_AGG1_VALIDATORS_SUB_ROOT: [usize; 4] = [0, 1, 2, 3];
 pub const PIS_AGG1_PARTICIPATION_SUB_ROOT: [usize; 4] = [4, 5, 6, 7];
-pub const PIS_AGG1_NUM_PARTICIPANTS: usize = 8;
-pub const PIS_AGG1_BLOCK_SLOT: usize = 9;
-pub const PIS_AGG1_TOTAL_STAKE: usize = 10;
+pub const PIS_AGG1_PARTICIPATION_COUNT: usize = 8;
+pub const PIS_AGG1_ATTESTATIONS_STAKE: usize = 9;
+pub const PIS_AGG1_BLOCK_SLOT: usize = 10;
 
 pub struct AttestationAggregatorFirstStageCircuit {
     circuit_data: CircuitData<Field, Config, D>,
@@ -66,6 +66,24 @@ impl Circuit for AttestationAggregatorFirstStageCircuit {
 
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
+    }
+
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
+        Ok(proof.proof.to_bytes())
+    }
+
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
+        let common_data = &self.circuit_data.common;
+        let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(bytes, common_data)?;
+        Ok(Self::Proof { proof })
+    }
+
+    fn is_cyclical() -> bool {
+        false
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        None
     }
 
     fn is_wrappable() -> bool {
@@ -114,23 +132,19 @@ impl AttestationAggregatorFirstStageProof {
         self.proof.public_inputs[PIS_AGG1_PARTICIPATION_SUB_ROOT[3]]]
     }
 
-    pub fn num_participants(&self) -> usize{
-        self.proof.public_inputs[PIS_AGG1_NUM_PARTICIPANTS].to_canonical_u64() as usize
+    pub fn participation_count(&self) -> usize{
+        self.proof.public_inputs[PIS_AGG1_PARTICIPATION_COUNT].to_canonical_u64() as usize
+    }
+
+    pub fn attestations_stake(&self) -> u64 {
+        self.proof.public_inputs[PIS_AGG1_ATTESTATIONS_STAKE].to_canonical_u64()
     }
 
     pub fn block_slot(&self) -> usize{
         self.proof.public_inputs[PIS_AGG1_BLOCK_SLOT].to_canonical_u64() as usize
     }
-
-    pub fn total_stake(&self) -> u64 {
-        self.proof.public_inputs[PIS_AGG1_TOTAL_STAKE].to_canonical_u64()
-    }
 }
 impl Proof for AttestationAggregatorFirstStageProof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
-        Self { proof }
-    }
-    
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }
@@ -143,8 +157,8 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttAgg1Targets {
     let skip_root = build_skip_root(builder);
     let block_slot = builder.add_virtual_target();
     let block_slot_bits = builder.split_le(block_slot, VALIDATOR_COMMITMENT_TREE_HEIGHT);
-    let mut total_stake = builder.zero();
-    let mut num_participants = builder.zero();
+    let mut attestations_stake = builder.zero();
+    let mut participation_count = builder.zero();
     
     // Participation targets
     let mut participation_bits_fields: Vec<Target> = Vec::new();
@@ -181,8 +195,8 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttAgg1Targets {
         );
 
         // Keep running total of stake and num participants
-        total_stake = builder.mul_add(stake, not_skip.target, total_stake);
-        num_participants = builder.add(num_participants, not_skip.target);
+        attestations_stake = builder.mul_add(stake, not_skip.target, attestations_stake);
+        participation_count = builder.add(participation_count, not_skip.target);
 
         validator_targets.push(AttAgg1ValidatorTargets {
             stake,
@@ -210,9 +224,9 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttAgg1Targets {
     // Register the public inputs
     builder.register_public_inputs(&validators_sub_root.elements);
     builder.register_public_inputs(&participation_root.elements);
-    builder.register_public_input(num_participants);
+    builder.register_public_input(participation_count);
+    builder.register_public_input(attestations_stake);
     builder.register_public_input(block_slot);
-    builder.register_public_input(total_stake);
 
     AttAgg1Targets {
         block_slot,

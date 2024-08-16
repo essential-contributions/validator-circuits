@@ -13,8 +13,8 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
-use crate::epochs::initial_validator_epochs_root;
-use crate::participation::initial_participation_rounds_root;
+use crate::epochs::{initial_validator_epochs_tree, initial_validator_epochs_tree_root};
+use crate::participation::{initial_participation_rounds_tree, initial_participation_rounds_tree_root};
 use crate::{Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT, VALIDATOR_EPOCHS_TREE_HEIGHT};
 use crate::Hash;
 
@@ -81,6 +81,27 @@ impl Circuit for ParticipationStateCircuit {
         return &self.circuit_data;
     }
 
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
+        Ok(proof.proof.to_bytes())
+    }
+
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
+        let common_data = &self.circuit_data.common;
+        let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(bytes, common_data)?;
+        Ok(Self::Proof { proof })
+    }
+
+    fn is_cyclical() -> bool {
+        true
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        let data = generate_initial_data();
+        let pw = generate_partial_witness(&self.circuit_data, &self.targets, &data).unwrap();
+        let proof = self.circuit_data.prove(pw).unwrap();
+        Some(ParticipationStateProof { proof })
+    }
+
     fn is_wrappable() -> bool {
         false
     }
@@ -138,10 +159,6 @@ impl ParticipationStateProof {
     }
 }
 impl Proof for ParticipationStateProof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
-        Self { proof }
-    }
-    
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }
@@ -231,10 +248,21 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
         &participation_round_proof
     );
 
+    //Select between new values or initial values (initial proof)
+    let initial_epochs_tree_root = HashOutTarget { 
+        elements: initial_validator_epochs_tree_root().map(|f| builder.constant(f)) 
+    };
+    let initial_pr_tree_root = HashOutTarget { 
+        elements: initial_participation_rounds_tree_root().map(|f| builder.constant(f)) 
+    };
+    let new_inputs_hash_or_init: Vec<Target> = new_inputs_hash.iter().map(|&h| builder.mul(h, init_zero.target)).collect();
+    let new_epochs_tree_root_or_init = builder.select_hash(init_zero, new_epochs_tree_root, initial_epochs_tree_root);
+    let new_pr_tree_root_or_init = builder.select_hash(init_zero, new_pr_tree_root, initial_pr_tree_root);
+
     //Register all public inputs
-    builder.register_public_inputs(&new_inputs_hash);
-    builder.register_public_inputs(&new_epochs_tree_root.elements);
-    builder.register_public_inputs(&new_pr_tree_root.elements);
+    builder.register_public_inputs(&new_inputs_hash_or_init);
+    builder.register_public_inputs(&new_epochs_tree_root_or_init.elements);
+    builder.register_public_inputs(&new_pr_tree_root_or_init.elements);
 
     //Unpack inner proof public inputs
     let mut common_data = common_data_for_recursion(MAX_GATES);
@@ -246,25 +274,10 @@ fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStat
     let inner_proof_epochs_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[8..12]).unwrap();
     let inner_proof_pr_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[12..16]).unwrap();
 
-    //Connect the current inputs hash with inner proof or initial value
-    inner_proof_inputs_hash.iter().zip(current_inputs_hash).for_each(|(inner_proof, prev)| {
-        let inner_proof_or_init = builder.mul(*inner_proof, init_zero.target);
-        builder.connect(prev, inner_proof_or_init);
-    });
-
-    //Connect the current validator epochs tree root with inner proof or initial value
-    let initial_epochs_tree_root = HashOutTarget { 
-        elements: initial_validator_epochs_root().map(|f| builder.constant(f)) 
-    };
-    let inner_proof_epochs_tree_root_or_init = builder.select_hash(init_zero, inner_proof_epochs_tree_root, initial_epochs_tree_root);
-    builder.connect_hashes(current_epochs_tree_root, inner_proof_epochs_tree_root_or_init);
-
-    //Connect the current participation rounds tree root with inner proof or initial value
-    let initial_pr_tree_root = HashOutTarget { 
-        elements: initial_participation_rounds_root().map(|f| builder.constant(f)) 
-    };
-    let inner_proof_pr_tree_root_or_init = builder.select_hash(init_zero, inner_proof_pr_tree_root, initial_pr_tree_root);
-    builder.connect_hashes(current_pr_tree_root, inner_proof_pr_tree_root_or_init);
+    //Connect the current inputs with proof public inputs
+    builder.connect_many(&current_inputs_hash, &inner_proof_inputs_hash);
+    builder.connect_hashes(current_epochs_tree_root, inner_proof_epochs_tree_root);
+    builder.connect_hashes(current_pr_tree_root, inner_proof_pr_tree_root);
 
     //Finally verify the previous (inner) proof
     builder.conditionally_verify_cyclic_proof_or_dummy::<Config>(
@@ -347,14 +360,36 @@ fn generate_partial_witness(
     Ok(pw)
 }
 
+fn generate_initial_data() -> ParticipationStateCircuitData {
+    let validator_epochs_tree = initial_validator_epochs_tree();
+    let participation_rounds_tree = initial_participation_rounds_tree();
+
+    let round_num = 32;
+    let epoch_num = round_num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH;
+    let current_epoch_data = validator_epochs_tree.epoch(epoch_num);
+    let current_round_data = participation_rounds_tree.round(round_num);
+    ParticipationStateCircuitData {
+        round_num,
+        val_state_inputs_hash: [0u8; 32],
+        participation_root: [Field::ZERO; 4],
+        participation_count: 0,
+        current_val_state_inputs_hash: current_epoch_data.validators_state_inputs_hash,
+        validator_epoch_proof: validator_epochs_tree.merkle_proof(epoch_num),
+        current_participation_root: current_round_data.participation_root,
+        current_participation_count: current_round_data.participation_count,
+        participation_round_proof: participation_rounds_tree.merkle_proof(round_num),
+        previous_proof: None,
+    }
+}
+
 fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPublicInputs<Field, Config, D> {
     let initial_inputs_hash = [Field::ZERO; 8];
-    let initial_validator_epochs_root = initial_validator_epochs_root();
-    let initial_participation_rounds_root = initial_participation_rounds_root();
+    let initial_validator_epochs_tree_root = initial_validator_epochs_tree_root();
+    let initial_participation_rounds_tree_root = initial_participation_rounds_tree_root();
     let initial_public_inputs = [
         &initial_inputs_hash[..],
-        &initial_validator_epochs_root[..],
-        &initial_participation_rounds_root[..]
+        &initial_validator_epochs_tree_root[..],
+        &initial_participation_rounds_tree_root[..]
     ].concat();
     cyclic_base_proof(
         &circuit_data.common,

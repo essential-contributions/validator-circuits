@@ -1,5 +1,4 @@
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
-use plonky2::field::types::PrimeField64;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, CommonCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData};
 use plonky2::plonk::config::GenericConfig;
@@ -8,21 +7,13 @@ use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
+use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::circuits::participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof, PIS_PARTICIPATION_ROUNDS_TREE_ROOT, PIS_PARTICIPATION_STATE_INPUTS_HASH, PIS_VALIDATOR_EPOCHS_TREE_ROOT};
 use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
 use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR};
 use crate::{Config, Field, D};
 
 use super::{ValidatorParticipationAggCircuit, ValidatorParticipationAggProof, PIS_AGG_ACCOUNT_ADDRESS, PIS_AGG_EPOCHS_TREE_ROOT, PIS_AGG_FROM_EPOCH, PIS_AGG_PARAM_RF, PIS_AGG_PARAM_ST, PIS_AGG_PR_TREE_ROOT, PIS_AGG_TO_EPOCH, PIS_AGG_WITHDRAW_MAX, PIS_AGG_WITHDRAW_UNEARNED};
-
-pub const PIS_END_PARTICIPATION_INPUTS_HASH: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
-pub const PIS_END_ACCOUNT_ADDRESS: [usize; 5] = [8, 9, 10, 11, 12];
-pub const PIS_END_FROM_EPOCH: usize = 13;
-pub const PIS_END_TO_EPOCH: usize = 14;
-pub const PIS_END_WITHDRAW_MAX: usize = 15;
-pub const PIS_END_WITHDRAW_UNEARNED: usize = 16;
-pub const PIS_END_PARAM_RF: usize = 17;
-pub const PIS_END_PARAM_ST: usize = 18;
 
 pub struct ValidatorParticipationAggEndCircuit {
     circuit_data: CircuitData<Field, Config, D>,
@@ -67,7 +58,8 @@ impl ValidatorParticipationAggEndCircuit {
             &self.participation_state_verifier,
         )?;
         let proof = self.circuit_data.prove(pw)?;
-        Ok(ValidatorParticipationAggEndProof { proof })
+        let proof_data = proof_data(&data);
+        Ok(ValidatorParticipationAggEndProof { proof, data: proof_data })
     }
 }
 impl Circuit for ValidatorParticipationAggEndCircuit {
@@ -84,6 +76,39 @@ impl Circuit for ValidatorParticipationAggEndCircuit {
 
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
         return &self.circuit_data;
+    }
+
+    fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
+        let mut buffer = Vec::new();
+        if write_proof_data(&mut buffer, &proof.data).is_err() {
+            return Err(anyhow!("Failed to serialize proof data"));
+        }
+        if buffer.write_all(&proof.proof.to_bytes()).is_err() {
+            return Err(anyhow!("Failed to serialize proof"));
+        }
+        Ok(buffer)
+    }
+
+    fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
+        let mut buffer = Buffer::new(&bytes);
+        let proof_data = match read_proof_data(&mut buffer) {
+            Ok(proof_data) => Ok(proof_data),
+            Err(_) => Err(anyhow!("Failed to deserialize proof data")),
+        }?;
+
+        let common_data = &self.circuit_data.common;
+        let unread_bytes = buffer.unread_bytes().to_vec();
+        let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(unread_bytes, common_data)?;
+
+        Ok(Self::Proof { proof, data: proof_data })
+    }
+
+    fn is_cyclical() -> bool {
+        false
+    }
+
+    fn cyclical_init_proof(&self) -> Option<Self::Proof> {
+        None
     }
 
     fn is_wrappable() -> bool {
@@ -137,55 +162,60 @@ impl Serializeable for ValidatorParticipationAggEndCircuit {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ValidatorParticipationAggEndProof {
     proof: ProofWithPublicInputs<Field, Config, D>,
+    data: ValidatorParticipationAggEndProofData,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+struct ValidatorParticipationAggEndProofData {
+    pub participation_inputs_hash: [u8; 32],
+    pub account_address: [u8; 20],
+    pub from_epoch: u32,
+    pub to_epoch: u32,
+    pub withdraw_max: u64,
+    pub withdraw_unearned: u64,
+    pub param_rf: u32,
+    pub param_st: u32,
 }
 impl ValidatorParticipationAggEndProof {
+    pub fn public_inputs_hash(&self) -> [Field; 4] {
+        [self.proof.public_inputs[0], 
+        self.proof.public_inputs[1], 
+        self.proof.public_inputs[2], 
+        self.proof.public_inputs[3]]
+    }
+
     pub fn participation_inputs_hash(&self) -> [u8; 32] {
-        let mut hash = [0u8; 32];
-        for i in 0..8 {
-            let bytes = (self.proof.public_inputs[PIS_END_PARTICIPATION_INPUTS_HASH[i]].to_canonical_u64() as u32).to_be_bytes();
-            hash[(i * 4)..((i * 4) + 4)].copy_from_slice(&bytes);
-        }
-        hash
+        self.data.participation_inputs_hash
     }
 
     pub fn account_address(&self) -> [u8; 20] {
-        let mut hash = [0u8; 20];
-        for i in 0..5 {
-            let bytes = (self.proof.public_inputs[PIS_END_ACCOUNT_ADDRESS[i]].to_canonical_u64() as u32).to_be_bytes();
-            hash[(i * 4)..((i * 4) + 4)].copy_from_slice(&bytes);
-        }
-        hash
+        self.data.account_address
     }
 
     pub fn from_epoch(&self) -> u32 {
-        self.proof.public_inputs[PIS_END_FROM_EPOCH].to_canonical_u64() as u32
+        self.data.from_epoch
     }
 
     pub fn to_epoch(&self) -> u32 {
-        self.proof.public_inputs[PIS_END_TO_EPOCH].to_canonical_u64() as u32
+        self.data.to_epoch
     }
 
     pub fn withdraw_max(&self) -> u64 {
-        self.proof.public_inputs[PIS_END_WITHDRAW_MAX].to_canonical_u64()
+        self.data.withdraw_max
     }
 
     pub fn withdraw_unearned(&self) -> u64 {
-        self.proof.public_inputs[PIS_END_WITHDRAW_UNEARNED].to_canonical_u64()
+        self.data.withdraw_unearned
     }
 
-    pub fn param_rf(&self) -> u64 {
-        self.proof.public_inputs[PIS_END_PARAM_RF].to_canonical_u64()
+    pub fn param_rf(&self) -> u32 {
+        self.data.param_rf
     }
 
-    pub fn param_st(&self) -> u64 {
-        self.proof.public_inputs[PIS_END_PARAM_ST].to_canonical_u64()
+    pub fn param_st(&self) -> u32 {
+        self.data.param_st
     }
 }
 impl Proof for ValidatorParticipationAggEndProof {
-    fn from_proof(proof: ProofWithPublicInputs<Field, Config, D>) -> Self {
-        Self { proof }
-    }
-    
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
         &self.proof
     }
@@ -275,15 +305,20 @@ fn generate_circuit(
         builder.connect(a, s);
     }
 
-    //Register all public inputs
-    builder.register_public_inputs(&participation_state_inputs_hash);
-    builder.register_public_inputs(&account_address);
-    builder.register_public_input(from_epoch);
-    builder.register_public_input(to_epoch);
-    builder.register_public_input(withdraw_max);
-    builder.register_public_input(withdraw_unearned);
-    builder.register_public_input(param_rf);
-    builder.register_public_input(param_st);
+    //Register the hash of the public inputs
+    let inputs = [
+        &participation_state_inputs_hash[..],
+        &account_address[..],
+        &[from_epoch],
+        &[to_epoch],
+        &builder.to_u32s(withdraw_max),
+        &builder.to_u32s(withdraw_unearned),
+        &[param_rf],
+        &[param_st],
+    ].concat();
+    let inputs_hash = builder.sha256_hash(inputs);
+    let inputs_hash_compressed = builder.compress_hash(inputs_hash);
+    builder.register_public_inputs(&inputs_hash_compressed.elements);
 
     ValidatorParticipationAggEndCircuitTargets {
         participation_agg_proof,
@@ -318,6 +353,18 @@ fn generate_partial_witness(
 
     Ok(pw)
 }
+fn proof_data(data: &ValidatorParticipationAggEndCircuitData) -> ValidatorParticipationAggEndProofData {
+    ValidatorParticipationAggEndProofData {
+        participation_inputs_hash: data.participation_state_proof.inputs_hash(),
+        account_address: data.participation_agg_proof.account_address(),
+        from_epoch: data.participation_agg_proof.from_epoch(),
+        to_epoch: data.participation_agg_proof.to_epoch(),
+        withdraw_max: data.participation_agg_proof.withdraw_max(),
+        withdraw_unearned: data.participation_agg_proof.withdraw_unearned(),
+        param_rf: data.participation_agg_proof.param_rf(),
+        param_st: data.participation_agg_proof.param_st(),
+    }
+}
 
 #[inline]
 fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggEndCircuitTargets) -> IoResult<()> {
@@ -343,5 +390,44 @@ fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggEndCir
         participation_agg_verifier,
         participation_state_proof,
         participation_state_verifier,
+    })
+}
+
+#[inline]
+fn write_proof_data(buffer: &mut Vec<u8>, data: &ValidatorParticipationAggEndProofData) -> IoResult<()> {
+    buffer.write_all(&data.participation_inputs_hash)?;
+    buffer.write_all(&data.account_address)?;
+    buffer.write_u32(data.from_epoch)?;
+    buffer.write_u32(data.to_epoch)?;
+    buffer.write_usize(data.withdraw_max as usize)?;
+    buffer.write_usize(data.withdraw_unearned as usize)?;
+    buffer.write_u32(data.param_rf)?;
+    buffer.write_u32(data.param_st)?;
+
+    Ok(())
+}
+
+#[inline]
+fn read_proof_data(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggEndProofData> {
+    let mut participation_inputs_hash = [0u8; 32];
+    let mut account_address = [0u8; 20];
+    buffer.read_exact(&mut participation_inputs_hash)?;
+    buffer.read_exact(&mut account_address)?;
+    let from_epoch = buffer.read_u32()?;
+    let to_epoch = buffer.read_u32()?;
+    let withdraw_max = buffer.read_usize()? as u64;
+    let withdraw_unearned = buffer.read_usize()? as u64;
+    let param_rf = buffer.read_u32()?;
+    let param_st = buffer.read_u32()?;
+
+    Ok(ValidatorParticipationAggEndProofData {
+        participation_inputs_hash,
+        account_address,
+        from_epoch,
+        to_epoch,
+        withdraw_max,
+        withdraw_unearned,
+        param_rf,
+        param_st,
     })
 }

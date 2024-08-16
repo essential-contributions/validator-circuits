@@ -1,6 +1,6 @@
 use clap::{arg, command, Parser};
 use env_logger::{Builder, Env};
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, bn128_wrapper_clear_data_and_proof, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestation_aggregation_circuit::AttestationAggregationCircuit, circuit_data_exists, clear_data_and_proof, load_or_create_circuit, participation_state_circuit::ParticipationStateCircuit, validator_participation_circuit::ValidatorParticipationCircuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, Serializeable, ATTESTATION_AGGREGATION_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists, groth16_wrapper_clear_data_and_proof}};
+use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, bn128_wrapper_clear_data_and_proof, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestation_aggregation_circuit::AttestationAggregationCircuit, circuit_data_exists, circuit_init_proof_exists, clear_data_and_proof, load_or_create_circuit, load_or_create_init_proof, participation_state_circuit::ParticipationStateCircuit, validator_participation_circuit::ValidatorParticipationCircuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, Serializeable, ATTESTATION_AGGREGATION_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists, groth16_wrapper_clear_data_and_proof}};
 use jemallocator::Jemalloc;
 
 #[global_allocator]
@@ -57,13 +57,15 @@ where
     }
 
     //check current build artifacts
+    let cyclical = C::is_cyclical();
     let wrappable = C::is_wrappable();
     let no_data = !circuit_data_exists(dir);
+    let no_proof = cyclical && !circuit_init_proof_exists(dir);
     let no_bn128_wrapper_data = full && wrappable && !bn128_wrapper_circuit_data_exists(dir);
     let no_bn128_wrapper_proof = full && wrappable && !bn128_wrapper_circuit_proof_exists(dir);
     let no_groth16_wrapper_data = full && wrappable && !groth16_wrapper_circuit_data_exists(dir);
     let no_groth16_wrapper_proof = full && wrappable && !groth16_wrapper_circuit_proof_exists(dir);
-    if no_data || no_bn128_wrapper_data || no_bn128_wrapper_proof {
+    if no_data || no_proof || no_bn128_wrapper_data || no_bn128_wrapper_proof {
 
         //base circuit
         if no_data {
@@ -73,6 +75,10 @@ where
         }
         let circuit = load_or_create_circuit::<C>(dir);
 
+        //initial proof for cyclical circuits
+        if no_proof {
+            load_or_create_init_proof::<C>(dir); 
+        }
 
         //log that circuits are not for wrapping
         if full && !wrappable {

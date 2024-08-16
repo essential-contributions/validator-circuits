@@ -10,6 +10,12 @@ pub trait CircuitBuilderExtended {
     /// Computes the sha256 hash treating each target like a u32.
     fn sha256_hash(&mut self, inputs: Vec<Target>) -> Vec<Target>;
 
+    /// Compresses the given u32 hash output into just 4 field elements.
+    fn compress_hash(&mut self, u32_hash: Vec<Target>) -> HashOutTarget;
+
+    /// Returns the big endian representation of the given target in u32s.
+    fn to_u32s(&mut self, input: Target) -> Vec<Target>;
+
     /// Computes the arithmetic generalization of `xor(x, y)`, i.e. `x + y - 2 x y`.
     fn xor(&mut self, x: BoolTarget, y: BoolTarget) -> BoolTarget;
 
@@ -25,7 +31,7 @@ pub trait CircuitBuilderExtended {
     /// Computes the arithmetic generalization of `x < y`
     fn less_than(&mut self, x: Target, y: Target, num_bits: usize) -> BoolTarget;
 
-    /// Asserts that `r` is equal to `x / y` rounded to the nearest whole number.
+    /// Asserts that `r` is equal to `x / y` rounded to the nearest whole number (0 if `y == 0`).
     fn div_round_down(&mut self, x: Target, y: Target, r: Target, num_bits: usize);
 
     /// Asserts that `r` is equal to `sqrt(x)` rounded to the nearest whole number.
@@ -65,6 +71,27 @@ pub trait CircuitBuilderExtended {
 impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
     fn sha256_hash(&mut self, inputs: Vec<Target>) -> Vec<Target> {
         build_sha256_hash(self, inputs)
+    }
+
+    fn to_u32s(&mut self, input: Target) -> Vec<Target> {
+        let split = self.split_low_high(input, 32, 64);
+        vec![split.1, split.0]
+    }
+
+    fn compress_hash(&mut self, u32_hash: Vec<Target>) -> HashOutTarget {
+        debug_assert_eq!(u32_hash.len(), 8, "given u32_hash does not have 8 elements");
+        let compressed: Vec<Target> = u32_hash.chunks(2).map(|e| {
+            let low_bits = self.split_le(e[1], 32);
+            let high_bits = self.split_le(e[0], 32);
+
+            let mut combined: Vec<BoolTarget> = Vec::new();
+            combined.extend(&low_bits[0..32]);
+            combined.extend(&high_bits[0..31]);
+
+            self.le_sum(combined.into_iter())
+        }).collect();
+
+        HashOutTarget { elements: [compressed[0], compressed[1], compressed[2], compressed[3]] }
     }
 
     fn xor(&mut self, x: BoolTarget, y: BoolTarget) -> BoolTarget {
@@ -128,15 +155,22 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
     }
 
     fn div_round_down(&mut self, x: Target, y: Target, r: Target, num_bits: usize) {
+        let zero = self.zero();
         let one = self.one();
+
         let r2 = self.add(r, one);
         let low = self.mul(y, r);
         let high = self.mul(y, r2);
         let low_is_greater = self.greater_than(low, x, num_bits);
         let high_is_greater = self.greater_than(high, x, num_bits);
+        
+        let r_is_zero = self.is_equal(r, zero);
+        let y_is_zero = self.is_equal(y, zero);
+        let y_is_not_zero = self.not(y_is_zero);
 
         self.assert_zero(low_is_greater.target);
-        self.assert_one(high_is_greater.target);
+        self.assert_true_if(y_is_not_zero, &[high_is_greater]);
+        self.assert_true_if(y_is_zero, &[r_is_zero]);
     }
 
     fn sqrt_round_down(&mut self, x: Target, r: Target, num_bits: usize) {

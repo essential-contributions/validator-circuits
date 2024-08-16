@@ -211,9 +211,12 @@ impl ParticipationRoundsTree {
     }
 }
 
-pub fn initial_participation_rounds_root() -> [Field; 4] {
-    let participation_rounds_tree = ParticipationRoundsTree::new();
-    participation_rounds_tree.root()
+pub fn initial_participation_rounds_tree() -> ParticipationRoundsTree {
+    ParticipationRoundsTree::new()
+}
+
+pub fn initial_participation_rounds_tree_root() -> [Field; 4] {
+    initial_participation_rounds_tree().root()
 }
 
 pub fn empty_participation_sub_root(height: usize) -> [Field; 4] {

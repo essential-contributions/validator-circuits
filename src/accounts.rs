@@ -5,12 +5,14 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
-use crate::{bytes_to_fields, field_hash_two, fields_to_bytes, Field, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
+use crate::{bytes_to_fields, field_hash_two, fields_to_bytes, Field, CACHE_DATA_DIR, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 
 const SPARSE_ACCOUNTS_TREE_HEIGHT: usize = 160;
 
 const SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT: usize = 10;
 const SPARSE_ACCOUNTS_COMPUTED_TREE_HEIGHT: usize = SPARSE_ACCOUNTS_TREE_HEIGHT - SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT;
+
+const INITIAL_ACCOUNTS_OUTPUT_FILE: &str = "init_accounts.bin";
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Account {
@@ -389,33 +391,42 @@ impl AccountsTree {
     }
 }
 
+pub fn initial_accounts_tree() -> AccountsTree {
+    match load_accounts(&CACHE_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE) {
+        Ok(tree) => {
+            let accounts = AccountsTree::default_accounts();
+
+            //check that default account length matches what's been hardcoded
+            let expected_length = 1048576;
+            if accounts.len() != expected_length {
+                log::warn!("initial_accounts_tree saved cache is invalid. Please update \"initial_accounts_tree()\" code to avoid having to compute manually.");
+                return AccountsTree::new();
+            }
+
+            //check that the defaults accounts themselves match what's been hardcoded
+            for i in 0..accounts.len() {
+                let mut expected_address = [0u8; 20];
+                expected_address[0..4].copy_from_slice(&((i as u32) << (32 - VALIDATORS_TREE_HEIGHT)).to_be_bytes());
+                if accounts[i].address != expected_address {
+                    log::warn!("initial_accounts_tree saved cache is invalid. Please update \"initial_accounts_tree()\" code to avoid having to compute manually.");
+                    return AccountsTree::new();
+                }
+            }
+
+            tree
+        },
+        Err(_) => {
+            let tree = AccountsTree::new();
+            if save_accounts(&tree, &CACHE_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE).is_err() {
+                log::warn!("Failed to save \"{}\" to file.", INITIAL_ACCOUNTS_OUTPUT_FILE);
+            }
+            tree
+        },
+    }
+}
+
 pub fn initial_accounts_tree_root() -> [Field; 4] {
-    let accounts = AccountsTree::default_accounts();
-
-    //check that default account length matches what's been hardcoded
-    let expected_length = 1048576;
-    if accounts.len() != expected_length {
-        log::warn!("initial_accounts_tree_root hardcoded value is no longer correct. Please update the code to avoid having to compute manually which can take a while.");
-        return AccountsTree::new().root();
-    }
-
-    //check that the defaults accounts themselves match what's been hardcoded
-    for i in 0..accounts.len() {
-        let mut expected_address = [0u8; 20];
-        expected_address[0..4].copy_from_slice(&((i as u32) << (32 - VALIDATORS_TREE_HEIGHT)).to_be_bytes());
-        if accounts[i].address != expected_address {
-            log::warn!("initial_accounts_tree_root hardcoded value is no longer correct. Please update the code to avoid having to compute manually which can take a while.");
-            return AccountsTree::new().root();
-        }
-    }
-
-    //return a hardcoded value to save time
-    [
-        Field::from_canonical_u64(11170973715345476166),
-        Field::from_canonical_u64(2656591256015083907),
-        Field::from_canonical_u64(7379642696541209614),
-        Field::from_canonical_u64(13886610048497901282),
-    ]
+    initial_accounts_tree().root()
 }
 
 pub fn null_account_address(validator_index: usize) -> [u8; 20] {

@@ -1,5 +1,3 @@
-use plonky2::fri::reduction_strategies::FriReductionStrategy;
-use plonky2::fri::FriConfig;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierCircuitTarget};
@@ -24,26 +22,7 @@ struct WrapperCircuitTargets {
 
 impl BN128WrapperCircuit {
     pub fn new(inner_circuit: &CircuitData<Field, Config, D>) -> Self {
-        //TODO: can we just use the standard recursion config?
-        //let config = CircuitConfig::standard_recursion_config();
-        let config = CircuitConfig {
-            num_wires: 136,
-            num_routed_wires: 80,
-            num_constants: 2,
-            use_base_arithmetic_gate: true,
-            security_bits: 100,
-            num_challenges: 2,
-            zero_knowledge: false,
-            max_quotient_degree_factor: 8,
-            fri_config: FriConfig {
-                rate_bits: 3,
-                cap_height: 4,
-                proof_of_work_bits: 16,
-                reduction_strategy: FriReductionStrategy::ConstantArityBits(4, 5),
-                num_query_rounds: 28,
-            },
-        };
-
+        let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<PoseidonBN128GoldilocksConfig as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder, inner_circuit);
         let circuit_data = builder.build::<PoseidonBN128GoldilocksConfig>();
