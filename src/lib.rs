@@ -1,6 +1,4 @@
 pub mod circuits;
-pub mod bn128_wrapper;
-pub mod groth16_wrapper;
 pub mod validators;
 pub mod accounts;
 pub mod participation;

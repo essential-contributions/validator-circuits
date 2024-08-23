@@ -5,7 +5,9 @@ use serde_json::Value;
 use std::{fs::{self, File}, io::{self, BufReader, Read}, path::{Path, PathBuf}, process::Command};
 use anyhow::{anyhow, Result};
 
-use crate::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, BN128_WRAPPER_OUTPUT_FOLDER}, circuits::CIRCUIT_OUTPUT_FOLDER};
+use crate::circuits::CIRCUIT_OUTPUT_FOLDER;
+
+use super::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, BN128_WRAPPER_OUTPUT_FOLDER};
 
 pub const GROTH16_WRAPPER_OUTPUT_FOLDER: &str = "groth16";
 const WRAPPER_GO_PROJECT_PATH: &str = "./groth16-wrapper";

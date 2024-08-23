@@ -13,8 +13,6 @@ use anyhow::{anyhow, Result};
 use crate::{accounts::{initial_accounts_tree, null_account_address, Account, AccountsTree}, circuits::{load_or_create_circuit, load_or_create_init_proof, participation_state_circuit::ParticipationStateCircuitData, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, epochs::{initial_validator_epochs_tree, ValidatorEpochsTree}, participation::{initial_participation_rounds_tree, participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{initial_validators_tree, Validator, ValidatorsTree}, Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 use super::{participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, Serializeable};
 
-//TODO: proof generation needs to be able to reference validators_tree at specific epochs (see todo in validators.rs)
-
 pub struct ValidatorParticipationCircuit {
     participation_agg: ValidatorParticipationAggCircuit,
     participation_agg_end: ValidatorParticipationAggEndCircuit,

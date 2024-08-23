@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use plonky2::field::types::PrimeField64;
 use sha2::{Digest, Sha256};
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuit, validator_participation_circuit::{ValidatorParticipationCircuit, ValidatorParticipationCircuitData, ValidatorParticipationProof}, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}};
+use validator_circuits::{circuits::wrappers::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{load_or_create_circuit, participation_state_circuit::ParticipationStateCircuit, validator_participation_circuit::{ValidatorParticipationCircuit, ValidatorParticipationCircuitData, ValidatorParticipationProof}, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR}, circuits::wrappers::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}};
 
 use crate::actions::{build_participation_state, build_validators_state};
 

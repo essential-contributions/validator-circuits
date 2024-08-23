@@ -7,8 +7,6 @@ use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, MAX_VALIDATORS,
 use crate::Field;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
-//TODO: need to be able to track historical state of validators at specific epochs (see todo in validator_participation_circuit)
-// (alternatively manage historic data in a new data structure completely that combines the validators_state_roots in the participation tree)
 //TODO: implement multi-threading for manual reveal verification
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]

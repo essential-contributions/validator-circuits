@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use plonky2::field::types::PrimeField64;
 use sha2::{Digest, Sha256};
-use validator_circuits::{bn128_wrapper::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestation_aggregation_circuit::AttestationAggregatorProof, load_or_create_circuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_proof, groth16_wrapper::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::ValidatorCommitmentReveal, Field, MAX_VALIDATORS};
+use validator_circuits::{circuits::wrappers::{bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof}, circuits::{attestation_aggregation_circuit::AttestationAggregatorProof, load_or_create_circuit, validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_proof, circuits::wrappers::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists}, participation::participation_root, validators::ValidatorCommitmentReveal, Field, MAX_VALIDATORS};
 use validator_circuits::circuits::attestation_aggregation_circuit::AttestationAggregationCircuit;
 
 use crate::actions::build_validators_state;
