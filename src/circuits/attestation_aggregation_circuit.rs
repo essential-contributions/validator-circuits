@@ -1,15 +1,9 @@
-mod attestation_aggregator_first_stage_circuit;
-mod attestation_aggregator_second_stage_circuit;
-mod attestation_aggregator_third_stage_circuit;
+mod subcircuits;
 
-pub use attestation_aggregator_first_stage_circuit::*;
-pub use attestation_aggregator_second_stage_circuit::*;
-pub use attestation_aggregator_third_stage_circuit::*;
+pub use subcircuits::*;
 
 use plonky2::{field::types::Field as Plonky2_Field, plonk::circuit_data::CircuitData};
-use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::Write;
-use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
 use crate::accounts::{initial_accounts_tree, null_account_address, Account, AccountsTree};
@@ -20,18 +14,21 @@ use crate::validators::{initial_validators_tree, Validator};
 use crate::{AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE3_SIZE};
 use crate::{commitment::example_commitment_proof, validators::{ValidatorCommitmentReveal, ValidatorsTree}, Config, Field, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, D};
 use super::validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof};
-use super::{Circuit, Proof, Serializeable};
+use super::{Circuit, Serializeable};
 
 //TODO: implement multi-threading for proof generation
 
 const AGG1_PROOFS_LEN: usize = AGGREGATION_STAGE3_SIZE * AGGREGATION_STAGE2_SIZE;
 const AGG2_PROOFS_LEN: usize = AGGREGATION_STAGE3_SIZE;
 
+pub type AttestationAggregatorProof = AttestationAggregatorThirdStageProof;
+
 pub struct AttestationAggregationCircuit {
     attestations_aggregator1: AttestationAggregatorFirstStageCircuit,
     attestations_aggregator2: AttestationAggregatorSecondStageCircuit,
     attestations_aggregator3: AttestationAggregatorThirdStageCircuit,
 }
+
 impl AttestationAggregationCircuit {
     pub fn generate_proof(
         &self, 
@@ -42,6 +39,7 @@ impl AttestationAggregationCircuit {
         generate_proof_from_data(&self, validators_state_proof, reveals, validators_tree)
     }
 }
+
 impl Circuit for AttestationAggregationCircuit {
     type Proof = AttestationAggregatorProof;
     
@@ -57,7 +55,7 @@ impl Circuit for AttestationAggregationCircuit {
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
-        self.attestations_aggregator3.verify_proof(&proof.proof)
+        self.attestations_aggregator3.verify_proof(proof)
     }
 
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
@@ -65,12 +63,11 @@ impl Circuit for AttestationAggregationCircuit {
     }
 
     fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
-        Ok(self.attestations_aggregator3.proof_to_bytes(&proof.proof)?)
+        Ok(self.attestations_aggregator3.proof_to_bytes(proof)?)
     }
 
     fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
-        let proof = self.attestations_aggregator3.proof_from_bytes(bytes)?;
-        Ok(Self::Proof { proof })
+        Ok(self.attestations_aggregator3.proof_from_bytes(bytes)?)
     }
 
     fn is_cyclical() -> bool {
@@ -120,6 +117,7 @@ impl Circuit for AttestationAggregationCircuit {
         ).unwrap())
     }
 }
+
 impl Serializeable for AttestationAggregationCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer: Vec<u8> = Vec::new();
@@ -160,45 +158,6 @@ impl Serializeable for AttestationAggregationCircuit {
         let attestations_aggregator3 = AttestationAggregatorThirdStageCircuit::from_bytes(&(&bytes[start3..]).to_vec())?;
 
         Ok(Self { attestations_aggregator1, attestations_aggregator2, attestations_aggregator3 })
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AttestationAggregatorProof {
-    proof: AttestationAggregatorThirdStageProof,
-}
-impl AttestationAggregatorProof {
-    pub fn public_inputs_hash(&self) -> [Field; 4] {
-        self.proof.public_inputs_hash()
-    }
-
-    pub fn validators_inputs_hash(&self) -> [u8; 32] {
-        self.proof.validators_inputs_hash()
-    }
-
-    pub fn total_staked(&self) -> u64 {
-        self.proof.total_staked()
-    }
-
-    pub fn block_slot(&self) -> usize{
-        self.proof.block_slot()
-    }
-
-    pub fn participation_root(&self) -> [Field; 4] {
-        self.proof.participation_root()
-    }
-
-    pub fn participation_count(&self) -> usize{
-        self.proof.participation_count()
-    }
-
-    pub fn attestations_stake(&self) -> u64 {
-        self.proof.attestations_stake()
-    }
-}
-impl Proof for AttestationAggregatorProof {
-    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
-        &self.proof.proof()
     }
 }
 
@@ -378,18 +337,7 @@ fn generate_proof_from_data(
     };
     let stage3_proof = circuits.attestations_aggregator3.generate_proof(&agg3_data)?;
 
-    return Ok(AttestationAggregatorProof {
-        proof: stage3_proof,
-    })
-}
-
-#[inline]
-fn write_all(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
-    let result = buffer.write_all(bytes);
-    if result.is_err() {
-        return Err(anyhow!("Failed to serialize circuits"));
-    }
-    Ok(result.unwrap())
+    return Ok(stage3_proof)
 }
 
 fn example_validators_state(
@@ -467,4 +415,13 @@ fn compile_data_for_validators_state_circuit(
 
         previous_proof,
     }
+}
+
+#[inline]
+fn write_all(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
+    let result = buffer.write_all(bytes);
+    if result.is_err() {
+        return Err(anyhow!("Failed to serialize circuits"));
+    }
+    Ok(result.unwrap())
 }

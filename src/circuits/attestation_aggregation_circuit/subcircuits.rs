@@ -1,0 +1,7 @@
+mod attestation_aggregator_first_stage_circuit;
+mod attestation_aggregator_second_stage_circuit;
+mod attestation_aggregator_third_stage_circuit;
+
+pub use attestation_aggregator_first_stage_circuit::*;
+pub use attestation_aggregator_second_stage_circuit::*;
+pub use attestation_aggregator_third_stage_circuit::*;

@@ -1,22 +1,20 @@
-mod validator_participation_aggregator_end_circuit;
-mod validator_participation_aggregator_circuit;
-
-pub use validator_participation_aggregator_end_circuit::*;
-pub use validator_participation_aggregator_circuit::*;
+mod subcircuits;
+use subcircuits::*;
 
 use plonky2::plonk::circuit_data::CircuitData;
-use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::Write;
-use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 
 use crate::{accounts::{initial_accounts_tree, null_account_address, Account, AccountsTree}, circuits::{load_or_create_circuit, load_or_create_init_proof, participation_state_circuit::ParticipationStateCircuitData, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR}, commitment::example_commitment_root, epochs::{initial_validator_epochs_tree, ValidatorEpochsTree}, participation::{initial_participation_rounds_tree, participation_root, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE}, validators::{initial_validators_tree, Validator, ValidatorsTree}, Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
-use super::{participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Proof, Serializeable};
+use super::{participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof}, validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateCircuitData, ValidatorsStateProof}, Circuit, Serializeable};
+
+pub type ValidatorParticipationProof = ValidatorParticipationAggEndProof;
 
 pub struct ValidatorParticipationCircuit {
     participation_agg: ValidatorParticipationAggCircuit,
     participation_agg_end: ValidatorParticipationAggEndCircuit,
 }
+
 impl ValidatorParticipationCircuit {
     pub fn generate_proof(
         &self,
@@ -27,6 +25,7 @@ impl ValidatorParticipationCircuit {
         generate_proof_from_data(&self, data, validator_epochs_tree, participation_rounds_tree)
     }
 }
+
 impl Circuit for ValidatorParticipationCircuit {
     type Proof = ValidatorParticipationProof;
     
@@ -40,7 +39,7 @@ impl Circuit for ValidatorParticipationCircuit {
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
-        self.participation_agg_end.verify_proof(&proof.proof)
+        self.participation_agg_end.verify_proof(proof)
     }
 
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
@@ -48,12 +47,11 @@ impl Circuit for ValidatorParticipationCircuit {
     }
 
     fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
-        Ok(self.participation_agg_end.proof_to_bytes(&proof.proof)?)
+        Ok(self.participation_agg_end.proof_to_bytes(proof)?)
     }
 
     fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
-        let proof = self.participation_agg_end.proof_from_bytes(bytes)?;
-        Ok(Self::Proof { proof })
+        Ok(self.participation_agg_end.proof_from_bytes(bytes)?)
     }
 
     fn is_cyclical() -> bool {
@@ -110,6 +108,7 @@ impl Circuit for ValidatorParticipationCircuit {
         Some(generate_proof_from_data(&self, &data, &validator_epochs_tree, &participation_rounds_tree).unwrap())
     }
 }
+
 impl Serializeable for ValidatorParticipationCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer: Vec<u8> = Vec::new();
@@ -140,53 +139,6 @@ impl Serializeable for ValidatorParticipationCircuit {
         let participation_agg_end = ValidatorParticipationAggEndCircuit::from_bytes(&(&bytes[start2..]).to_vec())?;
 
         Ok(Self { participation_agg, participation_agg_end })
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ValidatorParticipationProof {
-    proof: ValidatorParticipationAggEndProof,
-}
-impl ValidatorParticipationProof {
-    pub fn public_inputs_hash(&self) -> [Field; 4] {
-        self.proof.public_inputs_hash()
-    }
-
-    pub fn participation_inputs_hash(&self) -> [u8; 32] {
-        self.proof.participation_inputs_hash()
-    }
-
-    pub fn account_address(&self) -> [u8; 20] {
-        self.proof.account_address()
-    }
-
-    pub fn from_epoch(&self) -> u32 {
-        self.proof.from_epoch()
-    }
-
-    pub fn to_epoch(&self) -> u32 {
-        self.proof.to_epoch()
-    }
-
-    pub fn withdraw_max(&self) -> u64 {
-        self.proof.withdraw_max()
-    }
-
-    pub fn withdraw_unearned(&self) -> u64 {
-        self.proof.withdraw_unearned()
-    }
-
-    pub fn param_rf(&self) -> u32 {
-        self.proof.param_rf()
-    }
-
-    pub fn param_st(&self) -> u32 {
-        self.proof.param_st()
-    }
-}
-impl Proof for ValidatorParticipationProof {
-    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
-        &self.proof.proof()
     }
 }
 
@@ -284,16 +236,7 @@ fn generate_proof_from_data(
     };
     let proof = circuits.participation_agg_end.generate_proof(&data).unwrap();
     
-    Ok(ValidatorParticipationProof { proof })
-}
-
-#[inline]
-fn write_all(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
-    let result = buffer.write_all(bytes);
-    if result.is_err() {
-        return Err(anyhow!("Failed to serialize circuits"));
-    }
-    Ok(result.unwrap())
+    Ok(proof)
 }
 
 fn example_validators_state(
@@ -340,7 +283,7 @@ fn example_validators_state(
     )
 }
 
-pub fn example_participation_state(
+fn example_participation_state(
     participation_state_circuit: &ParticipationStateCircuit,
     validators_state_proof: &ValidatorsStateProof,
     validators_tree: &ValidatorsTree,
@@ -436,4 +379,13 @@ fn compile_data_for_validators_state_circuit(
 
         previous_proof,
     }
+}
+
+#[inline]
+fn write_all(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
+    let result = buffer.write_all(bytes);
+    if result.is_err() {
+        return Err(anyhow!("Failed to serialize circuits"));
+    }
+    Ok(result.unwrap())
 }

@@ -1,0 +1,5 @@
+mod validator_participation_aggregator_circuit;
+mod validator_participation_aggregator_end_circuit;
+
+pub use validator_participation_aggregator_circuit::*;
+pub use validator_participation_aggregator_end_circuit::*;
