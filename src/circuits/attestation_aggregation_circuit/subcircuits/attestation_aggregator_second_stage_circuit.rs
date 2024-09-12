@@ -7,26 +7,32 @@ use circuit::*;
 use targets::*;
 use witness::*;
 
+use anyhow::{anyhow, Result};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierOnlyCircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
-use anyhow::{anyhow, Result};
 
-use crate::{Config, Field, D};
-use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
+use super::{
+    AttestationAggregatorFirstStageCircuit, AttestationAggregatorFirstStageProof,
+    PIS_AGG1_ATTESTATIONS_STAKE, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_PARTICIPATION_COUNT,
+    PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_VALIDATORS_SUB_ROOT,
+};
+use crate::circuits::serialization::{
+    deserialize_circuit, read_verifier, serialize_circuit, write_verifier,
+};
 use crate::circuits::{Circuit, Proof, Serializeable};
-use super::{AttestationAggregatorFirstStageCircuit, AttestationAggregatorFirstStageProof, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_PARTICIPATION_COUNT, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_ATTESTATIONS_STAKE, PIS_AGG1_VALIDATORS_SUB_ROOT};
+use crate::{Config, Field, D};
 
 pub use proof::AttestationAggregatorSecondStageProof;
-pub use witness::AttestationAggregatorSecondStageData;
 pub use witness::AttestationAggregatorSecondStageAgg1Data;
+pub use witness::AttestationAggregatorSecondStageData;
 
-pub use proof::PIS_AGG2_VALIDATORS_SUB_ROOT;
-pub use proof::PIS_AGG2_PARTICIPATION_SUB_ROOT;
-pub use proof::PIS_AGG2_PARTICIPATION_COUNT;
 pub use proof::PIS_AGG2_ATTESTATIONS_STAKE;
 pub use proof::PIS_AGG2_BLOCK_SLOT;
+pub use proof::PIS_AGG2_PARTICIPATION_COUNT;
+pub use proof::PIS_AGG2_PARTICIPATION_SUB_ROOT;
+pub use proof::PIS_AGG2_VALIDATORS_SUB_ROOT;
 
 pub struct AttestationAggregatorSecondStageCircuit {
     circuit_data: CircuitData<Field, Config, D>,
@@ -36,19 +42,31 @@ pub struct AttestationAggregatorSecondStageCircuit {
 }
 
 impl AttestationAggregatorSecondStageCircuit {
-    pub fn from_subcircuits(atts_agg_first_stage_circuit: &AttestationAggregatorFirstStageCircuit) -> Self {
+    pub fn from_subcircuits(
+        atts_agg_first_stage_circuit: &AttestationAggregatorFirstStageCircuit,
+    ) -> Self {
         let atts_agg1_common_data = &atts_agg_first_stage_circuit.circuit_data().common;
-        let atts_agg1_verifier = atts_agg_first_stage_circuit.circuit_data().verifier_only.clone();
+        let atts_agg1_verifier = atts_agg_first_stage_circuit
+            .circuit_data()
+            .verifier_only
+            .clone();
 
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder, atts_agg1_common_data);
         let circuit_data = builder.build::<Config>();
 
-        Self { circuit_data, targets, atts_agg1_verifier }
+        Self {
+            circuit_data,
+            targets,
+            atts_agg1_verifier,
+        }
     }
 
-    pub fn generate_proof(&self, data: &AttestationAggregatorSecondStageData) -> Result<AttestationAggregatorSecondStageProof> {
+    pub fn generate_proof(
+        &self,
+        data: &AttestationAggregatorSecondStageData,
+    ) -> Result<AttestationAggregatorSecondStageProof> {
         let pw = generate_partial_witness(&self.targets, data, &self.atts_agg1_verifier)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationAggregatorSecondStageProof::new(proof))
@@ -120,6 +138,10 @@ impl Serializeable for AttestationAggregatorSecondStageCircuit {
             Ok(verifier) => Ok(verifier),
             Err(_) => Err(anyhow!("Failed to deserialize sub circuit verifier")),
         }?;
-        Ok(Self { circuit_data, targets, atts_agg1_verifier })
+        Ok(Self {
+            circuit_data,
+            targets,
+            atts_agg1_verifier,
+        })
     }
 }

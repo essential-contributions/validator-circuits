@@ -1,41 +1,26 @@
-use std::{collections::HashSet, marker::PhantomData};
+use anyhow::anyhow;
 use plonky2::{
-    field::extension::Extendable, 
-    gadgets::{
-        arithmetic_extension::QuotientGeneratorExtension, 
-        split_join::WireSplitGenerator
-    }, 
+    field::extension::Extendable,
+    gadgets::{arithmetic_extension::QuotientGeneratorExtension, split_join::WireSplitGenerator},
     gates::{
-        arithmetic_base::ArithmeticBaseGenerator, 
-        arithmetic_extension::ArithmeticExtensionGenerator, 
-        base_sum::BaseSplitGenerator, 
-        coset_interpolation::InterpolationGenerator, 
-        exponentiation::ExponentiationGenerator, 
-        multiplication_extension::MulExtensionGenerator, 
-        poseidon::PoseidonGenerator, 
-        poseidon_mds::PoseidonMdsGenerator, 
-        random_access::RandomAccessGenerator, 
-        reducing::ReducingGenerator, 
-        reducing_extension::ReducingGenerator as ReducingExtensionGenerator
-    }, 
-    hash::hash_types::RichField, 
-    iop::generator::{
-        ConstantGenerator, 
-        RandomValueGenerator
-    }, 
+        arithmetic_base::ArithmeticBaseGenerator,
+        arithmetic_extension::ArithmeticExtensionGenerator, base_sum::BaseSplitGenerator,
+        coset_interpolation::InterpolationGenerator, exponentiation::ExponentiationGenerator,
+        multiplication_extension::MulExtensionGenerator, poseidon::PoseidonGenerator,
+        poseidon_mds::PoseidonMdsGenerator, random_access::RandomAccessGenerator,
+        reducing::ReducingGenerator,
+        reducing_extension::ReducingGenerator as ReducingExtensionGenerator,
+    },
+    hash::hash_types::RichField,
+    iop::generator::{ConstantGenerator, RandomValueGenerator},
     plonk::{
-        circuit_data::CircuitData, 
-        config::{
-            AlgebraicHasher, 
-            GenericConfig
-        }
-    }, 
-    util::serialization::{
-        Buffer, DefaultGateSerializer, Read, WitnessGeneratorSerializer
-    }
+        circuit_data::CircuitData,
+        config::{AlgebraicHasher, GenericConfig},
+    },
+    util::serialization::{Buffer, DefaultGateSerializer, Read, WitnessGeneratorSerializer},
 };
 use plonky2::{get_generator_tag_impl, impl_generator_serializer, read_generator_impl};
-use anyhow::anyhow;
+use std::{collections::HashSet, marker::PhantomData};
 
 use crate::{Config, Field, D};
 
@@ -71,7 +56,9 @@ where
     }
 }
 
-pub fn serialize_circuit(circuit_data: &CircuitData<Field, PoseidonBN128GoldilocksConfig, D>) -> anyhow::Result<Vec<u8>> {
+pub fn serialize_circuit(
+    circuit_data: &CircuitData<Field, PoseidonBN128GoldilocksConfig, D>,
+) -> anyhow::Result<Vec<u8>> {
     let gate_serializer = DefaultGateSerializer;
     let generator_serializer = CustomGeneratorSerializer::<Config, D>::default();
     let data_bytes = circuit_data.to_bytes(&gate_serializer, &generator_serializer);
@@ -88,12 +75,17 @@ pub fn serialize_circuit(circuit_data: &CircuitData<Field, PoseidonBN128Goldiloc
     Ok(data_bytes.unwrap())
 }
 
-pub fn deserialize_circuit(bytes: &Vec<u8>) -> anyhow::Result<(CircuitData<Field, PoseidonBN128GoldilocksConfig, D>, Buffer)> {
+pub fn deserialize_circuit(
+    bytes: &Vec<u8>,
+) -> anyhow::Result<(CircuitData<Field, PoseidonBN128GoldilocksConfig, D>, Buffer)> {
     let gate_serializer = DefaultGateSerializer;
     let generator_serializer = CustomGeneratorSerializer::<Config, D>::default();
 
     let mut buffer = Buffer::new(bytes);
-    let circuit_data = buffer.read_circuit_data::<Field, PoseidonBN128GoldilocksConfig, D>(&gate_serializer, &generator_serializer);
+    let circuit_data = buffer.read_circuit_data::<Field, PoseidonBN128GoldilocksConfig, D>(
+        &gate_serializer,
+        &generator_serializer,
+    );
     if circuit_data.is_err() {
         return Err(anyhow!("Failed to deserialize circuit. It may help to delete the circuit bins and have them be regenerated."));
     }

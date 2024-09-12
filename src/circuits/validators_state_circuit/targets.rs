@@ -1,5 +1,9 @@
-use plonky2::{hash::{hash_types::HashOutTarget, merkle_proofs::MerkleProofTarget}, iop::target::{BoolTarget, Target}, plonk::{circuit_data::VerifierCircuitTarget, proof::ProofWithPublicInputsTarget}};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use plonky2::{
+    hash::{hash_types::HashOutTarget, merkle_proofs::MerkleProofTarget},
+    iop::target::{BoolTarget, Target},
+    plonk::{circuit_data::VerifierCircuitTarget, proof::ProofWithPublicInputsTarget},
+};
 
 use crate::D;
 
@@ -8,7 +12,7 @@ pub struct ValidatorsStateCircuitTargets {
     pub stake: Target,
     pub commitment: HashOutTarget,
     pub account: Vec<Target>,
-    
+
     pub validator_index: Target,
     pub validator_stake: Target,
     pub validator_commitment: HashOutTarget,
@@ -19,19 +23,22 @@ pub struct ValidatorsStateCircuitTargets {
     pub to_account: Vec<Target>,
     pub to_acc_index: Target,
     pub to_acc_proof: MerkleProofTarget,
-    
+
     pub init_zero: BoolTarget,
     pub verifier: VerifierCircuitTarget,
     pub previous_proof: ProofWithPublicInputsTarget<D>,
 }
 
 #[inline]
-pub fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorsStateCircuitTargets) -> IoResult<()> {
+pub fn write_targets(
+    buffer: &mut Vec<u8>,
+    targets: &ValidatorsStateCircuitTargets,
+) -> IoResult<()> {
     buffer.write_target(targets.index)?;
     buffer.write_target(targets.stake)?;
     buffer.write_target_hash(&targets.commitment)?;
     buffer.write_target_vec(&targets.account)?;
-    
+
     buffer.write_target(targets.validator_index)?;
     buffer.write_target(targets.validator_stake)?;
     buffer.write_target_hash(&targets.validator_commitment)?;
@@ -58,7 +65,7 @@ pub fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorsStateCircuitTarge
     let stake = buffer.read_target()?;
     let commitment = buffer.read_target_hash()?;
     let account = buffer.read_target_vec()?;
-    
+
     let validator_index = buffer.read_target()?;
     let validator_stake = buffer.read_target()?;
     let validator_commitment = buffer.read_target_hash()?;
@@ -71,7 +78,7 @@ pub fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorsStateCircuitTarge
     let to_account = buffer.read_target_vec()?;
     let to_acc_index = buffer.read_target()?;
     let to_acc_proof = buffer.read_target_merkle_proof()?;
-    
+
     let init_zero = buffer.read_target_bool()?;
     let verifier = buffer.read_target_verifier_circuit()?;
     let previous_proof = buffer.read_target_proof_with_public_inputs()?;

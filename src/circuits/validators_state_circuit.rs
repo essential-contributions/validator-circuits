@@ -7,12 +7,12 @@ use circuit::*;
 use targets::*;
 use witness::*;
 
+use anyhow::{anyhow, Result};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
-use anyhow::{anyhow, Result};
 
 use crate::{Config, Field, D};
 
@@ -22,11 +22,11 @@ use super::{Circuit, Proof, Serializeable};
 pub use proof::ValidatorsStateProof;
 pub use witness::ValidatorsStateCircuitData;
 
+pub use proof::PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT;
 pub use proof::PIS_VALIDATORS_STATE_INPUTS_HASH;
 pub use proof::PIS_VALIDATORS_STATE_TOTAL_STAKED;
 pub use proof::PIS_VALIDATORS_STATE_TOTAL_VALIDATORS;
 pub use proof::PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT;
-pub use proof::PIS_VALIDATORS_STATE_ACCOUNTS_TREE_ROOT;
 
 pub struct ValidatorsStateCircuit {
     circuit_data: CircuitData<Field, Config, D>,
@@ -34,7 +34,10 @@ pub struct ValidatorsStateCircuit {
 }
 
 impl ValidatorsStateCircuit {
-    pub fn generate_proof(&self, data: &ValidatorsStateCircuitData) -> Result<ValidatorsStateProof> {
+    pub fn generate_proof(
+        &self,
+        data: &ValidatorsStateCircuitData,
+    ) -> Result<ValidatorsStateProof> {
         let pw = generate_partial_witness(&self.circuit_data, &self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ValidatorsStateProof::new(proof))
@@ -43,14 +46,17 @@ impl ValidatorsStateCircuit {
 
 impl Circuit for ValidatorsStateCircuit {
     type Proof = ValidatorsStateProof;
-    
+
     fn new() -> Self {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder);
         let circuit_data = builder.build::<Config>();
 
-        Self { circuit_data, targets }
+        Self {
+            circuit_data,
+            targets,
+        }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -111,6 +117,9 @@ impl Serializeable for ValidatorsStateCircuit {
         if targets.is_err() {
             return Err(anyhow!("Failed to deserialize circuit targets"));
         }
-        Ok(Self { circuit_data, targets: targets.unwrap() })
+        Ok(Self {
+            circuit_data,
+            targets: targets.unwrap(),
+        })
     }
 }

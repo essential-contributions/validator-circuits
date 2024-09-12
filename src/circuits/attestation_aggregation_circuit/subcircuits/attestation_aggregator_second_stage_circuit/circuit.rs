@@ -2,12 +2,18 @@ use plonky2::hash::hash_types::HashOutTarget;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CommonCircuitData, VerifierCircuitTarget};
 
+use super::{
+    AttAgg2Agg1Targets, AttAgg2Targets, PIS_AGG1_ATTESTATIONS_STAKE, PIS_AGG1_BLOCK_SLOT,
+    PIS_AGG1_PARTICIPATION_COUNT, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_VALIDATORS_SUB_ROOT,
+};
 use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::participation::empty_participation_sub_root;
 use crate::{Config, Field, Hash, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, D};
-use super::{AttAgg2Agg1Targets, AttAgg2Targets, PIS_AGG1_ATTESTATIONS_STAKE, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_PARTICIPATION_COUNT, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_VALIDATORS_SUB_ROOT};
 
-pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg1_common_data: &CommonCircuitData<Field, D>) -> AttAgg2Targets {
+pub fn generate_circuit(
+    builder: &mut CircuitBuilder<Field, D>,
+    atts_agg1_common_data: &CommonCircuitData<Field, D>,
+) -> AttAgg2Targets {
     let mut atts_agg1_data: Vec<AttAgg2Agg1Targets> = Vec::new();
 
     // Global targets
@@ -18,7 +24,8 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg1_common
 
     // Circuit target
     let atts_agg1_verifier = VerifierCircuitTarget {
-        constants_sigmas_cap: builder.add_virtual_cap(atts_agg1_common_data.config.fri_config.cap_height),
+        constants_sigmas_cap: builder
+            .add_virtual_cap(atts_agg1_common_data.config.fri_config.cap_height),
         circuit_digest: builder.add_virtual_hash(),
     };
 
@@ -32,17 +39,21 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg1_common
 
         // Verify proof (ignored if not flagged as has participation)
         builder.verify_proof::<Config>(&proof_target, &atts_agg1_verifier, &atts_agg1_common_data);
-        
+
         // Determine applicable validator node
         let proof_validators_sub_root = HashOutTarget {
             elements: [
                 proof_target.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[0]],
                 proof_target.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[1]],
                 proof_target.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[2]],
-                proof_target.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[3]]
-            ]
+                proof_target.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[3]],
+            ],
         };
-        validator_nodes.push(builder.select_hash(has_participation, proof_validators_sub_root, validators_sub_root));
+        validator_nodes.push(builder.select_hash(
+            has_participation,
+            proof_validators_sub_root,
+            validators_sub_root,
+        ));
 
         // Determine applicable participation node
         let proof_participation_sub_root = HashOutTarget {
@@ -50,17 +61,29 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg1_common
                 proof_target.public_inputs[PIS_AGG1_PARTICIPATION_SUB_ROOT[0]],
                 proof_target.public_inputs[PIS_AGG1_PARTICIPATION_SUB_ROOT[1]],
                 proof_target.public_inputs[PIS_AGG1_PARTICIPATION_SUB_ROOT[2]],
-                proof_target.public_inputs[PIS_AGG1_PARTICIPATION_SUB_ROOT[3]]
-            ]
+                proof_target.public_inputs[PIS_AGG1_PARTICIPATION_SUB_ROOT[3]],
+            ],
         };
-        participation_nodes.push(builder.select_hash(has_participation, proof_participation_sub_root, empty_participation_root));
+        participation_nodes.push(builder.select_hash(
+            has_participation,
+            proof_participation_sub_root,
+            empty_participation_root,
+        ));
 
         // Make sure each agg1 data has the same block_slot
         builder.connect(proof_target.public_inputs[PIS_AGG1_BLOCK_SLOT], block_slot);
 
         // Keep running total of stake and num participants
-        attestations_stake = builder.mul_add(has_participation.target, proof_target.public_inputs[PIS_AGG1_ATTESTATIONS_STAKE], attestations_stake);
-        participation_count = builder.mul_add(has_participation.target, proof_target.public_inputs[PIS_AGG1_PARTICIPATION_COUNT], participation_count);
+        attestations_stake = builder.mul_add(
+            has_participation.target,
+            proof_target.public_inputs[PIS_AGG1_ATTESTATIONS_STAKE],
+            attestations_stake,
+        );
+        participation_count = builder.mul_add(
+            has_participation.target,
+            proof_target.public_inputs[PIS_AGG1_PARTICIPATION_COUNT],
+            participation_count,
+        );
 
         atts_agg1_data.push(AttAgg2Agg1Targets {
             validators_sub_root,
@@ -73,7 +96,11 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg1_common
     for h in (0..AGGREGATION_STAGE2_SUB_TREE_HEIGHT).rev() {
         let start = validator_nodes.len() - (1 << (h + 1));
         for i in 0..(1 << h) {
-            let data = [validator_nodes[start + (i * 2)].elements.to_vec(), validator_nodes[start + (i * 2) + 1].elements.to_vec()].concat();
+            let data = [
+                validator_nodes[start + (i * 2)].elements.to_vec(),
+                validator_nodes[start + (i * 2) + 1].elements.to_vec(),
+            ]
+            .concat();
             validator_nodes.push(builder.hash_n_to_hash_no_pad::<Hash>(data));
         }
     }
@@ -83,7 +110,11 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg1_common
     for h in (0..AGGREGATION_STAGE2_SUB_TREE_HEIGHT).rev() {
         let start = participation_nodes.len() - (1 << (h + 1));
         for i in 0..(1 << h) {
-            let data = [participation_nodes[start + (i * 2)].elements.to_vec(), participation_nodes[start + (i * 2) + 1].elements.to_vec()].concat();
+            let data = [
+                participation_nodes[start + (i * 2)].elements.to_vec(),
+                participation_nodes[start + (i * 2) + 1].elements.to_vec(),
+            ]
+            .concat();
             participation_nodes.push(builder.hash_n_to_hash_no_pad::<Hash>(data));
         }
     }
@@ -106,6 +137,6 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>, atts_agg1_common
 fn build_empty_participation_sub_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
     let root = empty_participation_sub_root(0);
     HashOutTarget {
-        elements: root.map(|f| { builder.constant(f) }),
+        elements: root.map(|f| builder.constant(f)),
     }
 }

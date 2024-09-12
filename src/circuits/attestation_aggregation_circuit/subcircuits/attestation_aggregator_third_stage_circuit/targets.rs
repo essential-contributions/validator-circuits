@@ -17,7 +17,7 @@ pub struct AttAgg3Targets {
 pub struct AttAgg3Agg2Targets {
     pub validators_sub_root: HashOutTarget,
     pub has_participation: BoolTarget,
-    pub proof: ProofWithPublicInputsTarget<D>
+    pub proof: ProofWithPublicInputsTarget<D>,
 }
 
 #[inline]

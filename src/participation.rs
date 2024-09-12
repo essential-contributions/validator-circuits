@@ -1,19 +1,26 @@
 use std::collections::HashMap;
 
-use plonky2::field::types::Field as Plonky2_Field;
 use anyhow::{anyhow, Result};
-use serde::{Deserialize, Serialize};
+use plonky2::field::types::Field as Plonky2_Field;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE, AGGREGATION_STAGE3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_TREE_HEIGHT};
 use crate::Field;
+use crate::{
+    field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE,
+    AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE,
+    AGGREGATION_STAGE3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_TREE_HEIGHT,
+};
 
 pub const PARTICIPATION_TREE_SIZE: usize = AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE;
-pub const PARTICIPATION_TREE_HEIGHT: usize = AGGREGATION_STAGE2_SUB_TREE_HEIGHT + AGGREGATION_STAGE3_SUB_TREE_HEIGHT;
+pub const PARTICIPATION_TREE_HEIGHT: usize =
+    AGGREGATION_STAGE2_SUB_TREE_HEIGHT + AGGREGATION_STAGE3_SUB_TREE_HEIGHT;
 
 pub const PARTICIPANTS_PER_FIELD: usize = 62;
-pub const PARTICIPATION_FIELDS_PER_LEAF: usize = div_ceil(AGGREGATION_STAGE1_SIZE, PARTICIPANTS_PER_FIELD);
-pub const PARTICIPATION_BITS_BYTE_SIZE: usize = (AGGREGATION_STAGE1_SIZE * AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE) / 8;
+pub const PARTICIPATION_FIELDS_PER_LEAF: usize =
+    div_ceil(AGGREGATION_STAGE1_SIZE, PARTICIPANTS_PER_FIELD);
+pub const PARTICIPATION_BITS_BYTE_SIZE: usize =
+    (AGGREGATION_STAGE1_SIZE * AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE) / 8;
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: store participation_bits in disk rather than memory
@@ -45,13 +52,18 @@ impl ParticipationRoundsTree {
             participation_count: 0,
             participation_bits: None,
         };
-        Self { rounds: HashMap::new(), default_round_data }
+        Self {
+            rounds: HashMap::new(),
+            default_round_data,
+        }
     }
 
     pub fn root(&self) -> [Field; 4] {
-        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
+        let (mut intermediary_nodes, mut default_node) =
+            self.compute_first_level_intermediary_nodes();
         for _ in 0..PARTICIPATION_ROUNDS_TREE_HEIGHT {
-            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
+            (intermediary_nodes, default_node) =
+                Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         match intermediary_nodes.get(0) {
@@ -66,7 +78,8 @@ impl ParticipationRoundsTree {
 
     pub fn merkle_proof(&self, num: usize) -> Vec<[Field; 4]> {
         //compute initial intermediary nodes
-        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
+        let (mut intermediary_nodes, mut default_node) =
+            self.compute_first_level_intermediary_nodes();
 
         //build the merkle proof for each level in the tree
         let mut proof: Vec<[Field; 4]> = Vec::new();
@@ -74,7 +87,7 @@ impl ParticipationRoundsTree {
         for _ in 0..PARTICIPATION_ROUNDS_TREE_HEIGHT {
             //add sibling to proof
             let sibling_idx = if (idx % 2) == 0 { idx + 1 } else { idx - 1 };
-            let sibling = match intermediary_nodes.iter().find(|x| x.0 == sibling_idx ) {
+            let sibling = match intermediary_nodes.iter().find(|x| x.0 == sibling_idx) {
                 Some(node) => node.1,
                 None => default_node,
             };
@@ -82,13 +95,18 @@ impl ParticipationRoundsTree {
             idx = idx >> 1;
 
             //compute the next level intermediary nodes
-            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
+            (intermediary_nodes, default_node) =
+                Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         proof
     }
 
-    pub fn verify_merkle_proof(&self, round: ParticipationRound, proof: &[[Field; 4]]) -> Result<bool> {
+    pub fn verify_merkle_proof(
+        &self,
+        round: ParticipationRound,
+        proof: &[[Field; 4]],
+    ) -> Result<bool> {
         if proof.len() != PARTICIPATION_ROUNDS_TREE_HEIGHT {
             return Err(anyhow!("Invalid proof length."));
         }
@@ -135,28 +153,33 @@ impl ParticipationRoundsTree {
     pub fn update_round(&mut self, round: ParticipationRound, participation_bits: Option<Vec<u8>>) {
         let current_round = self.round(round.num);
         if round.participation_count >= current_round.participation_count {
-            self.rounds.insert(round.num, ParticipationRoundData {
-                participation_root: round.participation_root,
-                participation_count: round.participation_count,
-                participation_bits,
-            });
+            self.rounds.insert(
+                round.num,
+                ParticipationRoundData {
+                    participation_root: round.participation_root,
+                    participation_count: round.participation_count,
+                    participation_bits,
+                },
+            );
         }
     }
-    
+
     fn hash_round(round: ParticipationRound) -> [Field; 4] {
         let fields_to_hash = [
             round.participation_root.to_vec(),
-            vec!(Field::from_canonical_u32(round.participation_count)),
-        ].concat();
+            vec![Field::from_canonical_u32(round.participation_count)],
+        ]
+        .concat();
         field_hash(&fields_to_hash)
     }
 
     fn compute_first_level_intermediary_nodes(&self) -> (Vec<(usize, [Field; 4])>, [Field; 4]) {
         let mut round_numbers: Vec<usize> = self.rounds.iter().map(|(k, _)| *k).collect();
         round_numbers.sort();
-        let intermediary_nodes: Vec<(usize, [Field; 4])> = round_numbers.par_iter().map(|num| {
-            (*num, Self::hash_round(self.round(*num)))
-        }).collect();
+        let intermediary_nodes: Vec<(usize, [Field; 4])> = round_numbers
+            .par_iter()
+            .map(|num| (*num, Self::hash_round(self.round(*num))))
+            .collect();
 
         let default_node = Self::hash_round(ParticipationRound {
             num: 0,
@@ -168,7 +191,7 @@ impl ParticipationRoundsTree {
     }
 
     fn compute_intermediary_nodes(
-        intermediary_nodes: &[(usize, [Field; 4])], 
+        intermediary_nodes: &[(usize, [Field; 4])],
         default_node: [Field; 4],
     ) -> (Vec<(usize, [Field; 4])>, [Field; 4]) {
         //arrange intermediary nodes into pairs (left, right)
@@ -194,17 +217,20 @@ impl ParticipationRoundsTree {
         }
 
         //compute the next level intermediary nodes in parallel
-        let next_level_intermediary_nodes = intermediary_node_pairs.par_iter().map(|(addr, (left, right))| {
-            let left_sibling = match *left {
-                Some(left) => intermediary_nodes[left].1,
-                None => default_node,
-            };
-            let right_sibling = match *right {
-                Some(right) => intermediary_nodes[right].1,
-                None => default_node,
-            };
-            (*addr, (field_hash_two(left_sibling, right_sibling)))
-        }).collect();
+        let next_level_intermediary_nodes = intermediary_node_pairs
+            .par_iter()
+            .map(|(addr, (left, right))| {
+                let left_sibling = match *left {
+                    Some(left) => intermediary_nodes[left].1,
+                    None => default_node,
+                };
+                let right_sibling = match *right {
+                    Some(right) => intermediary_nodes[right].1,
+                    None => default_node,
+                };
+                (*addr, (field_hash_two(left_sibling, right_sibling)))
+            })
+            .collect();
 
         let next_default_node = field_hash_two(default_node, default_node);
         (next_level_intermediary_nodes, next_default_node)
@@ -247,7 +273,10 @@ pub fn leaf_fields(participation: Vec<bool>) -> Vec<Field> {
         }
         participation_bits_u64.push(field_u64);
     }
-    let fields: Vec<Field> = participation_bits_u64.iter().map(|f| Field::from_canonical_u64(*f)).collect();
+    let fields: Vec<Field> = participation_bits_u64
+        .iter()
+        .map(|f| Field::from_canonical_u64(*f))
+        .collect();
     fields
 }
 
@@ -261,7 +290,10 @@ pub struct ParticipationMerkleData {
     pub proof: Vec<[Field; 4]>,
 }
 
-pub fn participation_merkle_data(participation_bits: &Vec<u8>, validator_index: usize) -> ParticipationMerkleData {
+pub fn participation_merkle_data(
+    participation_bits: &Vec<u8>,
+    validator_index: usize,
+) -> ParticipationMerkleData {
     let participation_root_index = validator_index / AGGREGATION_STAGE1_SIZE;
     let mut leaf_fields = Vec::new();
 
@@ -277,7 +309,10 @@ pub fn participation_merkle_data(participation_bits: &Vec<u8>, validator_index: 
     for h in (0..PARTICIPATION_TREE_HEIGHT).rev() {
         let start = nodes.len() - (1 << (h + 1));
         for i in 0..(1 << h) {
-            nodes.push(field_hash_two(nodes[start + (i * 2)], nodes[start + (i * 2) + 1]));
+            nodes.push(field_hash_two(
+                nodes[start + (i * 2)],
+                nodes[start + (i * 2) + 1],
+            ));
         }
     }
     let root = *nodes.last().unwrap();
@@ -297,7 +332,11 @@ pub fn participation_merkle_data(participation_bits: &Vec<u8>, validator_index: 
         idx = idx / 2;
     }
 
-    ParticipationMerkleData { root, leaf_fields, proof }
+    ParticipationMerkleData {
+        root,
+        leaf_fields,
+        proof,
+    }
 }
 
 fn participation_fields(participation_bits: &Vec<u8>, group_index: usize) -> Vec<Field> {
@@ -316,7 +355,10 @@ fn participation_fields(participation_bits: &Vec<u8>, group_index: usize) -> Vec
         }
         participation_bits_u64.push(field_u64);
     }
-    let fields: Vec<Field> = participation_bits_u64.iter().map(|f| Field::from_canonical_u64(*f)).collect();
+    let fields: Vec<Field> = participation_bits_u64
+        .iter()
+        .map(|f| Field::from_canonical_u64(*f))
+        .collect();
     fields
 }
 

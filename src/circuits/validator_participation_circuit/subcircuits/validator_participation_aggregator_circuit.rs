@@ -7,34 +7,38 @@ use circuit::*;
 use targets::*;
 use witness::*;
 
+use anyhow::{anyhow, Result};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierOnlyCircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
-use anyhow::{anyhow, Result};
 
-use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
+use crate::circuits::serialization::{
+    deserialize_circuit, read_verifier, serialize_circuit, write_verifier,
+};
 use crate::circuits::validators_state_circuit::ValidatorsStateCircuit;
-use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, VALIDATORS_STATE_CIRCUIT_DIR};
+use crate::circuits::{
+    load_or_create_circuit, Circuit, Proof, Serializeable, VALIDATORS_STATE_CIRCUIT_DIR,
+};
 use crate::{Config, Field, D};
 
 pub use proof::ValidatorParticipationAggProof;
-pub use witness::ValidatorParticipationAggCircuitData;
-pub use witness::ValidatorParticipationValidatorData;
+pub use witness::ValidatorPartAggPrevData;
 pub use witness::ValidatorPartAggRoundData;
 pub use witness::ValidatorPartAggStartData;
-pub use witness::ValidatorPartAggPrevData;
+pub use witness::ValidatorParticipationAggCircuitData;
+pub use witness::ValidatorParticipationValidatorData;
 
-pub use proof::PIS_AGG_EPOCHS_TREE_ROOT;
-pub use proof::PIS_AGG_PR_TREE_ROOT;
 pub use proof::PIS_AGG_ACCOUNT_ADDRESS;
+pub use proof::PIS_AGG_EPOCHS_TREE_ROOT;
 pub use proof::PIS_AGG_FROM_EPOCH;
+pub use proof::PIS_AGG_PARAM_RF;
+pub use proof::PIS_AGG_PARAM_ST;
+pub use proof::PIS_AGG_PR_TREE_ROOT;
 pub use proof::PIS_AGG_TO_EPOCH;
 pub use proof::PIS_AGG_WITHDRAW_MAX;
 pub use proof::PIS_AGG_WITHDRAW_UNEARNED;
-pub use proof::PIS_AGG_PARAM_RF;
-pub use proof::PIS_AGG_PARAM_ST;
 
 pub struct ValidatorParticipationAggCircuit {
     circuit_data: CircuitData<Field, Config, D>,
@@ -44,11 +48,14 @@ pub struct ValidatorParticipationAggCircuit {
 }
 
 impl ValidatorParticipationAggCircuit {
-    pub fn generate_proof(&self, data: &ValidatorParticipationAggCircuitData) -> Result<ValidatorParticipationAggProof> {
+    pub fn generate_proof(
+        &self,
+        data: &ValidatorParticipationAggCircuitData,
+    ) -> Result<ValidatorParticipationAggProof> {
         let pw = generate_partial_witness(
-            &self.targets, 
-            data, 
-            &self.circuit_data, 
+            &self.targets,
+            data,
+            &self.circuit_data,
             &self.validators_state_verifier,
         )?;
         let proof = self.circuit_data.prove(pw)?;
@@ -58,18 +65,26 @@ impl ValidatorParticipationAggCircuit {
 
 impl Circuit for ValidatorParticipationAggCircuit {
     type Proof = ValidatorParticipationAggProof;
-    
+
     fn new() -> Self {
-        let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+        let validators_state_circuit =
+            load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
         let validators_state_common_data = &validators_state_circuit.circuit_data().common;
-        let validators_state_verifier = validators_state_circuit.circuit_data().verifier_only.clone();
+        let validators_state_verifier = validators_state_circuit
+            .circuit_data()
+            .verifier_only
+            .clone();
 
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder, validators_state_common_data);
         let circuit_data = builder.build::<Config>();
 
-        Self { circuit_data, targets, validators_state_verifier }
+        Self {
+            circuit_data,
+            targets,
+            validators_state_verifier,
+        }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -136,10 +151,10 @@ impl Serializeable for ValidatorParticipationAggCircuit {
             Err(_) => Err(anyhow!("Failed to deserialize sub circuit verifier")),
         }?;
 
-        Ok(Self { 
-            circuit_data, 
-            targets, 
-            validators_state_verifier, 
+        Ok(Self {
+            circuit_data,
+            targets,
+            validators_state_verifier,
         })
     }
 }

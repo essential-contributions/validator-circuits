@@ -1,15 +1,29 @@
 mod serialization;
 mod wrapper_circuit;
 
-use std::{fs::{self, create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
+use std::{
+    fs::{self, create_dir_all, File},
+    io::{self, BufReader, Read, Write},
+    path::PathBuf,
+};
 
 pub use wrapper_circuit::*;
 
-use plonky2::{field::{extension::quadratic::QuadraticExtension, goldilocks_field::GoldilocksField}, hash::poseidon::PoseidonHash, plonk::{circuit_data::CircuitData, config::GenericConfig, proof::ProofWithPublicInputs}};
+use plonky2::{
+    field::{extension::quadratic::QuadraticExtension, goldilocks_field::GoldilocksField},
+    hash::poseidon::PoseidonHash,
+    plonk::{circuit_data::CircuitData, config::GenericConfig, proof::ProofWithPublicInputs},
+};
 use poseidon_bn128::PoseidonBN128Hash;
 use serde::Serialize;
 
-use crate::{circuits::{CIRCUIT_FILENAME, CIRCUIT_OUTPUT_FOLDER, COMMON_DATA_FILENAME, PROOF_FILENAME, VERIFIER_ONLY_DATA_FILENAME}, Config, Field, D};
+use crate::{
+    circuits::{
+        CIRCUIT_FILENAME, CIRCUIT_OUTPUT_FOLDER, COMMON_DATA_FILENAME, PROOF_FILENAME,
+        VERIFIER_ONLY_DATA_FILENAME,
+    },
+    Config, Field, D,
+};
 
 pub const BN128_WRAPPER_OUTPUT_FOLDER: &str = "bn128";
 
@@ -23,7 +37,10 @@ impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
     type InnerHasher = PoseidonHash;
 }
 
-pub fn load_or_create_bn128_wrapper_circuit(inner_circuit: &CircuitData<Field, Config, D>, dir: &str) -> BN128WrapperCircuit {
+pub fn load_or_create_bn128_wrapper_circuit(
+    inner_circuit: &CircuitData<Field, Config, D>,
+    dir: &str,
+) -> BN128WrapperCircuit {
     if bn128_wrapper_circuit_data_exists(dir) {
         let bytes = read_from_dir(dir, CIRCUIT_FILENAME);
         match bytes {
@@ -33,17 +50,17 @@ pub fn load_or_create_bn128_wrapper_circuit(inner_circuit: &CircuitData<Field, C
                     Ok(circuit) => {
                         log::info!("Loaded circuit [/{}]", dir);
                         return circuit;
-                    },
+                    }
                     Err(e) => {
                         log::error!("Failed to deserialize circuit data [/{}]", dir);
                         log::error!("{}", e);
-                    },
+                    }
                 }
-            },
+            }
             Err(e) => {
                 log::error!("Failed to read circuit data [/{}]", dir);
                 log::error!("{}", e);
-            },
+            }
         };
     }
     let circuit = BN128WrapperCircuit::new(inner_circuit);
@@ -54,19 +71,17 @@ pub fn load_or_create_bn128_wrapper_circuit(inner_circuit: &CircuitData<Field, C
 pub fn save_bn128_wrapper_circuit(circuit: &BN128WrapperCircuit, dir: &str) {
     let circuit_bytes = circuit.to_bytes();
     match circuit_bytes {
-        Ok(bytes) => {
-            match write_to_dir(&bytes, dir, CIRCUIT_FILENAME) {
-                Ok(_) => log::info!("Saved raw circuit binary [/{}]", dir),
-                Err(e) => {
-                    log::error!("Failed to save circuit [/{}]", dir);
-                    log::error!("{}", e);
-                },
+        Ok(bytes) => match write_to_dir(&bytes, dir, CIRCUIT_FILENAME) {
+            Ok(_) => log::info!("Saved raw circuit binary [/{}]", dir),
+            Err(e) => {
+                log::error!("Failed to save circuit [/{}]", dir);
+                log::error!("{}", e);
             }
         },
         Err(e) => {
             log::error!("Failed to serialize raw binary [/{}]", dir);
             log::error!("{}", e);
-        },
+        }
     }
 
     let circuit = circuit.circuit_data();
@@ -80,17 +95,17 @@ pub fn save_bn128_wrapper_circuit(circuit: &BN128WrapperCircuit, dir: &str) {
                 Err(e) => {
                     log::error!("Failed to save common data [/{}]", dir);
                     log::error!("{}", e);
-                },
+                }
             }
-        },
+        }
         Err(e) => {
             log::error!("Failed to serialize common data [/{}]", dir);
             log::error!("{}", e);
-        },
+        }
     }
 
-    let verifier_only_circuit_data_serialized  = serde_json::to_string(&circuit.verifier_only);
-    match verifier_only_circuit_data_serialized  {
+    let verifier_only_circuit_data_serialized = serde_json::to_string(&circuit.verifier_only);
+    match verifier_only_circuit_data_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
             match write_to_dir(&bytes, dir, VERIFIER_ONLY_DATA_FILENAME) {
@@ -98,17 +113,20 @@ pub fn save_bn128_wrapper_circuit(circuit: &BN128WrapperCircuit, dir: &str) {
                 Err(e) => {
                     log::error!("Failed to save verifier only data [/{}]", dir);
                     log::error!("{}", e);
-                },
+                }
             }
-        },
+        }
         Err(e) => {
             log::error!("Failed to serialize verifier only data [/{}]", dir);
             log::error!("{}", e);
-        },
+        }
     }
 }
 
-pub fn save_bn128_wrapper_proof(proof: &ProofWithPublicInputs<Field, PoseidonBN128GoldilocksConfig, D>, dir: &str) {
+pub fn save_bn128_wrapper_proof(
+    proof: &ProofWithPublicInputs<Field, PoseidonBN128GoldilocksConfig, D>,
+    dir: &str,
+) {
     let proof_serialized = serde_json::to_string(proof);
     match proof_serialized {
         Ok(json) => {
@@ -118,18 +136,20 @@ pub fn save_bn128_wrapper_proof(proof: &ProofWithPublicInputs<Field, PoseidonBN1
                 Err(e) => {
                     log::error!("Failed to save proof [/{}]", dir);
                     log::error!("{}", e);
-                },
+                }
             }
-        },
+        }
         Err(e) => {
             log::error!("Failed to serialize proof [/{}]", dir);
             log::error!("{}", e);
-        },
+        }
     }
 }
 
 pub fn bn128_wrapper_circuit_data_exists(dir: &str) -> bool {
-    file_exists(dir, CIRCUIT_FILENAME) && file_exists(dir, COMMON_DATA_FILENAME) && file_exists(dir, VERIFIER_ONLY_DATA_FILENAME)
+    file_exists(dir, CIRCUIT_FILENAME)
+        && file_exists(dir, COMMON_DATA_FILENAME)
+        && file_exists(dir, VERIFIER_ONLY_DATA_FILENAME)
 }
 
 pub fn bn128_wrapper_circuit_proof_exists(dir: &str) -> bool {

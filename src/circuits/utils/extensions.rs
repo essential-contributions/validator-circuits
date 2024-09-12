@@ -1,5 +1,20 @@
-use plonky2::{gates::noop::NoopGate, hash::{hash_types::{HashOut, HashOutTarget}, merkle_proofs::MerkleProofTarget}, iop::{target::{BoolTarget, Target}, witness::{PartialWitness, WitnessWrite}}, plonk::{circuit_builder::CircuitBuilder, circuit_data::{CircuitConfig, CommonCircuitData}, config::AlgebraicHasher}};
 use plonky2::field::types::Field as Plonky2_Field;
+use plonky2::{
+    gates::noop::NoopGate,
+    hash::{
+        hash_types::{HashOut, HashOutTarget},
+        merkle_proofs::MerkleProofTarget,
+    },
+    iop::{
+        target::{BoolTarget, Target},
+        witness::{PartialWitness, WitnessWrite},
+    },
+    plonk::{
+        circuit_builder::CircuitBuilder,
+        circuit_data::{CircuitConfig, CommonCircuitData},
+        config::AlgebraicHasher,
+    },
+};
 
 mod sha256;
 use sha256::build_sha256_hash;
@@ -51,20 +66,20 @@ pub trait CircuitBuilderExtended {
 
     /// Computes the new merkle root given new leaf data, index and previous proof with sibling data.
     fn merkle_root_from_prev_proof<H: AlgebraicHasher<Field>>(
-        &mut self, 
-        new_leaf_data: Vec<Target>, 
-        leaf_index_bits: &[BoolTarget], 
+        &mut self,
+        new_leaf_data: Vec<Target>,
+        leaf_index_bits: &[BoolTarget],
         proof: &MerkleProofTarget,
     ) -> HashOutTarget;
 
     /// Computes the new merkle root given two instances of new leaf data, indexes and previous proofs with sibling data.
     fn merkle_root_from_prev_two_proofs<H: AlgebraicHasher<Field>>(
-        &mut self, 
-        new_leaf_data1: Vec<Target>, 
-        leaf_index_bits1: &[BoolTarget], 
+        &mut self,
+        new_leaf_data1: Vec<Target>,
+        leaf_index_bits1: &[BoolTarget],
         proof1: &MerkleProofTarget,
-        new_leaf_data2: Vec<Target>, 
-        leaf_index_bits2: &[BoolTarget], 
+        new_leaf_data2: Vec<Target>,
+        leaf_index_bits2: &[BoolTarget],
         proof2: &MerkleProofTarget,
     ) -> HashOutTarget;
 }
@@ -80,18 +95,23 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
 
     fn compress_hash(&mut self, u32_hash: Vec<Target>) -> HashOutTarget {
         debug_assert_eq!(u32_hash.len(), 8, "given u32_hash does not have 8 elements");
-        let compressed: Vec<Target> = u32_hash.chunks(2).map(|e| {
-            let low_bits = self.split_le(e[1], 32);
-            let high_bits = self.split_le(e[0], 32);
+        let compressed: Vec<Target> = u32_hash
+            .chunks(2)
+            .map(|e| {
+                let low_bits = self.split_le(e[1], 32);
+                let high_bits = self.split_le(e[0], 32);
 
-            let mut combined: Vec<BoolTarget> = Vec::new();
-            combined.extend(&low_bits[0..32]);
-            combined.extend(&high_bits[0..31]);
+                let mut combined: Vec<BoolTarget> = Vec::new();
+                combined.extend(&low_bits[0..32]);
+                combined.extend(&high_bits[0..31]);
 
-            self.le_sum(combined.into_iter())
-        }).collect();
+                self.le_sum(combined.into_iter())
+            })
+            .collect();
 
-        HashOutTarget { elements: [compressed[0], compressed[1], compressed[2], compressed[3]] }
+        HashOutTarget {
+            elements: [compressed[0], compressed[1], compressed[2], compressed[3]],
+        }
     }
 
     fn xor(&mut self, x: BoolTarget, y: BoolTarget) -> BoolTarget {
@@ -100,22 +120,19 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
         let two_x_y = self.arithmetic(Field::TWO, Field::ZERO, x.target, y.target, zero);
         BoolTarget::new_unsafe(self.sub(x_plus_y, two_x_y))
     }
-    
+
     fn and_many(&mut self, b: &[BoolTarget]) -> BoolTarget {
         let terms: Vec<Target> = b.iter().map(|b| b.target).collect();
         BoolTarget::new_unsafe(self.mul_many(terms))
     }
-    
+
     fn is_equal_many(&mut self, x: &[Target], y: &[Target]) -> BoolTarget {
         debug_assert_eq!(x.len(), y.len(), "lengths do not match for is equal many");
         let one = self.one();
-        BoolTarget::new_unsafe(x.iter().zip(y).fold(
-            one, 
-            |acc, (x, y)|{
-                let eq = self.is_equal(*x, *y);
-                self.mul(acc, eq.target)
-            },
-        ))
+        BoolTarget::new_unsafe(x.iter().zip(y).fold(one, |acc, (x, y)| {
+            let eq = self.is_equal(*x, *y);
+            self.mul(acc, eq.target)
+        }))
     }
 
     fn greater_than(&mut self, x: Target, y: Target, num_bits: usize) -> BoolTarget {
@@ -130,8 +147,12 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
             let x_bit_and_prev_comp = self.and(x_bits[i], previous_bit_comparison);
             let x_bit_and_not_y_bit = self.and(x_bits[i], not_y_bit);
             let prev_comp_and_not_y_bit = self.and(previous_bit_comparison, not_y_bit);
-            let x_bit_and_prev_comp_or_x_bit_and_not_y_bit = self.or(x_bit_and_prev_comp, x_bit_and_not_y_bit);
-            previous_bit_comparison = self.or(x_bit_and_prev_comp_or_x_bit_and_not_y_bit, prev_comp_and_not_y_bit);
+            let x_bit_and_prev_comp_or_x_bit_and_not_y_bit =
+                self.or(x_bit_and_prev_comp, x_bit_and_not_y_bit);
+            previous_bit_comparison = self.or(
+                x_bit_and_prev_comp_or_x_bit_and_not_y_bit,
+                prev_comp_and_not_y_bit,
+            );
         }
         previous_bit_comparison
     }
@@ -148,8 +169,12 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
             let y_bit_and_prev_comp = self.and(y_bits[i], previous_bit_comparison);
             let y_bit_and_not_x_bit = self.and(y_bits[i], not_x_bit);
             let prev_comp_and_not_x_bit = self.and(previous_bit_comparison, not_x_bit);
-            let y_bit_and_prev_comp_or_y_bit_and_not_x_bit = self.or(y_bit_and_prev_comp, y_bit_and_not_x_bit);
-            previous_bit_comparison = self.or(y_bit_and_prev_comp_or_y_bit_and_not_x_bit, prev_comp_and_not_x_bit);
+            let y_bit_and_prev_comp_or_y_bit_and_not_x_bit =
+                self.or(y_bit_and_prev_comp, y_bit_and_not_x_bit);
+            previous_bit_comparison = self.or(
+                y_bit_and_prev_comp_or_y_bit_and_not_x_bit,
+                prev_comp_and_not_x_bit,
+            );
         }
         previous_bit_comparison
     }
@@ -163,7 +188,7 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
         let high = self.mul(y, r2);
         let low_is_greater = self.greater_than(low, x, num_bits);
         let high_is_greater = self.greater_than(high, x, num_bits);
-        
+
         let r_is_zero = self.is_equal(r, zero);
         let y_is_zero = self.is_equal(y, zero);
         let y_is_not_zero = self.not(y_is_zero);
@@ -193,9 +218,10 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
 
     fn select_many(&mut self, b: BoolTarget, x: &[Target], y: &[Target]) -> Vec<Target> {
         debug_assert_eq!(x.len(), y.len(), "lengths do not match for select many");
-        x.iter().zip(y).map(|(x, y)| {
-            self.select(b, *x, *y)
-        }).collect()
+        x.iter()
+            .zip(y)
+            .map(|(x, y)| self.select(b, *x, *y))
+            .collect()
     }
 
     fn connect_many(&mut self, x: &[Target], y: &[Target]) {
@@ -212,11 +238,11 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
         let terms_eval_or_irrelevant = self.or(not_b, terms_eval);
         self.assert_one(terms_eval_or_irrelevant.target);
     }
-    
+
     fn merkle_root_from_prev_proof<H: AlgebraicHasher<Field>>(
-        &mut self, 
-        new_leaf_data: Vec<Target>, 
-        leaf_index_bits: &[BoolTarget], 
+        &mut self,
+        new_leaf_data: Vec<Target>,
+        leaf_index_bits: &[BoolTarget],
         proof: &MerkleProofTarget,
     ) -> HashOutTarget {
         let mut state: HashOutTarget = self.hash_or_noop::<H>(new_leaf_data);
@@ -230,18 +256,18 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
     }
 
     fn merkle_root_from_prev_two_proofs<H: AlgebraicHasher<Field>>(
-        &mut self, 
-        new_leaf_data1: Vec<Target>, 
-        leaf_index_bits1: &[BoolTarget], 
+        &mut self,
+        new_leaf_data1: Vec<Target>,
+        leaf_index_bits1: &[BoolTarget],
         proof1: &MerkleProofTarget,
-        new_leaf_data2: Vec<Target>, 
-        leaf_index_bits2: &[BoolTarget], 
+        new_leaf_data2: Vec<Target>,
+        leaf_index_bits2: &[BoolTarget],
         proof2: &MerkleProofTarget,
     ) -> HashOutTarget {
         let len = leaf_index_bits1.len();
         debug_assert_eq!(
-            leaf_index_bits1.len(), 
-            leaf_index_bits2.len(), 
+            leaf_index_bits1.len(),
+            leaf_index_bits2.len(),
             "lengths do not match for merkle root from prev two proofs"
         );
 
@@ -272,8 +298,12 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
         let mut state2: HashOutTarget = self.hash_or_noop::<H>(new_leaf_data2);
         for i in 0..len {
             let bit = leaf_index_bits2[i];
-            let sibling = self.select_hash(proof_siblings_have_same_parent[i], trace1[i], proof2.siblings[i]);
-            
+            let sibling = self.select_hash(
+                proof_siblings_have_same_parent[i],
+                trace1[i],
+                proof2.siblings[i],
+            );
+
             let perm_inputs_a = [&state2.elements[..], &sibling.elements[..]].concat();
             let perm_inputs_b = [&sibling.elements[..], &state2.elements[..]].concat();
             let perm_inputs = self.select_many(bit, &perm_inputs_b, &perm_inputs_a);

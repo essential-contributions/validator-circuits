@@ -7,26 +7,26 @@ use circuit::*;
 use targets::*;
 use witness::*;
 
+use anyhow::{anyhow, Result};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
-use anyhow::{anyhow, Result};
 
 use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
-use crate::{Config, Field, D};
 use crate::circuits::{Circuit, Proof, Serializeable};
+use crate::{Config, Field, D};
 
 pub use proof::AttestationAggregatorFirstStageProof;
 pub use witness::AttestationAggregatorFirstStageData;
-pub use witness::AttestationAggregatorFirstStageValidatorData;
 pub use witness::AttestationAggregatorFirstStageRevealData;
+pub use witness::AttestationAggregatorFirstStageValidatorData;
 
-pub use proof::PIS_AGG1_VALIDATORS_SUB_ROOT;
-pub use proof::PIS_AGG1_PARTICIPATION_SUB_ROOT;
-pub use proof::PIS_AGG1_PARTICIPATION_COUNT;
 pub use proof::PIS_AGG1_ATTESTATIONS_STAKE;
 pub use proof::PIS_AGG1_BLOCK_SLOT;
+pub use proof::PIS_AGG1_PARTICIPATION_COUNT;
+pub use proof::PIS_AGG1_PARTICIPATION_SUB_ROOT;
+pub use proof::PIS_AGG1_VALIDATORS_SUB_ROOT;
 
 pub struct AttestationAggregatorFirstStageCircuit {
     circuit_data: CircuitData<Field, Config, D>,
@@ -34,7 +34,10 @@ pub struct AttestationAggregatorFirstStageCircuit {
 }
 
 impl AttestationAggregatorFirstStageCircuit {
-    pub fn generate_proof(&self, data: &AttestationAggregatorFirstStageData) -> Result<AttestationAggregatorFirstStageProof> {
+    pub fn generate_proof(
+        &self,
+        data: &AttestationAggregatorFirstStageData,
+    ) -> Result<AttestationAggregatorFirstStageProof> {
         let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(AttestationAggregatorFirstStageProof::new(proof))
@@ -50,7 +53,10 @@ impl Circuit for AttestationAggregatorFirstStageCircuit {
         let targets = generate_circuit(&mut builder);
         let circuit_data = builder.build::<Config>();
 
-        Self { circuit_data, targets }
+        Self {
+            circuit_data,
+            targets,
+        }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -103,6 +109,9 @@ impl Serializeable for AttestationAggregatorFirstStageCircuit {
             Ok(targets) => Ok(targets),
             Err(_) => Err(anyhow!("Failed to deserialize circuit targets")),
         }?;
-        Ok(Self { circuit_data, targets })
+        Ok(Self {
+            circuit_data,
+            targets,
+        })
     }
 }

@@ -31,7 +31,7 @@ pub struct ValidatorParticipationAggCircuitTargets {
     pub lambda: Target,
     pub round_issuance: Target,
     pub participation_rounds_targets: Vec<ValidatorParticipationRoundTargets>,
-    
+
     pub init_zero: BoolTarget,
     pub verifier: VerifierCircuitTarget,
     pub previous_proof: ProofWithPublicInputsTarget<D>,
@@ -48,7 +48,10 @@ pub struct ValidatorParticipationRoundTargets {
 }
 
 #[inline]
-pub fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCircuitTargets) -> IoResult<()> {
+pub fn write_targets(
+    buffer: &mut Vec<u8>,
+    targets: &ValidatorParticipationAggCircuitTargets,
+) -> IoResult<()> {
     buffer.write_target_hash(&targets.init_val_epochs_tree_root)?;
     buffer.write_target_hash(&targets.init_pr_tree_root)?;
     buffer.write_target_vec(&targets.init_account_address)?;
@@ -81,7 +84,7 @@ pub fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCi
         buffer.write_target_vec(&d.participation_bits_fields)?;
         buffer.write_target_merkle_proof(&d.participation_proof)?;
     }
-    
+
     buffer.write_target_bool(targets.init_zero)?;
     buffer.write_target_verifier_circuit(&targets.verifier)?;
     buffer.write_target_proof_with_public_inputs(&targets.previous_proof)?;
@@ -133,7 +136,7 @@ pub fn read_targets(buffer: &mut Buffer) -> IoResult<ValidatorParticipationAggCi
             participation_proof,
         });
     }
-    
+
     let init_zero = buffer.read_target_bool()?;
     let verifier = buffer.read_target_verifier_circuit()?;
     let previous_proof = buffer.read_target_proof_with_public_inputs()?;

@@ -26,7 +26,9 @@ impl ValidatorParticipationAggProof {
     pub fn account_address(&self) -> [u8; 20] {
         let mut hash = [0u8; 20];
         for i in 0..5 {
-            let bytes = (self.proof.public_inputs[PIS_AGG_ACCOUNT_ADDRESS[i]].to_canonical_u64() as u32).to_be_bytes();
+            let bytes = (self.proof.public_inputs[PIS_AGG_ACCOUNT_ADDRESS[i]].to_canonical_u64()
+                as u32)
+                .to_be_bytes();
             hash[(i * 4)..((i * 4) + 4)].copy_from_slice(&bytes);
         }
         hash

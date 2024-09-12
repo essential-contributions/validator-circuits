@@ -19,20 +19,23 @@ pub struct ParticipationStateCircuitTargets {
     pub current_participation_root: HashOutTarget,
     pub current_participation_count: Target,
     pub participation_round_proof: MerkleProofTarget,
-    
+
     pub init_zero: BoolTarget,
     pub verifier: VerifierCircuitTarget,
     pub previous_proof: ProofWithPublicInputsTarget<D>,
 }
 
 #[inline]
-pub fn write_targets(buffer: &mut Vec<u8>, targets: &ParticipationStateCircuitTargets) -> IoResult<()> {
+pub fn write_targets(
+    buffer: &mut Vec<u8>,
+    targets: &ParticipationStateCircuitTargets,
+) -> IoResult<()> {
     buffer.write_target(targets.epoch_num)?;
     buffer.write_target_vec(&targets.val_state_inputs_hash)?;
     buffer.write_target(targets.round_num)?;
     buffer.write_target_hash(&targets.participation_root)?;
     buffer.write_target(targets.participation_count)?;
-    
+
     buffer.write_target_vec(&targets.current_val_state_inputs_hash)?;
     buffer.write_target_merkle_proof(&targets.validator_epoch_proof)?;
     buffer.write_target_hash(&targets.current_participation_root)?;
@@ -59,7 +62,7 @@ pub fn read_targets(buffer: &mut Buffer) -> IoResult<ParticipationStateCircuitTa
     let current_participation_root = buffer.read_target_hash()?;
     let current_participation_count = buffer.read_target()?;
     let participation_round_proof = buffer.read_target_merkle_proof()?;
-    
+
     let init_zero = buffer.read_target_bool()?;
     let verifier = buffer.read_target_verifier_circuit()?;
     let previous_proof = buffer.read_target_proof_with_public_inputs()?;

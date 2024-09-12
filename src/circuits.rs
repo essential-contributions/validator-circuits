@@ -1,14 +1,18 @@
-pub mod validators_state_circuit;
-pub mod participation_state_circuit;
 pub mod attestation_aggregation_circuit;
-pub mod validator_participation_circuit;
-pub mod wrappers;
+pub mod participation_state_circuit;
 mod utils;
+pub mod validator_participation_circuit;
+pub mod validators_state_circuit;
+pub mod wrappers;
 
-use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
-use std::{fs::{self, create_dir_all, File}, io::{self, BufReader, Read, Write}, path::PathBuf};
-use std::str;
 use anyhow::{anyhow, Result};
+use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
+use std::str;
+use std::{
+    fs::{self, create_dir_all, File},
+    io::{self, BufReader, Read, Write},
+    path::PathBuf,
+};
 
 use crate::{Config, Field, D};
 use utils::*;
@@ -44,8 +48,8 @@ pub trait Circuit {
 
 pub trait Serializeable {
     fn to_bytes(&self) -> Result<Vec<u8>>;
-    fn from_bytes(bytes: &Vec<u8>) -> Result<Self> 
-    where 
+    fn from_bytes(bytes: &Vec<u8>) -> Result<Self>
+    where
         Self: Sized;
 }
 
@@ -53,7 +57,7 @@ pub trait Proof {
     fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D>;
 }
 
-pub fn load_or_create_circuit<C>(dir: &str) -> C 
+pub fn load_or_create_circuit<C>(dir: &str) -> C
 where
     C: Circuit + Serializeable,
 {
@@ -66,17 +70,17 @@ where
                     Ok(circuit) => {
                         log::info!("Loaded circuit [/{}]", dir);
                         return circuit;
-                    },
+                    }
                     Err(e) => {
                         log::error!("Failed to deserialize circuit data [/{}]", dir);
                         log::error!("{}", e);
-                    },
+                    }
                 }
-            },
+            }
             Err(e) => {
                 log::error!("Failed to read circuit data [/{}]", dir);
                 log::error!("{}", e);
-            },
+            }
         };
     }
     let circuit = C::new();
@@ -84,50 +88,58 @@ where
     circuit
 }
 
-pub fn load_or_create_init_proof<C>(dir: &str) -> C::Proof 
+pub fn load_or_create_init_proof<C>(dir: &str) -> C::Proof
 where
     C: Circuit + Serializeable,
 {
-    assert!(C::is_cyclical(), "Circuit is not cyclical (no initial proof).");
+    assert!(
+        C::is_cyclical(),
+        "Circuit is not cyclical (no initial proof)."
+    );
     let circuit = load_or_create_circuit::<C>(dir);
     if circuit_init_proof_exists(dir) {
         match load_proof(&circuit, &[CIRCUIT_OUTPUT_FOLDER, dir], INIT_PROOF_FILENAME) {
             Ok(proof) => {
                 log::info!("Loaded proof [/{}]", dir);
                 return proof;
-            },
+            }
             Err(e) => {
                 log::error!("Failed to deserialize proof data [/{}]", dir);
                 log::error!("{}", e);
-            },
+            }
         }
     }
     let proof = circuit.cyclical_init_proof().unwrap();
-    if save_proof(&circuit, &proof, &[CIRCUIT_OUTPUT_FOLDER, dir], INIT_PROOF_FILENAME).is_err() {
+    if save_proof(
+        &circuit,
+        &proof,
+        &[CIRCUIT_OUTPUT_FOLDER, dir],
+        INIT_PROOF_FILENAME,
+    )
+    .is_err()
+    {
         log::warn!("Failed to save init proof [/{}]", dir);
     }
     proof
 }
 
-pub fn save_circuit<C>(circuit: &C, dir: &str) 
+pub fn save_circuit<C>(circuit: &C, dir: &str)
 where
     C: Circuit + Serializeable,
 {
     let circuit_bytes = circuit.to_bytes();
     match circuit_bytes {
-        Ok(bytes) => {
-            match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME) {
-                Ok(_) => log::info!("Saved raw circuit binary [/{}]", dir),
-                Err(e) => {
-                    log::error!("Failed to save circuit [/{}]", dir);
-                    log::error!("{}", e);
-                },
+        Ok(bytes) => match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME) {
+            Ok(_) => log::info!("Saved raw circuit binary [/{}]", dir),
+            Err(e) => {
+                log::error!("Failed to save circuit [/{}]", dir);
+                log::error!("{}", e);
             }
         },
         Err(e) => {
             log::error!("Failed to serialize raw binary [/{}]", dir);
             log::error!("{}", e);
-        },
+        }
     }
 
     let circuit = circuit.circuit_data();
@@ -141,41 +153,50 @@ where
                 Err(e) => {
                     log::error!("Failed to save common data [/{}]", dir);
                     log::error!("{}", e);
-                },
+                }
             }
-        },
+        }
         Err(e) => {
             log::error!("Failed to serialize common data [/{}]", dir);
             log::error!("{}", e);
-        },
+        }
     }
 
-    let verifier_only_circuit_data_serialized  = serde_json::to_string(&circuit.verifier_only);
-    match verifier_only_circuit_data_serialized  {
+    let verifier_only_circuit_data_serialized = serde_json::to_string(&circuit.verifier_only);
+    match verifier_only_circuit_data_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], VERIFIER_ONLY_DATA_FILENAME) {
+            match write_file(
+                &bytes,
+                &[CIRCUIT_OUTPUT_FOLDER, dir],
+                VERIFIER_ONLY_DATA_FILENAME,
+            ) {
                 Ok(_) => log::info!("Saved verifier only data [/{}]", dir),
                 Err(e) => {
                     log::error!("Failed to save verifier only data [/{}]", dir);
                     log::error!("{}", e);
-                },
+                }
             }
-        },
+        }
         Err(e) => {
             log::error!("Failed to serialize verifier only data [/{}]", dir);
             log::error!("{}", e);
-        },
+        }
     }
 }
 
-pub fn save_proof<C: Circuit>(circuit: &C, proof: &C::Proof, path: &[&str], filename: &str) -> Result<()> {
+pub fn save_proof<C: Circuit>(
+    circuit: &C,
+    proof: &C::Proof,
+    path: &[&str],
+    filename: &str,
+) -> Result<()> {
     let bytes = circuit.proof_to_bytes(proof)?;
     match write_file(&bytes, path, filename) {
         Ok(_) => {
             log::info!("Saved proof [/{}/{}]", path.join("/"), filename);
             Ok(())
-        },
+        }
         Err(e) => Err(anyhow!("{}", e)),
     }
 }
@@ -185,13 +206,15 @@ pub fn load_proof<C: Circuit>(circuit: &C, path: &[&str], filename: &str) -> Res
         Ok(bytes) => {
             let proof = circuit.proof_from_bytes(bytes)?;
             Ok(proof)
-        },
+        }
         Err(e) => Err(anyhow!("{}", e)),
     }
 }
 
 pub fn circuit_data_exists(dir: &str) -> bool {
-    file_exists(dir, CIRCUIT_FILENAME) && file_exists(dir, COMMON_DATA_FILENAME) && file_exists(dir, VERIFIER_ONLY_DATA_FILENAME)
+    file_exists(dir, CIRCUIT_FILENAME)
+        && file_exists(dir, COMMON_DATA_FILENAME)
+        && file_exists(dir, VERIFIER_ONLY_DATA_FILENAME)
 }
 
 pub fn circuit_init_proof_exists(dir: &str) -> bool {

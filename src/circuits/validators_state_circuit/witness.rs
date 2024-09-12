@@ -1,10 +1,10 @@
+use anyhow::Result;
+use plonky2::field::types::{Field as Plonky2_Field, Field64};
 use plonky2::hash::hash_types::HashOut;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
-use plonky2::field::types::{Field as Plonky2_Field, Field64};
 use plonky2::plonk::circuit_data::CircuitData;
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::recursion::dummy_circuit::cyclic_base_proof;
-use anyhow::Result;
 
 use crate::accounts::{initial_accounts_tree, initial_accounts_tree_root, null_account_address};
 use crate::circuits::extensions::PartialWitnessExtended;
@@ -32,25 +32,41 @@ pub struct ValidatorsStateCircuitData {
     pub to_account: [u8; 20],
     pub to_acc_index: Option<usize>,
     pub to_acc_proof: Vec<[Field; 4]>,
-    
+
     pub previous_proof: Option<ValidatorsStateProof>,
 }
 
 pub fn generate_partial_witness(
-    circuit_data: &CircuitData<Field, Config, D>, 
-    targets: &ValidatorsStateCircuitTargets, 
+    circuit_data: &CircuitData<Field, Config, D>,
+    targets: &ValidatorsStateCircuitTargets,
     data: &ValidatorsStateCircuitData,
 ) -> Result<PartialWitness<Field>> {
     let mut pw = PartialWitness::new();
 
     pw.set_target(targets.index, Field::from_canonical_usize(data.index));
     pw.set_target(targets.stake, Field::from_canonical_u32(data.stake));
-    pw.set_hash_target(targets.commitment, HashOut::<Field> { elements: data.commitment });
+    pw.set_hash_target(
+        targets.commitment,
+        HashOut::<Field> {
+            elements: data.commitment,
+        },
+    );
     pw.set_target_arr(&targets.account, &account_to_fields(data.account));
 
-    pw.set_target(targets.validator_index, Field::from_canonical_usize(data.validator_index));
-    pw.set_target(targets.validator_stake, Field::from_canonical_u32(data.validator_stake));
-    pw.set_hash_target(targets.validator_commitment, HashOut::<Field> { elements: data.validator_commitment });
+    pw.set_target(
+        targets.validator_index,
+        Field::from_canonical_usize(data.validator_index),
+    );
+    pw.set_target(
+        targets.validator_stake,
+        Field::from_canonical_u32(data.validator_stake),
+    );
+    pw.set_hash_target(
+        targets.validator_commitment,
+        HashOut::<Field> {
+            elements: data.validator_commitment,
+        },
+    );
     pw.set_merkle_proof_target(targets.validator_proof.clone(), &data.validator_proof);
 
     pw.set_target_arr(&targets.from_account, &account_to_fields(data.from_account));
@@ -66,13 +82,13 @@ pub fn generate_partial_witness(
         Some(previous_proof) => {
             pw.set_bool_target(targets.init_zero, true);
             pw.set_proof_with_pis_target(&targets.previous_proof, previous_proof.proof());
-        },
+        }
         None => {
             //setup for using initial state (no previous proof)
             let base_proof = initial_proof(circuit_data);
             pw.set_bool_target(targets.init_zero, false);
             pw.set_proof_with_pis_target::<Config, D>(&targets.previous_proof, &base_proof);
-        },
+        }
     };
     Ok(pw)
 }
@@ -108,19 +124,22 @@ pub fn generate_initial_data() -> ValidatorsStateCircuitData {
     }
 }
 
-fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPublicInputs<Field, Config, D> {
+fn initial_proof(
+    circuit_data: &CircuitData<Field, Config, D>,
+) -> ProofWithPublicInputs<Field, Config, D> {
     let initial_inputs_hash = [Field::ZERO; 8];
     let initial_total_staked = Field::ZERO;
     let initial_total_validators = Field::ZERO;
     let initial_validators_tree_root = initial_validators_tree_root();
     let initial_accounts_tree_root = initial_accounts_tree_root();
     let initial_public_inputs = [
-        &initial_inputs_hash[..], 
+        &initial_inputs_hash[..],
         &[initial_total_staked],
         &[initial_total_validators],
         &initial_validators_tree_root[..],
-        &initial_accounts_tree_root[..]
-    ].concat();
+        &initial_accounts_tree_root[..],
+    ]
+    .concat();
     cyclic_base_proof(
         &circuit_data.common,
         &circuit_data.verifier_only,

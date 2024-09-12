@@ -1,13 +1,21 @@
 mod go;
 
+use anyhow::{anyhow, Result};
 use go::{go_build, verify_go};
 use serde_json::Value;
-use std::{fs::{self, File}, io::{self, BufReader, Read}, path::{Path, PathBuf}, process::Command};
-use anyhow::{anyhow, Result};
+use std::{
+    fs::{self, File},
+    io::{self, BufReader, Read},
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use crate::circuits::CIRCUIT_OUTPUT_FOLDER;
 
-use super::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, BN128_WRAPPER_OUTPUT_FOLDER};
+use super::{
+    bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists,
+    BN128_WRAPPER_OUTPUT_FOLDER,
+};
 
 pub const GROTH16_WRAPPER_OUTPUT_FOLDER: &str = "groth16";
 const WRAPPER_GO_PROJECT_PATH: &str = "./groth16-wrapper";
@@ -25,14 +33,26 @@ pub fn create_groth16_wrapper_circuit(dir: &str) {
         if bn128_wrapper_circuit_data_exists(dir) && bn128_wrapper_circuit_proof_exists(dir) {
             //run the binary to build circuit and test proof
             let binary_path = format!("{}/{}", WRAPPER_GO_PROJECT_PATH, WRAPPER_GO_PROJECT_BINARY);
-            let input_arg = format!("--in=./{}/{}/{}", CIRCUIT_OUTPUT_FOLDER, dir, BN128_WRAPPER_OUTPUT_FOLDER);
-            let output_arg = format!("--out=./{}/{}/{}", CIRCUIT_OUTPUT_FOLDER, dir, GROTH16_WRAPPER_OUTPUT_FOLDER);
-            match Command::new(Path::new(&binary_path)).args(&[input_arg, output_arg]).output() {
+            let input_arg = format!(
+                "--in=./{}/{}/{}",
+                CIRCUIT_OUTPUT_FOLDER, dir, BN128_WRAPPER_OUTPUT_FOLDER
+            );
+            let output_arg = format!(
+                "--out=./{}/{}/{}",
+                CIRCUIT_OUTPUT_FOLDER, dir, GROTH16_WRAPPER_OUTPUT_FOLDER
+            );
+            match Command::new(Path::new(&binary_path))
+                .args(&[input_arg, output_arg])
+                .output()
+            {
                 Ok(output) if output.status.success() => {
                     log::info!("Successfully created groth16 wrapper circuit [/{}]", dir);
                 }
                 Ok(output) => {
-                    log::error!("Running Go binary failed: {}", String::from_utf8_lossy(&output.stderr));
+                    log::error!(
+                        "Running Go binary failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
                 }
                 Err(e) => {
                     log::error!("Failed to run Go binary: {}", e);
@@ -47,30 +67,42 @@ pub fn create_groth16_wrapper_circuit(dir: &str) {
 pub fn generate_groth16_wrapper_proof(dir: &str) -> Result<[[u8; 32]; 13]> {
     // make sure bn128 exists
     if !bn128_wrapper_circuit_data_exists(dir) {
-        return Err(anyhow!("Cannot generate groth16 wrapped proof until circuits are built"))
+        return Err(anyhow!(
+            "Cannot generate groth16 wrapped proof until circuits are built"
+        ));
     }
     if !bn128_wrapper_circuit_proof_exists(dir) {
-        return Err(anyhow!("Proof must be wrapped to bn128 first"))
+        return Err(anyhow!("Proof must be wrapped to bn128 first"));
     }
 
     // wrap groth16
     if verify_binary() {
         let binary_path = format!("{}/{}", WRAPPER_GO_PROJECT_PATH, WRAPPER_GO_PROJECT_BINARY);
-        let input_arg = format!("--in=./{}/{}/{}", CIRCUIT_OUTPUT_FOLDER, dir, BN128_WRAPPER_OUTPUT_FOLDER);
-        let output_arg = format!("--out=./{}/{}/{}", CIRCUIT_OUTPUT_FOLDER, dir, GROTH16_WRAPPER_OUTPUT_FOLDER);
-        match Command::new(Path::new(&binary_path)).args(&[input_arg, output_arg]).output() {
+        let input_arg = format!(
+            "--in=./{}/{}/{}",
+            CIRCUIT_OUTPUT_FOLDER, dir, BN128_WRAPPER_OUTPUT_FOLDER
+        );
+        let output_arg = format!(
+            "--out=./{}/{}/{}",
+            CIRCUIT_OUTPUT_FOLDER, dir, GROTH16_WRAPPER_OUTPUT_FOLDER
+        );
+        match Command::new(Path::new(&binary_path))
+            .args(&[input_arg, output_arg])
+            .output()
+        {
             Ok(output) if output.status.success() => {
                 log::info!("Successfully created groth16 proof [/{}]", dir);
             }
             Ok(output) => {
-                return Err(anyhow!("Running Go binary failed: {}", String::from_utf8_lossy(&output.stderr)))
+                return Err(anyhow!(
+                    "Running Go binary failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ))
             }
-            Err(e) => {
-                return Err(anyhow!("Failed to run Go binary: {}", e))
-            }
+            Err(e) => return Err(anyhow!("Failed to run Go binary: {}", e)),
         }
     } else {
-        return Err(anyhow!("Failed to build Go binary"))
+        return Err(anyhow!("Failed to build Go binary"));
     }
 
     // return json
@@ -78,7 +110,7 @@ pub fn generate_groth16_wrapper_proof(dir: &str) -> Result<[[u8; 32]; 13]> {
         Ok(json_bytes) => {
             let json_str = String::from_utf8_lossy(&json_bytes).to_string();
             Ok(proof_data_from_json(json_str))
-        },
+        }
         Err(e) => Err(anyhow!("Failed to read proof output: {}", e)),
     }
 }
@@ -86,7 +118,6 @@ pub fn generate_groth16_wrapper_proof(dir: &str) -> Result<[[u8; 32]; 13]> {
 fn verify_binary() -> bool {
     //check if binaries have been built
     if !binary_exists() {
-
         //check that Go is installed at at minimum spec
         if !verify_go() {
             return false;
@@ -101,8 +132,10 @@ fn verify_binary() -> bool {
 }
 
 pub fn groth16_wrapper_circuit_data_exists(dir: &str) -> bool {
-    file_exists(dir, GROTH16_CIRCUIT_FILENAME) && file_exists(dir, GROTH16_VERIFYING_KEY_FILENAME) 
-        && file_exists(dir, GROTH16_PROVING_KEY_FILENAME) && file_exists(dir, GROTH16_SOLIDITY_VERIFIER_FILENAME)
+    file_exists(dir, GROTH16_CIRCUIT_FILENAME)
+        && file_exists(dir, GROTH16_VERIFYING_KEY_FILENAME)
+        && file_exists(dir, GROTH16_PROVING_KEY_FILENAME)
+        && file_exists(dir, GROTH16_SOLIDITY_VERIFIER_FILENAME)
 }
 
 pub fn groth16_wrapper_circuit_proof_exists(dir: &str) -> bool {
@@ -161,14 +194,22 @@ fn read_from_dir(dir: &str, filename: &str) -> io::Result<Vec<u8>> {
 }
 
 fn proof_data_from_json(json_str: String) -> [[u8; 32]; 13] {
-    let mut proof_data =  [[0u8; 32]; 13];
+    let mut proof_data = [[0u8; 32]; 13];
 
     //get json elements
     let v: Value = serde_json::from_str(&json_str).expect("JSON was not well-formatted");
-    let proof_array = v["proof"].as_array().expect("Expected an array for 'proof'");
-    let commitments_array = v["commitments"].as_array().expect("Expected an array for 'commitments'");
-    let commitments_pok_array = v["commitmentPok"].as_array().expect("Expected an array for 'commitmentPok'");
-    let input_array = v["input"].as_array().expect("Expected an array for 'input'");
+    let proof_array = v["proof"]
+        .as_array()
+        .expect("Expected an array for 'proof'");
+    let commitments_array = v["commitments"]
+        .as_array()
+        .expect("Expected an array for 'commitments'");
+    let commitments_pok_array = v["commitmentPok"]
+        .as_array()
+        .expect("Expected an array for 'commitmentPok'");
+    let input_array = v["input"]
+        .as_array()
+        .expect("Expected an array for 'input'");
 
     //add proof data
     for (i, data) in proof_array.iter().enumerate() {
@@ -205,7 +246,8 @@ fn hex_string_to_u8_array(hex_str: String) -> [u8; 32] {
 
     let mut bytes = [0u8; 32];
     for i in 0..32 {
-        bytes[i] = u8::from_str_radix(&hex_str[(i * 2)..((i + 1) * 2)], 16).expect("Invalid hex string");
+        bytes[i] =
+            u8::from_str_radix(&hex_str[(i * 2)..((i + 1) * 2)], 16).expect("Invalid hex string");
     }
 
     bytes

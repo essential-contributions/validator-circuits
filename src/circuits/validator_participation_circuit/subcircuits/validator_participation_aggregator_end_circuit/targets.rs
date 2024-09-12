@@ -13,7 +13,10 @@ pub struct ValidatorParticipationAggEndCircuitTargets {
 }
 
 #[inline]
-pub fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggEndCircuitTargets) -> IoResult<()> {
+pub fn write_targets(
+    buffer: &mut Vec<u8>,
+    targets: &ValidatorParticipationAggEndCircuitTargets,
+) -> IoResult<()> {
     buffer.write_target_proof_with_public_inputs(&targets.participation_agg_proof)?;
     buffer.write_target_verifier_circuit(&targets.participation_agg_verifier)?;
 

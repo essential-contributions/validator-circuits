@@ -1,11 +1,11 @@
+use anyhow::{anyhow, Result};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::Write;
 use serde::{Deserialize, Serialize};
-use anyhow::{anyhow, Result};
 
-use crate::{Config, Field, D};
-use crate::circuits::Proof;
 use super::{write_proof_data, AttestationAggregatorThirdStageProofData};
+use crate::circuits::Proof;
+use crate::{Config, Field, D};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AttestationAggregatorThirdStageProof {
@@ -14,7 +14,10 @@ pub struct AttestationAggregatorThirdStageProof {
 }
 
 impl AttestationAggregatorThirdStageProof {
-    pub fn new(proof: ProofWithPublicInputs<Field, Config, D>, data: AttestationAggregatorThirdStageProofData) -> Self {
+    pub fn new(
+        proof: ProofWithPublicInputs<Field, Config, D>,
+        data: AttestationAggregatorThirdStageProofData,
+    ) -> Self {
         AttestationAggregatorThirdStageProof { proof, data }
     }
 
@@ -30,10 +33,12 @@ impl AttestationAggregatorThirdStageProof {
     }
 
     pub fn public_inputs_hash(&self) -> [Field; 4] {
-        [self.proof.public_inputs[0], 
-        self.proof.public_inputs[1], 
-        self.proof.public_inputs[2], 
-        self.proof.public_inputs[3]]
+        [
+            self.proof.public_inputs[0],
+            self.proof.public_inputs[1],
+            self.proof.public_inputs[2],
+            self.proof.public_inputs[3],
+        ]
     }
 
     pub fn validators_inputs_hash(&self) -> [u8; 32] {

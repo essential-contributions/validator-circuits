@@ -1,2 +1,2 @@
-pub mod serialization;
 pub mod extensions;
+pub mod serialization;

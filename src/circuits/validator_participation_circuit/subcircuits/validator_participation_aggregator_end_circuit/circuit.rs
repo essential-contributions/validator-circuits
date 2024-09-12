@@ -2,10 +2,17 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CommonCircuitData, VerifierCircuitTarget};
 
 use crate::circuits::extensions::CircuitBuilderExtended;
-use crate::circuits::participation_state_circuit::{PIS_PARTICIPATION_ROUNDS_TREE_ROOT, PIS_PARTICIPATION_STATE_INPUTS_HASH, PIS_VALIDATOR_EPOCHS_TREE_ROOT};
+use crate::circuits::participation_state_circuit::{
+    PIS_PARTICIPATION_ROUNDS_TREE_ROOT, PIS_PARTICIPATION_STATE_INPUTS_HASH,
+    PIS_VALIDATOR_EPOCHS_TREE_ROOT,
+};
 use crate::{Config, Field, D};
 
-use super::{ValidatorParticipationAggEndCircuitTargets, PIS_AGG_ACCOUNT_ADDRESS, PIS_AGG_EPOCHS_TREE_ROOT, PIS_AGG_FROM_EPOCH, PIS_AGG_PARAM_RF, PIS_AGG_PARAM_ST, PIS_AGG_PR_TREE_ROOT, PIS_AGG_TO_EPOCH, PIS_AGG_WITHDRAW_MAX, PIS_AGG_WITHDRAW_UNEARNED};
+use super::{
+    ValidatorParticipationAggEndCircuitTargets, PIS_AGG_ACCOUNT_ADDRESS, PIS_AGG_EPOCHS_TREE_ROOT,
+    PIS_AGG_FROM_EPOCH, PIS_AGG_PARAM_RF, PIS_AGG_PARAM_ST, PIS_AGG_PR_TREE_ROOT, PIS_AGG_TO_EPOCH,
+    PIS_AGG_WITHDRAW_MAX, PIS_AGG_WITHDRAW_UNEARNED,
+};
 
 pub fn generate_circuit(
     builder: &mut CircuitBuilder<Field, D>,
@@ -14,14 +21,15 @@ pub fn generate_circuit(
 ) -> ValidatorParticipationAggEndCircuitTargets {
     //Verify validator participation aggregation proof
     let participation_agg_verifier = VerifierCircuitTarget {
-        constants_sigmas_cap: builder.add_virtual_cap(participation_agg_common_data.config.fri_config.cap_height),
+        constants_sigmas_cap: builder
+            .add_virtual_cap(participation_agg_common_data.config.fri_config.cap_height),
         circuit_digest: builder.add_virtual_hash(),
     };
     let participation_agg_proof = builder.add_virtual_proof_with_pis(participation_agg_common_data);
     builder.verify_proof::<Config>(
-        &participation_agg_proof, 
-        &participation_agg_verifier, 
-        participation_agg_common_data
+        &participation_agg_proof,
+        &participation_agg_verifier,
+        participation_agg_common_data,
     );
     let participation_agg_val_epochs_tree_root = vec![
         participation_agg_proof.public_inputs[PIS_AGG_EPOCHS_TREE_ROOT[0]],
@@ -51,14 +59,16 @@ pub fn generate_circuit(
 
     //Verify participation state proof
     let participation_state_verifier = VerifierCircuitTarget {
-        constants_sigmas_cap: builder.add_virtual_cap(participation_state_common_data.config.fri_config.cap_height),
+        constants_sigmas_cap: builder
+            .add_virtual_cap(participation_state_common_data.config.fri_config.cap_height),
         circuit_digest: builder.add_virtual_hash(),
     };
-    let participation_state_proof = builder.add_virtual_proof_with_pis(participation_state_common_data);
+    let participation_state_proof =
+        builder.add_virtual_proof_with_pis(participation_state_common_data);
     builder.verify_proof::<Config>(
-        &participation_state_proof, 
-        &participation_state_verifier, 
-        participation_state_common_data
+        &participation_state_proof,
+        &participation_state_verifier,
+        participation_state_common_data,
     );
     let participation_state_inputs_hash = vec![
         participation_state_proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[0]],
@@ -84,10 +94,16 @@ pub fn generate_circuit(
     ];
 
     //Connect data between proofs
-    for (&a, s) in participation_agg_val_epochs_tree_root.iter().zip(participation_state_val_epochs_tree_root) {
+    for (&a, s) in participation_agg_val_epochs_tree_root
+        .iter()
+        .zip(participation_state_val_epochs_tree_root)
+    {
         builder.connect(a, s);
     }
-    for (&a, s) in participation_agg_pr_tree_root.iter().zip(participation_state_pr_tree_root) {
+    for (&a, s) in participation_agg_pr_tree_root
+        .iter()
+        .zip(participation_state_pr_tree_root)
+    {
         builder.connect(a, s);
     }
 
@@ -101,7 +117,8 @@ pub fn generate_circuit(
         &builder.to_u32s(withdraw_unearned),
         &[param_rf],
         &[param_st],
-    ].concat();
+    ]
+    .concat();
     let inputs_hash = builder.sha256_hash(inputs);
     let inputs_hash_compressed = builder.compress_hash(inputs_hash);
     builder.register_public_inputs(&inputs_hash_compressed.elements);
@@ -109,7 +126,7 @@ pub fn generate_circuit(
     ValidatorParticipationAggEndCircuitTargets {
         participation_agg_proof,
         participation_agg_verifier,
-    
+
         participation_state_proof,
         participation_state_verifier,
     }

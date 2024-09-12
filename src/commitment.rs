@@ -2,17 +2,21 @@ use std::fs::{create_dir_all, File};
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 
+use anyhow::{anyhow, Result};
 use blake3::Hasher as Blake3_Hasher;
 use plonky2::field::types::Field as Plonky2_Field;
 use rand::Rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use anyhow::{anyhow, Result};
 
-use crate::{bytes_to_fields, field_hash, field_hash_two, fields_to_bytes, Field, VALIDATOR_COMMITMENT_TREE_HEIGHT};
+use crate::{
+    bytes_to_fields, field_hash, field_hash_two, fields_to_bytes, Field,
+    VALIDATOR_COMMITMENT_TREE_HEIGHT,
+};
 
 const COMMITMENT_COMPUTED_TREE_HEIGHT: usize = 14;
-const COMMITMENT_MEMORY_TREE_HEIGHT: usize = VALIDATOR_COMMITMENT_TREE_HEIGHT - COMMITMENT_COMPUTED_TREE_HEIGHT;
+const COMMITMENT_MEMORY_TREE_HEIGHT: usize =
+    VALIDATOR_COMMITMENT_TREE_HEIGHT - COMMITMENT_COMPUTED_TREE_HEIGHT;
 
 const COMMITMENT_OUTPUT_FOLDER: &str = "data";
 const COMMITMENT_OUTPUT_FILE: &str = "secret.bin";
@@ -38,15 +42,16 @@ impl Commitment {
         //fill in computed tree roots first
         {
             let num_computed_trees = 1 << COMMITMENT_MEMORY_TREE_HEIGHT;
-            let computed_roots: Vec<[Field; 4]> = (0..num_computed_trees).into_par_iter().map(|i| {
-                computed_root(seed, i)
-            }).collect();
+            let computed_roots: Vec<[Field; 4]> = (0..num_computed_trees)
+                .into_par_iter()
+                .map(|i| computed_root(seed, i))
+                .collect();
             let comp_roots_start = num_computed_trees - 1;
             computed_roots.iter().enumerate().for_each(|(i, r)| {
                 nodes[comp_roots_start + i] = r.clone();
             });
         }
-        
+
         //fill in the rest of the tree
         for i in (0..COMMITMENT_MEMORY_TREE_HEIGHT).rev() {
             let start = ((1 << i) - 1) as usize;
@@ -86,7 +91,10 @@ impl Commitment {
         let num_nodes = (1 << (COMMITMENT_MEMORY_TREE_HEIGHT + 1)) - 1;
         let mut bytes: Vec<u8> = vec![0; 32 + (32 * num_nodes)];
 
-        self.seed.iter().enumerate().for_each(|(i, b)| bytes[i] = *b);
+        self.seed
+            .iter()
+            .enumerate()
+            .for_each(|(i, b)| bytes[i] = *b);
         self.nodes.iter().enumerate().for_each(|(i, n)| {
             fields_to_bytes(n).iter().enumerate().for_each(|(j, b)| {
                 bytes[32 + i * 32 + j] = *b;
@@ -124,7 +132,7 @@ impl Commitment {
             idx = idx / 2;
             proof_index = proof_index + 1;
         }
-        
+
         //continue proof with the memory nodes
         let mut idx = computed_tree_index;
         for i in (0..COMMITMENT_MEMORY_TREE_HEIGHT).rev() {
@@ -176,24 +184,28 @@ fn computed_nodes(seed: [u8; 32], offset: usize) -> Vec<[Field; 4]> {
     let mut nodes: Vec<[Field; 4]> = vec![[Field::ZERO; 4]; num_nodes];
     {
         let num_secrets = 1 << COMMITMENT_COMPUTED_TREE_HEIGHT;
-        let secrets_hashes: Vec<[Field; 4]> = (0..num_secrets).into_par_iter().map(|i| {
-            let secret = computed_secret(seed, i + seed_offset);
-            field_hash(&secret)
-        }).collect();
+        let secrets_hashes: Vec<[Field; 4]> = (0..num_secrets)
+            .into_par_iter()
+            .map(|i| {
+                let secret = computed_secret(seed, i + seed_offset);
+                field_hash(&secret)
+            })
+            .collect();
 
         let secrets_hashes_start = num_secrets - 1;
         secrets_hashes.iter().enumerate().for_each(|(i, s)| {
             nodes[secrets_hashes_start + i] = s.clone();
         });
     }
-    
+
     //fill in the rest of the nodes
     for i in (0..COMMITMENT_COMPUTED_TREE_HEIGHT).rev() {
         let start = ((1 << i) - 1) as usize;
         let end = (start * 2) + 1;
-        let hashes: Vec<[Field; 4]> = (start..end).into_par_iter().map(|j| {
-            field_hash_two(nodes[(j * 2) + 1], nodes[(j * 2) + 2])
-        }).collect();
+        let hashes: Vec<[Field; 4]> = (start..end)
+            .into_par_iter()
+            .map(|j| field_hash_two(nodes[(j * 2) + 1], nodes[(j * 2) + 2]))
+            .collect();
         hashes.iter().enumerate().for_each(|(j, h)| {
             nodes[j + start] = h.clone();
         });
@@ -235,7 +247,7 @@ pub fn example_commitment_proof(validator_index: usize) -> CommitmentReveal {
         proof.push(node);
         node = field_hash_two(node, node);
     }
-    CommitmentReveal {reveal, proof }
+    CommitmentReveal { reveal, proof }
 }
 
 // Generates an empty commitment proof
@@ -253,7 +265,7 @@ pub fn empty_commitment() -> CommitmentReveal {
         node = field_hash_two(node, node);
     }
 
-    CommitmentReveal {reveal, proof }
+    CommitmentReveal { reveal, proof }
 }
 
 // Generates an empty commitment root
@@ -305,6 +317,6 @@ pub fn load_commitment() -> Result<Commitment> {
     let mut reader = BufReader::with_capacity(32 * 1024, file);
     let mut bytes: Vec<u8> = Vec::new();
     reader.read_to_end(&mut bytes)?;
-    
+
     Ok(Commitment::from_bytes(&bytes)?)
 }

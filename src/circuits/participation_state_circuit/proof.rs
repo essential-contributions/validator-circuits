@@ -23,24 +23,30 @@ impl ParticipationStateProof {
     pub fn inputs_hash(&self) -> [u8; 32] {
         let mut hash = [0u8; 32];
         for i in 0..8 {
-            let bytes = (self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[i]].to_canonical_u64() as u32).to_be_bytes();
+            let bytes = (self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[i]]
+                .to_canonical_u64() as u32)
+                .to_be_bytes();
             hash[(i * 4)..((i * 4) + 4)].copy_from_slice(&bytes);
         }
         hash
     }
 
     pub fn validator_epochs_tree_root(&self) -> [Field; 4] {
-        [self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[0]], 
-        self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[1]], 
-        self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[2]], 
-        self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[3]]]
+        [
+            self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[0]],
+            self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[1]],
+            self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[2]],
+            self.proof.public_inputs[PIS_VALIDATOR_EPOCHS_TREE_ROOT[3]],
+        ]
     }
 
     pub fn participation_rounds_tree_root(&self) -> [Field; 4] {
-        [self.proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[0]], 
-        self.proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[1]], 
-        self.proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[2]], 
-        self.proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[3]]]
+        [
+            self.proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[0]],
+            self.proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[1]],
+            self.proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[2]],
+            self.proof.public_inputs[PIS_PARTICIPATION_ROUNDS_TREE_ROOT[3]],
+        ]
     }
 }
 
