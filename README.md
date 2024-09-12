@@ -23,19 +23,33 @@ Exclude the `--full` flag if you want to skip the groth16 stuff.
 
 ## Benchmarks
 
-### Prove Attestations
-
-Proves a minimal amount of "signatures" through the 3 stage attestation aggregation proofs
-```
-RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- attestations
-```
-***add a `--full` flag at the end to include wrapping to groth16***
-
 ### Generate Commitment
 
 Generates a validator commitment merkle tree root. Because Poseidon hash is being used, this can take quite a bit of time compared to typical CPU friendly hash functions. Keep in mind that this only has to be computed once per validator.
 ```
 RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- commitment
+```
+
+### Prove Validator Set and Participation State
+
+Proves updates to the validator set state and participation state based on inputs.
+```
+RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- state
+```
+
+### Prove Attestations
+
+Proves a minimal amount of "signatures" through the 3 stage attestation aggregation proofs.
+```
+RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- attestations
+```
+***add a `--full` flag at the end to include wrapping to groth16***
+
+### Prove Participation
+
+Proves a validators participation accross epochs including an exlicit unearned rewards value.
+```
+RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- participation
 ```
 ***add a `--full` flag at the end to include wrapping to groth16***
 
