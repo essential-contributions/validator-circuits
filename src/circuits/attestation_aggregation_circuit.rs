@@ -234,8 +234,7 @@ fn generate_proof_from_data(
         let stage2_group = &validator_data[validator_stage2_group_index];
         //add full second stage group if it is currently just a root
         if let SecondStageGroupData::ValidatorGroupRoot(_) = stage2_group {
-            let validator_group_data: Vec<FirstStageGroupData> =
-                vec![
+            let validator_group_data: Vec<FirstStageGroupData> = vec![
                     FirstStageGroupData::ValidatorGroupRoot([Field::ZERO; 4]);
                     AGGREGATION_STAGE2_SIZE
                 ];

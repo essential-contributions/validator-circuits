@@ -17,7 +17,7 @@ pub fn generate_circuit(
     let mut atts_agg1_data: Vec<AttAgg2Agg1Targets> = Vec::new();
 
     // Global targets
-    let empty_participation_root = build_empty_participation_sub_root(builder);
+    let empty_participation_sub_root = build_empty_participation_sub_root(builder);
     let block_slot = builder.add_virtual_target();
     let mut attestations_stake = builder.zero();
     let mut participation_count = builder.zero();
@@ -67,7 +67,7 @@ pub fn generate_circuit(
         participation_nodes.push(builder.select_hash(
             has_participation,
             proof_participation_sub_root,
-            empty_participation_root,
+            empty_participation_sub_root,
         ));
 
         // Make sure each agg1 data has the same block_slot
@@ -118,11 +118,11 @@ pub fn generate_circuit(
             participation_nodes.push(builder.hash_n_to_hash_no_pad::<Hash>(data));
         }
     }
-    let participation_root = participation_nodes.last().unwrap();
+    let participation_sub_root = participation_nodes.last().unwrap();
 
     // Register the public inputs
     builder.register_public_inputs(&validators_sub_root.elements);
-    builder.register_public_inputs(&participation_root.elements);
+    builder.register_public_inputs(&participation_sub_root.elements);
     builder.register_public_input(participation_count);
     builder.register_public_input(attestations_stake);
     builder.register_public_input(block_slot);
