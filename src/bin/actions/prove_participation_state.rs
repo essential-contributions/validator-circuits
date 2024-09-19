@@ -2,7 +2,9 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::circuits::participation_state_circuit::ParticipationStateCircuit;
+use validator_circuits::circuits::participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof};
+use validator_circuits::epochs::ValidatorEpochsTree;
+use validator_circuits::participation::ParticipationRoundsTree;
 use validator_circuits::{
     circuits::{
         load_or_create_circuit, load_or_create_init_proof,
@@ -64,24 +66,12 @@ pub fn benchmark_prove_participation_state(full: bool) {
     let proof =
         load_or_create_init_proof::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
-    assert!(
-        participation_state_circuit.verify_proof(&proof).is_ok(),
-        "Proof failed verification."
-    );
-    assert_eq!(
-        proof.validator_epochs_tree_root(),
-        validator_epochs_tree.root(),
-        "Unexpected validator epochs tree root."
-    );
-    assert_eq!(
-        proof.participation_rounds_tree_root(),
-        participation_rounds_tree.root(),
-        "Unexpected participation rounds tree root."
-    );
-    assert_eq!(
-        proof.inputs_hash(),
+    assert_state(
+        &participation_state_circuit,
+        &proof,
+        &validator_epochs_tree,
+        &participation_rounds_tree,
         inputs_hash,
-        "Unexpected inputs hash from proof."
     );
     println!();
 
@@ -111,23 +101,6 @@ pub fn benchmark_prove_participation_state(full: bool) {
             previous_proof: Some(proof),
         })
         .unwrap();
-    println!("(finished in {:?})", start.elapsed());
-    assert!(
-        participation_state_circuit.verify_proof(&proof).is_ok(),
-        "Proof failed verification."
-    );
-    println!(
-        "Proved participation state at inputs hash 0x{}",
-        to_hex(&proof.inputs_hash())
-    );
-    println!(
-        "validator_epochs_tree_root - {:?}",
-        proof.validator_epochs_tree_root()
-    );
-    println!(
-        "participation_rounds_tree_root - {:?}",
-        proof.participation_rounds_tree_root()
-    );
     validator_epochs_tree.update_epoch(
         epoch_num,
         &validators_state_proof1,
@@ -135,22 +108,16 @@ pub fn benchmark_prove_participation_state(full: bool) {
         &accounts_tree1,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
-    assert_eq!(
-        proof.validator_epochs_tree_root(),
-        validator_epochs_tree.root(),
-        "Unexpected validator epochs tree root."
-    );
-    assert_eq!(
-        proof.participation_rounds_tree_root(),
-        participation_rounds_tree.root(),
-        "Unexpected participation rounds tree root."
-    );
     inputs_hash = next_inputs_hash(inputs_hash, round, validators_state_proof1.inputs_hash());
-    assert_eq!(
-        proof.inputs_hash(),
+    println!("(finished in {:?})", start.elapsed());
+    assert_state(
+        &participation_state_circuit,
+        &proof,
+        &validator_epochs_tree,
+        &participation_rounds_tree,
         inputs_hash,
-        "Unexpected inputs hash from proof."
     );
+    print_proof(&proof);
     println!();
 
     //generate proof off the last proof
@@ -179,23 +146,6 @@ pub fn benchmark_prove_participation_state(full: bool) {
             previous_proof: Some(proof),
         })
         .unwrap();
-    println!("(finished in {:?})", start.elapsed());
-    assert!(
-        participation_state_circuit.verify_proof(&proof).is_ok(),
-        "Proof failed verification."
-    );
-    println!(
-        "Proved participation state at inputs hash 0x{}",
-        to_hex(&proof.inputs_hash())
-    );
-    println!(
-        "validator_epochs_tree_root - {:?}",
-        proof.validator_epochs_tree_root()
-    );
-    println!(
-        "participation_rounds_tree_root - {:?}",
-        proof.participation_rounds_tree_root()
-    );
     validator_epochs_tree.update_epoch(
         epoch_num,
         &validators_state_proof2,
@@ -203,22 +153,16 @@ pub fn benchmark_prove_participation_state(full: bool) {
         &accounts_tree2,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
-    assert_eq!(
-        proof.validator_epochs_tree_root(),
-        validator_epochs_tree.root(),
-        "Unexpected validator epochs tree root."
-    );
-    assert_eq!(
-        proof.participation_rounds_tree_root(),
-        participation_rounds_tree.root(),
-        "Unexpected participation rounds tree root."
-    );
     inputs_hash = next_inputs_hash(inputs_hash, round, validators_state_proof2.inputs_hash());
-    assert_eq!(
-        proof.inputs_hash(),
+    println!("(finished in {:?})", start.elapsed());
+    assert_state(
+        &participation_state_circuit,
+        &proof,
+        &validator_epochs_tree,
+        &participation_rounds_tree,
         inputs_hash,
-        "Unexpected inputs hash from proof."
     );
+    print_proof(&proof);
     println!();
 
     //generate proof off the last proof
@@ -247,23 +191,6 @@ pub fn benchmark_prove_participation_state(full: bool) {
             previous_proof: Some(proof),
         })
         .unwrap();
-    println!("(finished in {:?})", start.elapsed());
-    assert!(
-        participation_state_circuit.verify_proof(&proof).is_ok(),
-        "Proof failed verification."
-    );
-    println!(
-        "Proved participation state at inputs hash 0x{}",
-        to_hex(&proof.inputs_hash())
-    );
-    println!(
-        "validator_epochs_tree_root - {:?}",
-        proof.validator_epochs_tree_root()
-    );
-    println!(
-        "participation_rounds_tree_root - {:?}",
-        proof.participation_rounds_tree_root()
-    );
     validator_epochs_tree.update_epoch(
         epoch_num,
         &validators_state_proof1,
@@ -271,22 +198,16 @@ pub fn benchmark_prove_participation_state(full: bool) {
         &accounts_tree1,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
-    assert_eq!(
-        proof.validator_epochs_tree_root(),
-        validator_epochs_tree.root(),
-        "Unexpected validator epochs tree root."
-    );
-    assert_eq!(
-        proof.participation_rounds_tree_root(),
-        participation_rounds_tree.root(),
-        "Unexpected participation rounds tree root."
-    );
     inputs_hash = next_inputs_hash(inputs_hash, round, validators_state_proof1.inputs_hash());
-    assert_eq!(
-        proof.inputs_hash(),
+    println!("(finished in {:?})", start.elapsed());
+    assert_state(
+        &participation_state_circuit,
+        &proof,
+        &validator_epochs_tree,
+        &participation_rounds_tree,
         inputs_hash,
-        "Unexpected inputs hash from proof."
     );
+    print_proof(&proof);
     println!();
 
     //generate proof off the last proof
@@ -315,23 +236,6 @@ pub fn benchmark_prove_participation_state(full: bool) {
             previous_proof: Some(proof),
         })
         .unwrap();
-    println!("(finished in {:?})", start.elapsed());
-    assert!(
-        participation_state_circuit.verify_proof(&proof).is_ok(),
-        "Proof failed verification."
-    );
-    println!(
-        "Proved participation state at inputs hash 0x{}",
-        to_hex(&proof.inputs_hash())
-    );
-    println!(
-        "validator_epochs_tree_root - {:?}",
-        proof.validator_epochs_tree_root()
-    );
-    println!(
-        "participation_rounds_tree_root - {:?}",
-        proof.participation_rounds_tree_root()
-    );
     validator_epochs_tree.update_epoch(
         epoch_num,
         &validators_state_proof1,
@@ -339,22 +243,16 @@ pub fn benchmark_prove_participation_state(full: bool) {
         &accounts_tree1,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
-    assert_eq!(
-        proof.validator_epochs_tree_root(),
-        validator_epochs_tree.root(),
-        "Unexpected validator epochs tree root."
-    );
-    assert_eq!(
-        proof.participation_rounds_tree_root(),
-        participation_rounds_tree.root(),
-        "Unexpected participation rounds tree root."
-    );
     inputs_hash = next_inputs_hash(inputs_hash, round, validators_state_proof1.inputs_hash());
-    assert_eq!(
-        proof.inputs_hash(),
+    println!("(finished in {:?})", start.elapsed());
+    assert_state(
+        &participation_state_circuit,
+        &proof,
+        &validator_epochs_tree,
+        &participation_rounds_tree,
         inputs_hash,
-        "Unexpected inputs hash from proof."
     );
+    print_proof(&proof);
     println!();
 
     //generate proof off the last proof
@@ -383,23 +281,6 @@ pub fn benchmark_prove_participation_state(full: bool) {
             previous_proof: Some(proof),
         })
         .unwrap();
-    println!("(finished in {:?})", start.elapsed());
-    assert!(
-        participation_state_circuit.verify_proof(&proof).is_ok(),
-        "Proof failed verification."
-    );
-    println!(
-        "Proved participation state at inputs hash 0x{}",
-        to_hex(&proof.inputs_hash())
-    );
-    println!(
-        "validator_epochs_tree_root - {:?}",
-        proof.validator_epochs_tree_root()
-    );
-    println!(
-        "participation_rounds_tree_root - {:?}",
-        proof.participation_rounds_tree_root()
-    );
     validator_epochs_tree.update_epoch(
         epoch_num,
         &validators_state_proof1,
@@ -407,22 +288,16 @@ pub fn benchmark_prove_participation_state(full: bool) {
         &accounts_tree1,
     );
     participation_rounds_tree.update_round(round.clone(), participation_bits);
-    assert_eq!(
-        proof.validator_epochs_tree_root(),
-        validator_epochs_tree.root(),
-        "Unexpected validator epochs tree root."
-    );
-    assert_eq!(
-        proof.participation_rounds_tree_root(),
-        participation_rounds_tree.root(),
-        "Unexpected participation rounds tree root."
-    );
     inputs_hash = next_inputs_hash(inputs_hash, round, validators_state_proof1.inputs_hash());
-    assert_eq!(
-        proof.inputs_hash(),
+    println!("(finished in {:?})", start.elapsed());
+    assert_state(
+        &participation_state_circuit,
+        &proof,
+        &validator_epochs_tree,
+        &participation_rounds_tree,
         inputs_hash,
-        "Unexpected inputs hash from proof."
     );
+    print_proof(&proof);
     println!();
 }
 
@@ -462,6 +337,49 @@ fn next_inputs_hash(
     let result = hasher.finalize();
     let hash: [u8; 32] = result.into();
     hash
+}
+
+fn assert_state(
+    circuit: &ParticipationStateCircuit,
+    proof: &ParticipationStateProof,
+    validator_epochs_tree: &ValidatorEpochsTree,
+    participation_rounds_tree: &ParticipationRoundsTree,
+    inputs_hash: [u8; 32],
+) {
+    assert!(
+        circuit.verify_proof(&proof).is_ok(),
+        "Proof failed verification."
+    );
+    assert_eq!(
+        proof.validator_epochs_tree_root(),
+        validator_epochs_tree.root(),
+        "Unexpected validator epochs tree root."
+    );
+    assert_eq!(
+        proof.participation_rounds_tree_root(),
+        participation_rounds_tree.root(),
+        "Unexpected participation rounds tree root."
+    );
+    assert_eq!(
+        proof.inputs_hash(),
+        inputs_hash,
+        "Unexpected inputs hash from proof."
+    );
+}
+
+fn print_proof(proof: &ParticipationStateProof) {
+    println!(
+        "Proved participation state at inputs hash 0x{}",
+        to_hex(&proof.inputs_hash())
+    );
+    println!(
+        "validator_epochs_tree_root - {:?}",
+        proof.validator_epochs_tree_root()
+    );
+    println!(
+        "participation_rounds_tree_root - {:?}",
+        proof.participation_rounds_tree_root()
+    );
 }
 
 fn to_hex(bytes: &[u8]) -> String {
