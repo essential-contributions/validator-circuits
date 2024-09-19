@@ -1,63 +1,73 @@
-mod attestation_aggregator_first_stage_circuit;
-mod attestation_aggregator_second_stage_circuit;
-mod attestation_aggregator_third_stage_circuit;
+mod subcircuits;
 
-pub use attestation_aggregator_first_stage_circuit::*;
-pub use attestation_aggregator_second_stage_circuit::*;
-pub use attestation_aggregator_third_stage_circuit::*;
+pub use subcircuits::*;
 
-use plonky2::{field::types::Field as Plonky2_Field, plonk::circuit_data::CircuitData};
-use plonky2::plonk::proof::ProofWithPublicInputs;
-use plonky2::util::serialization::Write;
-use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
+use plonky2::util::serialization::Write;
+use plonky2::{field::types::Field as Plonky2_Field, plonk::circuit_data::CircuitData};
 
+use super::validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof};
+use super::{Circuit, Serializeable};
 use crate::accounts::{initial_accounts_tree, null_account_address, Account, AccountsTree};
 use crate::circuits::validators_state_circuit::ValidatorsStateCircuit;
-use crate::circuits::{load_or_create_circuit, load_or_create_init_proof, VALIDATORS_STATE_CIRCUIT_DIR};
+use crate::circuits::{
+    load_or_create_circuit, load_or_create_init_proof, VALIDATORS_STATE_CIRCUIT_DIR,
+};
 use crate::commitment::example_commitment_root;
 use crate::validators::{initial_validators_tree, Validator};
+use crate::{
+    commitment::example_commitment_proof,
+    validators::{ValidatorCommitmentReveal, ValidatorsTree},
+    Config, Field, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, D,
+};
 use crate::{AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE3_SIZE};
-use crate::{commitment::example_commitment_proof, validators::{ValidatorCommitmentReveal, ValidatorsTree}, Config, Field, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, D};
-use super::validators_state_circuit::{ValidatorsStateCircuitData, ValidatorsStateProof};
-use super::{Circuit, Proof, Serializeable};
 
 //TODO: implement multi-threading for proof generation
 
 const AGG1_PROOFS_LEN: usize = AGGREGATION_STAGE3_SIZE * AGGREGATION_STAGE2_SIZE;
 const AGG2_PROOFS_LEN: usize = AGGREGATION_STAGE3_SIZE;
 
+pub type AttestationAggregatorProof = AttestationAggregatorThirdStageProof;
+
 pub struct AttestationAggregationCircuit {
     attestations_aggregator1: AttestationAggregatorFirstStageCircuit,
     attestations_aggregator2: AttestationAggregatorSecondStageCircuit,
     attestations_aggregator3: AttestationAggregatorThirdStageCircuit,
 }
+
 impl AttestationAggregationCircuit {
     pub fn generate_proof(
-        &self, 
+        &self,
         validators_state_proof: &ValidatorsStateProof,
         reveals: &Vec<ValidatorCommitmentReveal>,
-        validators_tree: &ValidatorsTree
+        validators_tree: &ValidatorsTree,
     ) -> Result<AttestationAggregatorProof> {
         generate_proof_from_data(&self, validators_state_proof, reveals, validators_tree)
     }
 }
+
 impl Circuit for AttestationAggregationCircuit {
     type Proof = AttestationAggregatorProof;
-    
+
     fn new() -> Self {
         log::info!("Building sub circuit [AttestationAggregatorFirstStageCircuit]");
         let attestations_aggregator1 = AttestationAggregatorFirstStageCircuit::new();
         log::info!("Building sub circuit [AttestationAggregatorSecondStageCircuit]");
-        let attestations_aggregator2 = AttestationAggregatorSecondStageCircuit::from_subcircuits(&attestations_aggregator1);
+        let attestations_aggregator2 =
+            AttestationAggregatorSecondStageCircuit::from_subcircuits(&attestations_aggregator1);
         log::info!("Building sub circuit [AttestationAggregatorThirdStageCircuit]");
-        let attestations_aggregator3 = AttestationAggregatorThirdStageCircuit::from_subcircuits(&attestations_aggregator2);
+        let attestations_aggregator3 =
+            AttestationAggregatorThirdStageCircuit::from_subcircuits(&attestations_aggregator2);
 
-        Self { attestations_aggregator1, attestations_aggregator2, attestations_aggregator3 }
+        Self {
+            attestations_aggregator1,
+            attestations_aggregator2,
+            attestations_aggregator3,
+        }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
-        self.attestations_aggregator3.verify_proof(&proof.proof)
+        self.attestations_aggregator3.verify_proof(proof)
     }
 
     fn circuit_data(&self) -> &CircuitData<Field, Config, D> {
@@ -65,12 +75,11 @@ impl Circuit for AttestationAggregationCircuit {
     }
 
     fn proof_to_bytes(&self, proof: &Self::Proof) -> Result<Vec<u8>> {
-        Ok(self.attestations_aggregator3.proof_to_bytes(&proof.proof)?)
+        Ok(self.attestations_aggregator3.proof_to_bytes(proof)?)
     }
 
     fn proof_from_bytes(&self, bytes: Vec<u8>) -> Result<Self::Proof> {
-        let proof = self.attestations_aggregator3.proof_from_bytes(bytes)?;
-        Ok(Self::Proof { proof })
+        Ok(self.attestations_aggregator3.proof_from_bytes(bytes)?)
     }
 
     fn is_cyclical() -> bool {
@@ -87,15 +96,14 @@ impl Circuit for AttestationAggregationCircuit {
 
     fn wrappable_example_proof(&self) -> Option<Self::Proof> {
         //load sub circuits
-        let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+        let validators_state_circuit =
+            load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
 
         //create prerequisite data
         let accounts = [[11u8; 20]];
         let validator_indexes = [21];
         let stakes = [64];
-        let (validators_tree, 
-            validators_state_proof,
-        ) = example_validators_state(
+        let (validators_tree, validators_state_proof) = example_validators_state(
             &validators_state_circuit,
             &accounts,
             &validator_indexes,
@@ -104,22 +112,25 @@ impl Circuit for AttestationAggregationCircuit {
 
         //generate proof
         let block_slot = 100;
-        let reveals = validator_indexes.iter().map(|&validator_index| {
-            let commitment_proof = example_commitment_proof(validator_index);
-            ValidatorCommitmentReveal {
-                validator_index,
-                block_slot,
-                reveal: commitment_proof.reveal,
-                proof: commitment_proof.proof,
-            }
-        }).collect();
-        Some(generate_proof_from_data(&self,
-            &validators_state_proof,
-            &reveals,
-            &validators_tree,
-        ).unwrap())
+        let reveals = validator_indexes
+            .iter()
+            .map(|&validator_index| {
+                let commitment_proof = example_commitment_proof(validator_index);
+                ValidatorCommitmentReveal {
+                    validator_index,
+                    block_slot,
+                    reveal: commitment_proof.reveal,
+                    proof: commitment_proof.proof,
+                }
+            })
+            .collect();
+        Some(
+            generate_proof_from_data(&self, &validators_state_proof, &reveals, &validators_tree)
+                .unwrap(),
+        )
     }
 }
+
 impl Serializeable for AttestationAggregationCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer: Vec<u8> = Vec::new();
@@ -153,52 +164,21 @@ impl Serializeable for AttestationAggregationCircuit {
         let start3 = start2 + (u64::from_be_bytes(be_bytes) as usize);
 
         log::info!("Loading sub circuit from bytes [AttestationAggregatorFirstStageCircuit]");
-        let attestations_aggregator1 = AttestationAggregatorFirstStageCircuit::from_bytes(&(&bytes[start1..start2]).to_vec())?;
+        let attestations_aggregator1 =
+            AttestationAggregatorFirstStageCircuit::from_bytes(&(&bytes[start1..start2]).to_vec())?;
         log::info!("Loading sub circuit from bytes [AttestationAggregatorSecondStageCircuit]");
-        let attestations_aggregator2 = AttestationAggregatorSecondStageCircuit::from_bytes(&(&bytes[start2..start3]).to_vec())?;
+        let attestations_aggregator2 = AttestationAggregatorSecondStageCircuit::from_bytes(
+            &(&bytes[start2..start3]).to_vec(),
+        )?;
         log::info!("Loading sub circuit from bytes [AttestationAggregatorThirdStageCircuit]");
-        let attestations_aggregator3 = AttestationAggregatorThirdStageCircuit::from_bytes(&(&bytes[start3..]).to_vec())?;
+        let attestations_aggregator3 =
+            AttestationAggregatorThirdStageCircuit::from_bytes(&(&bytes[start3..]).to_vec())?;
 
-        Ok(Self { attestations_aggregator1, attestations_aggregator2, attestations_aggregator3 })
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AttestationAggregatorProof {
-    proof: AttestationAggregatorThirdStageProof,
-}
-impl AttestationAggregatorProof {
-    pub fn public_inputs_hash(&self) -> [Field; 4] {
-        self.proof.public_inputs_hash()
-    }
-
-    pub fn validators_inputs_hash(&self) -> [u8; 32] {
-        self.proof.validators_inputs_hash()
-    }
-
-    pub fn total_staked(&self) -> u64 {
-        self.proof.total_staked()
-    }
-
-    pub fn block_slot(&self) -> usize{
-        self.proof.block_slot()
-    }
-
-    pub fn participation_root(&self) -> [Field; 4] {
-        self.proof.participation_root()
-    }
-
-    pub fn participation_count(&self) -> usize{
-        self.proof.participation_count()
-    }
-
-    pub fn attestations_stake(&self) -> u64 {
-        self.proof.attestations_stake()
-    }
-}
-impl Proof for AttestationAggregatorProof {
-    fn proof(&self) -> &ProofWithPublicInputs<Field, Config, D> {
-        &self.proof.proof()
+        Ok(Self {
+            attestations_aggregator1,
+            attestations_aggregator2,
+            attestations_aggregator3,
+        })
     }
 }
 
@@ -225,12 +205,18 @@ fn generate_proof_from_data(
     reveals: &Vec<ValidatorCommitmentReveal>,
     validators_tree: &ValidatorsTree,
 ) -> Result<AttestationAggregatorProof> {
-    let max_attestations = AGGREGATION_STAGE1_SIZE * AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE;
+    let max_attestations =
+        AGGREGATION_STAGE1_SIZE * AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE;
     if reveals.len() == 0 {
-        return Err(anyhow!("At least one reveal must be provided for the attestations proof"));
+        return Err(anyhow!(
+            "At least one reveal must be provided for the attestations proof"
+        ));
     }
     if reveals.len() > max_attestations {
-        return Err(anyhow!("Only {} reveals can be proven per attestations proof", max_attestations));
+        return Err(anyhow!(
+            "Only {} reveals can be proven per attestations proof",
+            max_attestations
+        ));
     }
     let block_slot = reveals[0].block_slot;
     for reveal in reveals.iter() {
@@ -240,23 +226,38 @@ fn generate_proof_from_data(
     }
 
     //organize the reveal data
-    let mut validator_data: Vec<SecondStageGroupData> = vec![SecondStageGroupData::ValidatorGroupRoot([Field::ZERO; 4]); AGGREGATION_STAGE3_SIZE];
+    let mut validator_data: Vec<SecondStageGroupData> =
+        vec![SecondStageGroupData::ValidatorGroupRoot([Field::ZERO; 4]); AGGREGATION_STAGE3_SIZE];
     for reveal in reveals.iter() {
-        let validator_stage2_group_index = reveal.validator_index / (AGGREGATION_STAGE1_SIZE * AGGREGATION_STAGE2_SIZE);
+        let validator_stage2_group_index =
+            reveal.validator_index / (AGGREGATION_STAGE1_SIZE * AGGREGATION_STAGE2_SIZE);
         let stage2_group = &validator_data[validator_stage2_group_index];
         //add full second stage group if it is currently just a root
         if let SecondStageGroupData::ValidatorGroupRoot(_) = stage2_group {
-            let validator_group_data: Vec<FirstStageGroupData> = vec![FirstStageGroupData::ValidatorGroupRoot([Field::ZERO; 4]); AGGREGATION_STAGE2_SIZE];
-            validator_data[validator_stage2_group_index] = SecondStageGroupData::ValidatorGroupData(validator_group_data);
+            let validator_group_data: Vec<FirstStageGroupData> = vec![
+                    FirstStageGroupData::ValidatorGroupRoot([Field::ZERO; 4]);
+                    AGGREGATION_STAGE2_SIZE
+                ];
+            validator_data[validator_stage2_group_index] =
+                SecondStageGroupData::ValidatorGroupData(validator_group_data);
         }
         let stage2_group = &mut validator_data[validator_stage2_group_index];
         if let SecondStageGroupData::ValidatorGroupData(stage2_group) = stage2_group {
-            let validator_stage1_group_index = (reveal.validator_index / AGGREGATION_STAGE1_SIZE) % AGGREGATION_STAGE2_SIZE;
+            let validator_stage1_group_index =
+                (reveal.validator_index / AGGREGATION_STAGE1_SIZE) % AGGREGATION_STAGE2_SIZE;
             let stage1_group = &stage2_group[validator_stage1_group_index];
             //add full first stage group if it is currently just a root
             if let FirstStageGroupData::ValidatorGroupRoot(_) = stage1_group {
-                let validators: Vec<ValidatorData> = vec![ValidatorData {stake: 0, commitment_root: [Field::ZERO; 4], reveal: None}; AGGREGATION_STAGE1_SIZE];
-                stage2_group[validator_stage1_group_index] = FirstStageGroupData::ValidatorGroupData(validators);
+                let validators: Vec<ValidatorData> = vec![
+                    ValidatorData {
+                        stake: 0,
+                        commitment_root: [Field::ZERO; 4],
+                        reveal: None
+                    };
+                    AGGREGATION_STAGE1_SIZE
+                ];
+                stage2_group[validator_stage1_group_index] =
+                    FirstStageGroupData::ValidatorGroupData(validators);
             }
             let stage1_group = &mut stage2_group[validator_stage1_group_index];
             if let FirstStageGroupData::ValidatorGroupData(stage1_group) = stage1_group {
@@ -272,10 +273,11 @@ fn generate_proof_from_data(
         match stage2_group {
             SecondStageGroupData::ValidatorGroupRoot(ref mut stage2_group_root) => {
                 //second stage group root
-                let height = AGGREGATION_STAGE1_SUB_TREE_HEIGHT + AGGREGATION_STAGE2_SUB_TREE_HEIGHT;
+                let height =
+                    AGGREGATION_STAGE1_SUB_TREE_HEIGHT + AGGREGATION_STAGE2_SUB_TREE_HEIGHT;
                 let index = i;
                 *stage2_group_root = validators_tree.sub_root(height, index);
-            },
+            }
             SecondStageGroupData::ValidatorGroupData(ref mut stage2_group) => {
                 for (j, stage1_group) in stage2_group.iter_mut().enumerate() {
                     match stage1_group {
@@ -284,45 +286,57 @@ fn generate_proof_from_data(
                             let height = AGGREGATION_STAGE1_SUB_TREE_HEIGHT;
                             let index = (i * AGGREGATION_STAGE2_SUB_TREE_HEIGHT) + j;
                             *stage1_group_root = validators_tree.sub_root(height, index);
-                        },
+                        }
                         FirstStageGroupData::ValidatorGroupData(ref mut stage1_group) => {
                             for (k, validator) in stage1_group.iter_mut().enumerate() {
                                 //validator data
-                                let index = (i * AGGREGATION_STAGE2_SUB_TREE_HEIGHT * AGGREGATION_STAGE1_SUB_TREE_HEIGHT) + (j * AGGREGATION_STAGE1_SUB_TREE_HEIGHT) + k;
+                                let index = (i
+                                    * AGGREGATION_STAGE2_SUB_TREE_HEIGHT
+                                    * AGGREGATION_STAGE1_SUB_TREE_HEIGHT)
+                                    + (j * AGGREGATION_STAGE1_SUB_TREE_HEIGHT)
+                                    + k;
                                 let data = validators_tree.validator(index);
                                 validator.stake = data.stake;
                                 validator.commitment_root = data.commitment_root.clone();
                             }
-                        },
+                        }
                     }
                 }
-            },
+            }
         }
     }
 
     //generate first stage proofs
     //TODO: parallelize in small groups
     log::info!("Generating sub proofs for first stage");
-    let mut agg1_proofs: [Option<AttestationAggregatorFirstStageProof>; AGG1_PROOFS_LEN] = std::array::from_fn(|_| None);
+    let mut agg1_proofs: [Option<AttestationAggregatorFirstStageProof>; AGG1_PROOFS_LEN] =
+        std::array::from_fn(|_| None);
     for (i, stage2_group) in validator_data.iter().enumerate() {
         if let SecondStageGroupData::ValidatorGroupData(stage1_groups) = stage2_group {
             for (j, stage1_group) in stage1_groups.iter().enumerate() {
                 if let FirstStageGroupData::ValidatorGroupData(validators) = stage1_group {
                     let agg1_data = AttestationAggregatorFirstStageData {
                         block_slot,
-                        validators: validators.into_iter().map(|v| AttestationAggregatorFirstStageValidatorData {
-                            stake: v.stake,
-                            commitment_root: v.commitment_root,
-                            reveal: match &v.reveal {
-                                Some(r) => Some(AttestationAggregatorFirstStageRevealData {
-                                    reveal: r.reveal,
-                                    reveal_proof: r.proof.clone(),
-                                }),
-                                None => None,
-                            },
-                        }).collect(),
+                        validators: validators
+                            .into_iter()
+                            .map(|v| AttestationAggregatorFirstStageValidatorData {
+                                stake: v.stake,
+                                commitment_root: v.commitment_root,
+                                reveal: match &v.reveal {
+                                    Some(r) => Some(AttestationAggregatorFirstStageRevealData {
+                                        reveal: r.reveal,
+                                        reveal_proof: r.proof.clone(),
+                                    }),
+                                    None => None,
+                                },
+                            })
+                            .collect(),
                     };
-                    agg1_proofs[i * AGGREGATION_STAGE3_SIZE + j] = Some(circuits.attestations_aggregator1.generate_proof(&agg1_data)?);
+                    agg1_proofs[i * AGGREGATION_STAGE3_SIZE + j] = Some(
+                        circuits
+                            .attestations_aggregator1
+                            .generate_proof(&agg1_data)?,
+                    );
                 }
             }
         }
@@ -330,28 +344,39 @@ fn generate_proof_from_data(
 
     //generate second stage proofs
     log::info!("Generating sub proofs for second stage");
-    let mut agg2_proofs: [Option<AttestationAggregatorSecondStageProof>; AGG2_PROOFS_LEN] = std::array::from_fn(|_| None);
+    let mut agg2_proofs: [Option<AttestationAggregatorSecondStageProof>; AGG2_PROOFS_LEN] =
+        std::array::from_fn(|_| None);
     for (i, stage2_group) in validator_data.iter().enumerate() {
         if let SecondStageGroupData::ValidatorGroupData(stage1_groups) = stage2_group {
             let agg2_data = AttestationAggregatorSecondStageData {
                 block_slot,
-                agg1_data: stage1_groups.iter().enumerate().map(|(j, stage1_group)| match stage1_group {
-                    FirstStageGroupData::ValidatorGroupData(_) => {
-                        let agg1_proof = agg1_proofs[i * AGGREGATION_STAGE3_SIZE + j].clone().unwrap();
-                        AttestationAggregatorSecondStageAgg1Data {
-                            validators_sub_root: agg1_proof.validators_sub_root(),
-                            agg1_proof: Some(agg1_proof),
+                agg1_data: stage1_groups
+                    .iter()
+                    .enumerate()
+                    .map(|(j, stage1_group)| match stage1_group {
+                        FirstStageGroupData::ValidatorGroupData(_) => {
+                            let agg1_proof = agg1_proofs[i * AGGREGATION_STAGE3_SIZE + j]
+                                .clone()
+                                .unwrap();
+                            AttestationAggregatorSecondStageAgg1Data {
+                                validators_sub_root: agg1_proof.validators_sub_root(),
+                                agg1_proof: Some(agg1_proof),
+                            }
                         }
-                    },
-                    FirstStageGroupData::ValidatorGroupRoot(root) => {
-                        AttestationAggregatorSecondStageAgg1Data {
-                            validators_sub_root: root.clone(),
-                            agg1_proof: None,
+                        FirstStageGroupData::ValidatorGroupRoot(root) => {
+                            AttestationAggregatorSecondStageAgg1Data {
+                                validators_sub_root: root.clone(),
+                                agg1_proof: None,
+                            }
                         }
-                    },
-                }).collect(),
+                    })
+                    .collect(),
             };
-            agg2_proofs[i] = Some(circuits.attestations_aggregator2.generate_proof(&agg2_data)?);
+            agg2_proofs[i] = Some(
+                circuits
+                    .attestations_aggregator2
+                    .generate_proof(&agg2_data)?,
+            );
         }
     }
 
@@ -360,36 +385,31 @@ fn generate_proof_from_data(
     let agg3_data = AttestationAggregatorThirdStageData {
         block_slot,
         validators_state_proof: validators_state_proof.clone(),
-        agg2_data: validator_data.iter().enumerate().map(|(j, stage2_group)| match stage2_group {
-            SecondStageGroupData::ValidatorGroupData(_) => {
-                let agg2_proof = agg2_proofs[j].clone().unwrap();
-                AttestationAggregatorThirdStageAgg2Data {
-                    validators_sub_root: agg2_proof.validators_sub_root(),
-                    agg2_proof: Some(agg2_proof),
+        agg2_data: validator_data
+            .iter()
+            .enumerate()
+            .map(|(j, stage2_group)| match stage2_group {
+                SecondStageGroupData::ValidatorGroupData(_) => {
+                    let agg2_proof = agg2_proofs[j].clone().unwrap();
+                    AttestationAggregatorThirdStageAgg2Data {
+                        validators_sub_root: agg2_proof.validators_sub_root(),
+                        agg2_proof: Some(agg2_proof),
+                    }
                 }
-            },
-            SecondStageGroupData::ValidatorGroupRoot(root) => {
-                AttestationAggregatorThirdStageAgg2Data {
-                    validators_sub_root: root.clone(),
-                    agg2_proof: None,
+                SecondStageGroupData::ValidatorGroupRoot(root) => {
+                    AttestationAggregatorThirdStageAgg2Data {
+                        validators_sub_root: root.clone(),
+                        agg2_proof: None,
+                    }
                 }
-            },
-        }).collect(),
+            })
+            .collect(),
     };
-    let stage3_proof = circuits.attestations_aggregator3.generate_proof(&agg3_data)?;
+    let stage3_proof = circuits
+        .attestations_aggregator3
+        .generate_proof(&agg3_data)?;
 
-    return Ok(AttestationAggregatorProof {
-        proof: stage3_proof,
-    })
-}
-
-#[inline]
-fn write_all(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
-    let result = buffer.write_all(bytes);
-    if result.is_err() {
-        return Err(anyhow!("Failed to serialize circuits"));
-    }
-    Ok(result.unwrap())
+    return Ok(stage3_proof);
 }
 
 fn example_validators_state(
@@ -398,16 +418,19 @@ fn example_validators_state(
     validator_indexes: &[usize],
     stakes: &[u32],
 ) -> (
-    ValidatorsTree, //validators_tree
-    ValidatorsStateProof //validators_state_proof
+    ValidatorsTree,       //validators_tree
+    ValidatorsStateProof, //validators_state_proof
 ) {
     log::info!("Generating example accounts");
     let mut validators_tree = initial_validators_tree();
     let mut accounts_tree = initial_accounts_tree();
 
     log::info!("Generating example validator state sub proof");
-    let mut previous_proof: Option<ValidatorsStateProof> = Some(load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR));
-    for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes) {
+    let mut previous_proof: Option<ValidatorsStateProof> = Some(load_or_create_init_proof::<
+        ValidatorsStateCircuit,
+    >(VALIDATORS_STATE_CIRCUIT_DIR));
+    for ((&account, &validator_index), &stake) in accounts.iter().zip(validator_indexes).zip(stakes)
+    {
         let commitment = example_commitment_root(validator_index);
         let data = compile_data_for_validators_state_circuit(
             &accounts_tree,
@@ -421,15 +444,27 @@ fn example_validators_state(
             previous_proof,
         );
         let proof = validators_state_circuit.generate_proof(&data).unwrap();
-        assert!(validators_state_circuit.verify_proof(&proof).is_ok(), "Validators state proof verification failed.");
-        validators_tree.set_validator(validator_index, Validator { commitment_root: commitment, stake });
-        accounts_tree.set_account(Account { address: account, validator_index: Some(validator_index) });
+        assert!(
+            validators_state_circuit.verify_proof(&proof).is_ok(),
+            "Validators state proof verification failed."
+        );
+        validators_tree.set_validator(
+            validator_index,
+            Validator {
+                commitment_root: commitment,
+                stake,
+            },
+        );
+        accounts_tree.set_account(Account {
+            address: account,
+            validator_index: Some(validator_index),
+        });
         previous_proof = Some(proof);
     }
     let validators_state_proof = previous_proof.unwrap();
-            
+
     (
-        validators_tree, //validators_tree
+        validators_tree,        //validators_tree
         validators_state_proof, //validators_state_proof
     )
 }
@@ -467,4 +502,13 @@ fn compile_data_for_validators_state_circuit(
 
         previous_proof,
     }
+}
+
+#[inline]
+fn write_all(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
+    let result = buffer.write_all(bytes);
+    if result.is_err() {
+        return Err(anyhow!("Failed to serialize circuits"));
+    }
+    Ok(result.unwrap())
 }

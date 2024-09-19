@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
-use plonky2::field::types::Field as Plonky2_Field;
 use anyhow::{anyhow, Result};
-use serde::{Deserialize, Serialize};
+use plonky2::field::types::Field as Plonky2_Field;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use crate::accounts::AccountsTree;
-use crate::circuits::validators_state_circuit::ValidatorsStateProof;
-use crate::validators::ValidatorsTree;
-use crate::{field_hash, field_hash_two, VALIDATOR_EPOCHS_TREE_HEIGHT};
+use crate::accounts::{initial_accounts_tree, AccountsTree};
+use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof};
+use crate::circuits::{load_or_create_init_proof, VALIDATORS_STATE_CIRCUIT_DIR};
+use crate::validators::{initial_validators_tree, ValidatorsTree};
 use crate::Field;
+use crate::{field_hash, field_hash_two, VALIDATOR_EPOCHS_TREE_HEIGHT};
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: store validators_state_proof, validators_tree and accounts_tree in disk rather than memory (will need an efficient compression strategy)
@@ -38,13 +39,17 @@ pub struct ValidatorEpochsTree {
 
 impl ValidatorEpochsTree {
     pub fn new() -> Self {
-        Self { epochs: HashMap::new() }
+        Self {
+            epochs: HashMap::new(),
+        }
     }
 
     pub fn root(&self) -> [Field; 4] {
-        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
+        let (mut intermediary_nodes, mut default_node) =
+            self.compute_first_level_intermediary_nodes();
         for _ in 0..VALIDATOR_EPOCHS_TREE_HEIGHT {
-            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
+            (intermediary_nodes, default_node) =
+                Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         match intermediary_nodes.get(0) {
@@ -59,7 +64,8 @@ impl ValidatorEpochsTree {
 
     pub fn merkle_proof(&self, num: usize) -> Vec<[Field; 4]> {
         //compute initial intermediary nodes
-        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
+        let (mut intermediary_nodes, mut default_node) =
+            self.compute_first_level_intermediary_nodes();
 
         //build the merkle proof for each level in the tree
         let mut proof: Vec<[Field; 4]> = Vec::new();
@@ -67,7 +73,7 @@ impl ValidatorEpochsTree {
         for _ in 0..VALIDATOR_EPOCHS_TREE_HEIGHT {
             //add sibling to proof
             let sibling_idx = if (idx % 2) == 0 { idx + 1 } else { idx - 1 };
-            let sibling = match intermediary_nodes.iter().find(|x| x.0 == sibling_idx ) {
+            let sibling = match intermediary_nodes.iter().find(|x| x.0 == sibling_idx) {
                 Some(node) => node.1,
                 None => default_node,
             };
@@ -75,7 +81,8 @@ impl ValidatorEpochsTree {
             idx = idx >> 1;
 
             //compute the next level intermediary nodes
-            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
+            (intermediary_nodes, default_node) =
+                Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         proof
@@ -124,52 +131,67 @@ impl ValidatorEpochsTree {
         }
     }
 
-    pub fn epoch_validators_state_proof(&self, num: usize) -> Option<ValidatorsStateProof> {
+    pub fn epoch_validators_state_proof(&self, num: usize) -> ValidatorsStateProof {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(epoch.validators_state_proof.clone()),
-            None => None,
+            Some(epoch) => epoch.validators_state_proof.clone(),
+            None => {
+                load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR)
+            }
         }
     }
 
-    pub fn epoch_validators_tree(&self, num: usize) -> Option<ValidatorsTree> {
+    pub fn epoch_validators_tree(&self, num: usize) -> ValidatorsTree {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(epoch.validators_tree.clone()),
-            None => None,
+            Some(epoch) => epoch.validators_tree.clone(),
+            None => initial_validators_tree(),
         }
     }
 
-    pub fn epoch_accounts_tree(&self, num: usize) -> Option<AccountsTree> {
+    pub fn epoch_accounts_tree(&self, num: usize) -> AccountsTree {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(epoch.accounts_tree.clone()),
-            None => None,
+            Some(epoch) => epoch.accounts_tree.clone(),
+            None => initial_accounts_tree(),
         }
     }
 
-    pub fn update_epoch(&mut self, epoch_num: usize, validators_state_proof: &ValidatorsStateProof, validators_tree: &ValidatorsTree, accounts_tree: &AccountsTree) {
-        self.epochs.insert(epoch_num, ValidatorEpochData {
-            validators_state_proof: validators_state_proof.clone(),
-            validators_tree: validators_tree.clone(),
-            accounts_tree: accounts_tree.clone(),
-        });
+    pub fn update_epoch(
+        &mut self,
+        epoch_num: usize,
+        validators_state_proof: &ValidatorsStateProof,
+        validators_tree: &ValidatorsTree,
+        accounts_tree: &AccountsTree,
+    ) {
+        self.epochs.insert(
+            epoch_num,
+            ValidatorEpochData {
+                validators_state_proof: validators_state_proof.clone(),
+                validators_tree: validators_tree.clone(),
+                accounts_tree: accounts_tree.clone(),
+            },
+        );
     }
-    
+
     fn hash_epoch(epoch: ValidatorEpoch) -> [Field; 4] {
-        let validators_state_inputs_hash: Vec<Field> = epoch.validators_state_inputs_hash.chunks(4).into_iter().map(|c| {
-            Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]))
-        }).collect();
+        let validators_state_inputs_hash: Vec<Field> = epoch
+            .validators_state_inputs_hash
+            .chunks(4)
+            .into_iter()
+            .map(|c| Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])))
+            .collect();
         field_hash(&validators_state_inputs_hash)
     }
 
     fn compute_first_level_intermediary_nodes(&self) -> (Vec<(usize, [Field; 4])>, [Field; 4]) {
         let mut round_numbers: Vec<usize> = self.epochs.iter().map(|(k, _)| *k).collect();
         round_numbers.sort();
-        let intermediary_nodes: Vec<(usize, [Field; 4])> = round_numbers.par_iter().map(|num| {
-            (*num, Self::hash_epoch(self.epoch(*num)))
-        }).collect();
+        let intermediary_nodes: Vec<(usize, [Field; 4])> = round_numbers
+            .par_iter()
+            .map(|num| (*num, Self::hash_epoch(self.epoch(*num))))
+            .collect();
 
         let default_node = Self::hash_epoch(ValidatorEpoch {
             num: 0,
-            validators_state_inputs_hash: [0u8; 32],
+            validators_state_inputs_hash: [0u8; 32], //this is the only value that effects the hash
             total_staked: 0,
             total_validators: 0,
             validators_tree_root: [Field::ZERO; 4],
@@ -180,7 +202,7 @@ impl ValidatorEpochsTree {
     }
 
     fn compute_intermediary_nodes(
-        intermediary_nodes: &[(usize, [Field; 4])], 
+        intermediary_nodes: &[(usize, [Field; 4])],
         default_node: [Field; 4],
     ) -> (Vec<(usize, [Field; 4])>, [Field; 4]) {
         //arrange intermediary nodes into pairs (left, right)
@@ -206,17 +228,20 @@ impl ValidatorEpochsTree {
         }
 
         //compute the next level intermediary nodes in parallel
-        let next_level_intermediary_nodes = intermediary_node_pairs.par_iter().map(|(addr, (left, right))| {
-            let left_sibling = match *left {
-                Some(left) => intermediary_nodes[left].1,
-                None => default_node,
-            };
-            let right_sibling = match *right {
-                Some(right) => intermediary_nodes[right].1,
-                None => default_node,
-            };
-            (*addr, (field_hash_two(left_sibling, right_sibling)))
-        }).collect();
+        let next_level_intermediary_nodes = intermediary_node_pairs
+            .par_iter()
+            .map(|(addr, (left, right))| {
+                let left_sibling = match *left {
+                    Some(left) => intermediary_nodes[left].1,
+                    None => default_node,
+                };
+                let right_sibling = match *right {
+                    Some(right) => intermediary_nodes[right].1,
+                    None => default_node,
+                };
+                (*addr, (field_hash_two(left_sibling, right_sibling)))
+            })
+            .collect();
 
         let next_default_node = field_hash_two(default_node, default_node);
         (next_level_intermediary_nodes, next_default_node)

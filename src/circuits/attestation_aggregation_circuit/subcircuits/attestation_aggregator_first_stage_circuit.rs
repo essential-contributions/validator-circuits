@@ -12,38 +12,40 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData};
 use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
-use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
 
+use crate::circuits::serialization::{deserialize_circuit, serialize_circuit};
+use crate::circuits::{Circuit, Proof, Serializeable};
 use crate::{Config, Field, D};
 
-use super::serialization::{deserialize_circuit, serialize_circuit};
-use super::{Circuit, Proof, Serializeable};
+pub use proof::AttestationAggregatorFirstStageProof;
+pub use witness::AttestationAggregatorFirstStageData;
+pub use witness::AttestationAggregatorFirstStageRevealData;
+pub use witness::AttestationAggregatorFirstStageValidatorData;
 
-pub use proof::ParticipationStateProof;
-pub use witness::ParticipationStateCircuitData;
+pub use proof::PIS_AGG1_ATTESTATIONS_STAKE;
+pub use proof::PIS_AGG1_BLOCK_SLOT;
+pub use proof::PIS_AGG1_PARTICIPATION_COUNT;
+pub use proof::PIS_AGG1_PARTICIPATION_SUB_ROOT;
+pub use proof::PIS_AGG1_VALIDATORS_SUB_ROOT;
 
-pub use proof::PIS_PARTICIPATION_ROUNDS_TREE_ROOT;
-pub use proof::PIS_PARTICIPATION_STATE_INPUTS_HASH;
-pub use proof::PIS_VALIDATOR_EPOCHS_TREE_ROOT;
-
-pub struct ParticipationStateCircuit {
+pub struct AttestationAggregatorFirstStageCircuit {
     circuit_data: CircuitData<Field, Config, D>,
-    targets: ParticipationStateCircuitTargets,
+    targets: AttAgg1Targets,
 }
 
-impl ParticipationStateCircuit {
+impl AttestationAggregatorFirstStageCircuit {
     pub fn generate_proof(
         &self,
-        data: &ParticipationStateCircuitData,
-    ) -> Result<ParticipationStateProof> {
-        let pw = generate_partial_witness(&self.circuit_data, &self.targets, data)?;
+        data: &AttestationAggregatorFirstStageData,
+    ) -> Result<AttestationAggregatorFirstStageProof> {
+        let pw = generate_partial_witness(&self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
-        Ok(ParticipationStateProof::new(proof))
+        Ok(AttestationAggregatorFirstStageProof::new(proof))
     }
 }
 
-impl Circuit for ParticipationStateCircuit {
-    type Proof = ParticipationStateProof;
+impl Circuit for AttestationAggregatorFirstStageCircuit {
+    type Proof = AttestationAggregatorFirstStageProof;
 
     fn new() -> Self {
         let config = CircuitConfig::standard_recursion_config();
@@ -58,11 +60,6 @@ impl Circuit for ParticipationStateCircuit {
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
-        check_cyclic_proof_verifier_data(
-            proof.proof(),
-            &self.circuit_data.verifier_only,
-            &self.circuit_data.common,
-        )?;
         self.circuit_data.verify(proof.proof().clone())
     }
 
@@ -81,14 +78,11 @@ impl Circuit for ParticipationStateCircuit {
     }
 
     fn is_cyclical() -> bool {
-        true
+        false
     }
 
     fn cyclical_init_proof(&self) -> Option<Self::Proof> {
-        let data = generate_initial_data();
-        let pw = generate_partial_witness(&self.circuit_data, &self.targets, &data).unwrap();
-        let proof = self.circuit_data.prove(pw).unwrap();
-        Some(Self::Proof::new(proof))
+        None
     }
 
     fn is_wrappable() -> bool {
@@ -100,7 +94,7 @@ impl Circuit for ParticipationStateCircuit {
     }
 }
 
-impl Serializeable for ParticipationStateCircuit {
+impl Serializeable for AttestationAggregatorFirstStageCircuit {
     fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = serialize_circuit(&self.circuit_data)?;
         if write_targets(&mut buffer, &self.targets).is_err() {
@@ -111,13 +105,13 @@ impl Serializeable for ParticipationStateCircuit {
 
     fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
         let (circuit_data, mut buffer) = deserialize_circuit(bytes)?;
-        let targets = read_targets(&mut buffer);
-        if targets.is_err() {
-            return Err(anyhow!("Failed to deserialize circuit targets"));
-        }
+        let targets = match read_targets(&mut buffer) {
+            Ok(targets) => Ok(targets),
+            Err(_) => Err(anyhow!("Failed to deserialize circuit targets")),
+        }?;
         Ok(Self {
             circuit_data,
-            targets: targets.unwrap(),
+            targets,
         })
     }
 }

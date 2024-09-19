@@ -13,24 +13,29 @@ struct Args {
     #[arg(help = "The action to benchmark (commitment/examples/state/attestations/participation)")]
     action: String,
 
-    #[arg(short, long, default_value_t = false, help = "Build full circuits including wrappers")]
+    #[arg(
+        short,
+        long,
+        default_value_t = false,
+        help = "Build full circuits including wrappers"
+    )]
     full: bool,
 }
 
 fn main() {
     Builder::from_env(Env::default().default_filter_or("info")).init();
-    
+
     let args = Args::parse();
-    if args.action.eq("commitment")  {
+    if args.action.eq("commitment") {
         actions::benchmark_commitment_generation();
-    } else if args.action.eq("examples")  {
+    } else if args.action.eq("examples") {
         actions::create_example_proofs();
-    } else if args.action.eq("state")  {
+    } else if args.action.eq("state") {
         actions::benchmark_prove_validators_state(args.full);
         actions::benchmark_prove_participation_state(args.full);
-    } else if args.action.eq("attestations")  {
+    } else if args.action.eq("attestations") {
         actions::benchmark_prove_attestation_aggregation(args.full);
-    } else if args.action.eq("participation")  {
+    } else if args.action.eq("participation") {
         actions::benchmark_validator_prove_participation(args.full);
     } else {
         log::error!("Invalid action [{}]", args.action);

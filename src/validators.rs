@@ -1,14 +1,14 @@
-use plonky2::field::types::Field as Plonky2_Field;
-use serde::{Deserialize, Serialize};
-use rayon::prelude::*;
 use anyhow::{anyhow, Result};
+use plonky2::field::types::Field as Plonky2_Field;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 use crate::Field;
+use crate::{
+    field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT,
+};
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
-//TODO: need to be able to track historical state of validators at specific epochs (see todo in validator_participation_circuit)
-// (alternatively manage historic data in a new data structure completely that combines the validators_state_roots in the participation tree)
 //TODO: implement multi-threading for manual reveal verification
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -45,8 +45,12 @@ impl ValidatorsTree {
 
     pub fn from_validators(validators: &[Validator]) -> Self {
         let num_nodes = (1 << (VALIDATORS_TREE_HEIGHT + 1)) - 1;
-        let nodes: Vec<[Field; 4]> = vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
-        let mut validator_set = Self { validators: validators.to_vec(), nodes };
+        let nodes: Vec<[Field; 4]> =
+            vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
+        let mut validator_set = Self {
+            validators: validators.to_vec(),
+            nodes,
+        };
         validator_set.fill_nodes();
 
         validator_set
@@ -75,10 +79,15 @@ impl ValidatorsTree {
 
     pub fn verify_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<bool> {
         if reveals.len() == 0 {
-            return Err(anyhow!("At least one reveal must be provided for the batch"));
+            return Err(anyhow!(
+                "At least one reveal must be provided for the batch"
+            ));
         }
         if reveals.len() > AGGREGATION_STAGE1_SIZE {
-            return Err(anyhow!("Only {} reveals can be proven per batch", AGGREGATION_STAGE1_SIZE));
+            return Err(anyhow!(
+                "Only {} reveals can be proven per batch",
+                AGGREGATION_STAGE1_SIZE
+            ));
         }
 
         //verify all are for the same slot
@@ -115,7 +124,12 @@ impl ValidatorsTree {
         nodes
     }
 
-    pub fn verify_merkle_proof(&self, validator: Validator, index: usize, proof: &[[Field; 4]]) -> Result<bool> {
+    pub fn verify_merkle_proof(
+        &self,
+        validator: Validator,
+        index: usize,
+        proof: &[[Field; 4]],
+    ) -> Result<bool> {
         if proof.len() != VALIDATORS_TREE_HEIGHT {
             return Err(anyhow!("Invalid proof length."));
         }
@@ -140,22 +154,24 @@ impl ValidatorsTree {
     fn fill_nodes(&mut self) {
         //fill in leave digests first
         {
-            let leave_digests: Vec<[Field; 4]> = (0..self.validators.len()).into_par_iter().map(|i| {
-                Self::hash_validator(self.validators[i].clone())
-            }).collect();
+            let leave_digests: Vec<[Field; 4]> = (0..self.validators.len())
+                .into_par_iter()
+                .map(|i| Self::hash_validator(self.validators[i].clone()))
+                .collect();
             let leave_digests_start = self.validators.len() - 1;
             leave_digests.iter().enumerate().for_each(|(i, d)| {
                 self.nodes[leave_digests_start + i] = d.clone();
             });
         }
-    
+
         //fill in the rest of the tree
         for i in (0..VALIDATORS_TREE_HEIGHT).rev() {
             let start = ((1 << i) - 1) as usize;
             let end = (start * 2) + 1;
-            let hashes: Vec<[Field; 4]> = (start..end).into_par_iter().map(|j| {
-                field_hash_two(self.nodes[(j * 2) + 1], self.nodes[(j * 2) + 2])
-            }).collect();
+            let hashes: Vec<[Field; 4]> = (start..end)
+                .into_par_iter()
+                .map(|j| field_hash_two(self.nodes[(j * 2) + 1], self.nodes[(j * 2) + 2]))
+                .collect();
             hashes.iter().enumerate().for_each(|(j, h)| {
                 self.nodes[j + start] = h.clone();
             });
