@@ -2,7 +2,9 @@ use std::time::Instant;
 
 use plonky2::field::types::{Field, PrimeField64};
 use sha2::{Digest, Sha256};
-use validator_circuits::circuits::participation_state_circuit::{ParticipationStateCircuit, ParticipationStateProof};
+use validator_circuits::circuits::participation_state_circuit::{
+    ParticipationStateCircuit, ParticipationStateProof,
+};
 use validator_circuits::epochs::ValidatorEpochsTree;
 use validator_circuits::participation::ParticipationRoundsTree;
 use validator_circuits::{

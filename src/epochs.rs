@@ -5,9 +5,10 @@ use plonky2::field::types::Field as Plonky2_Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::accounts::AccountsTree;
-use crate::circuits::validators_state_circuit::ValidatorsStateProof;
-use crate::validators::ValidatorsTree;
+use crate::accounts::{initial_accounts_tree, AccountsTree};
+use crate::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof};
+use crate::circuits::{load_or_create_init_proof, VALIDATORS_STATE_CIRCUIT_DIR};
+use crate::validators::{initial_validators_tree, ValidatorsTree};
 use crate::Field;
 use crate::{field_hash, field_hash_two, VALIDATOR_EPOCHS_TREE_HEIGHT};
 
@@ -130,24 +131,26 @@ impl ValidatorEpochsTree {
         }
     }
 
-    pub fn epoch_validators_state_proof(&self, num: usize) -> Option<ValidatorsStateProof> {
+    pub fn epoch_validators_state_proof(&self, num: usize) -> ValidatorsStateProof {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(epoch.validators_state_proof.clone()),
-            None => None,
+            Some(epoch) => epoch.validators_state_proof.clone(),
+            None => {
+                load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR)
+            }
         }
     }
 
-    pub fn epoch_validators_tree(&self, num: usize) -> Option<ValidatorsTree> {
+    pub fn epoch_validators_tree(&self, num: usize) -> ValidatorsTree {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(epoch.validators_tree.clone()),
-            None => None,
+            Some(epoch) => epoch.validators_tree.clone(),
+            None => initial_validators_tree(),
         }
     }
 
-    pub fn epoch_accounts_tree(&self, num: usize) -> Option<AccountsTree> {
+    pub fn epoch_accounts_tree(&self, num: usize) -> AccountsTree {
         match self.epochs.get(&num) {
-            Some(epoch) => Some(epoch.accounts_tree.clone()),
-            None => None,
+            Some(epoch) => epoch.accounts_tree.clone(),
+            None => initial_accounts_tree(),
         }
     }
 
@@ -188,7 +191,7 @@ impl ValidatorEpochsTree {
 
         let default_node = Self::hash_epoch(ValidatorEpoch {
             num: 0,
-            validators_state_inputs_hash: [0u8; 32],
+            validators_state_inputs_hash: [0u8; 32], //this is the only value that effects the hash
             total_staked: 0,
             total_validators: 0,
             validators_tree_root: [Field::ZERO; 4],

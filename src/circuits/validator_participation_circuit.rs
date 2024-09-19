@@ -218,21 +218,9 @@ fn generate_proof_from_data(
     let mut cyclical_proof = None;
     for epoch_num in (data.from_epoch as usize)..(data.to_epoch as usize) {
         log::info!("Generating proof for epoch {}", epoch_num);
-        let validators_state_proof =
-            match validator_epochs_tree.epoch_validators_state_proof(epoch_num) {
-                Some(proof) => proof,
-                None => load_or_create_init_proof::<ValidatorsStateCircuit>(
-                    VALIDATORS_STATE_CIRCUIT_DIR,
-                ),
-            };
-        let validators_tree = match validator_epochs_tree.epoch_validators_tree(epoch_num) {
-            Some(proof) => proof,
-            None => initial_validators_tree(),
-        };
-        let accounts_tree = match validator_epochs_tree.epoch_accounts_tree(epoch_num) {
-            Some(proof) => proof,
-            None => initial_accounts_tree(),
-        };
+        let validators_state_proof = validator_epochs_tree.epoch_validators_state_proof(epoch_num);
+        let validators_tree = validator_epochs_tree.epoch_validators_tree(epoch_num);
+        let accounts_tree = validator_epochs_tree.epoch_accounts_tree(epoch_num);
 
         let account = accounts_tree.account(data.account_address);
         let validator = match account.validator_index {

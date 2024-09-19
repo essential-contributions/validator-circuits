@@ -249,16 +249,16 @@ impl AccountsTree {
             .collect()
     }
 
-    pub fn account_with_index(&self, validator_index: usize) -> Option<Account> {
+    pub fn account_with_index(&self, validator_index: usize) -> Account {
+        assert!(validator_index < MAX_VALIDATORS, "Invalid validator_index");
         let account_entry = self.accounts.iter().find(|(_, a)| {
             return a.validator_index == validator_index;
         });
-        match account_entry {
-            Some((_, a)) => Some(Account {
-                address: a.address,
-                validator_index: Some(a.validator_index),
-            }),
-            None => None,
+        let (_, a) = account_entry
+            .expect("Failed to find account for validator index. Data may be corrupted.");
+        Account {
+            address: a.address,
+            validator_index: Some(a.validator_index),
         }
     }
 
@@ -267,19 +267,16 @@ impl AccountsTree {
         let mut computed_node_roots: Vec<(usize, [Field; 4])> = Vec::new();
         match account.validator_index {
             Some(validator_index) => {
-                match self.account_with_index(validator_index) {
-                    Some(account_with_index) => {
-                        //remove the account that currently holds the same validator index
-                        self.accounts.remove(&account_with_index.address);
-                        let memory_tree_index =
-                            Self::address_memory_tree_leaf_index(account_with_index.address);
-                        computed_node_roots.push((
-                            memory_tree_index,
-                            self.computed_nodes_root(memory_tree_index, &default_nodes),
-                        ));
-                    }
-                    None => {}
-                }
+                //remove the account that currently holds the same validator index
+                let account_with_index = self.account_with_index(validator_index);
+                self.accounts.remove(&account_with_index.address);
+                let memory_tree_index =
+                    Self::address_memory_tree_leaf_index(account_with_index.address);
+                computed_node_roots.push((
+                    memory_tree_index,
+                    self.computed_nodes_root(memory_tree_index, &default_nodes),
+                ));
+
                 //insert the new account
                 self.accounts.insert(
                     account.address,
