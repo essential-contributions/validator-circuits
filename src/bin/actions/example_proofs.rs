@@ -315,7 +315,7 @@ fn action_stake(
     validators_tree: &mut ValidatorsTree,
     accounts_tree: &mut AccountsTree,
 ) -> ValidatorsStateProof {
-    let from_account = accounts_tree.account_with_index(index).unwrap().address;
+    let from_account = accounts_tree.account_with_index(index).address;
     let to_account = account_address(account);
     let null_account = null_account_address(index);
     let commitment = example_commitment_root(index);
