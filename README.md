@@ -58,9 +58,8 @@ RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --bin benchmark -- participa
 ```
 CPU:          Intel Core i7-8700 3.2GHz
 
-results
 Generate Commitment:           144.7s
-Update Validators State:       3.26
+Update Validators State:       3.26s
 Update Participation State:    3.1s
 Prove Validator Participation: 26.89s 
 Prove Block Attestations:      66.13s 
@@ -68,7 +67,24 @@ Prove Block Attestations:      66.13s
 Theoretical 1Year Participation Prove Time:  2260s (37.67m)
 [19s + 7s*(num_epochs - 1) + 1s]
 
-Theoretical 100K Attestation Prove Time:  550s (9.17m)
-Theoretical 1M Attestation Prove Time:    5150s (85.83m)
-[4s*ceil(num_att/1024) + 32s*ceil(num_att/(1024*32)) + 32s*ceil(num_att/(1024*32*32)) + 30s]
+Theoretical 100K Attestation Prove Time:  640s (10.6m)
+Theoretical 1M Attestation Prove Time:    5240s (87.3m)
+[4s*ceil(num_att/1024) + 32s*ceil(num_att/(1024*32)) + 32s*ceil(num_att/(1024*32*32)) + 120s]
+```
+
+```
+CPU:          c6a.32xlarge
+
+Generate Commitment:           12.43s
+Update Validators State:       1.161s
+Update Participation State:    0.866s
+Prove Validator Participation: 8.29s 
+Prove Block Attestations:      16.57s 
+
+Theoretical 1Year Participation Prove Time:  807s (13.86m)
+[7s + 2.5s*(num_epochs - 1) + 0.5s]
+
+Theoretical 100K Attestation Prove Time:  159s (2.65m) (*1.97m)
+Theoretical 1M Attestation Prove Time:    1166s (19.43m) (*13.16m)
+[0.87s*ceil(num_att/1024) + 7.18s*ceil(num_att/(1024*32)) + 8.5s*ceil(num_att/(1024*32*32)) + 37s]
 ```
