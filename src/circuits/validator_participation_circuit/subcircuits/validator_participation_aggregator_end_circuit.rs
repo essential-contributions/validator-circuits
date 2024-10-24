@@ -15,18 +15,14 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::Buffer;
 
 use crate::circuits::participation_state_circuit::ParticipationStateCircuit;
-use crate::circuits::serialization::{
-    deserialize_circuit, read_verifier, serialize_circuit, write_verifier,
-};
-use crate::circuits::{
-    load_or_create_circuit, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR,
-};
+use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
+use crate::circuits::{load_or_create_circuit, Circuit, Proof, Serializeable, PARTICIPATION_STATE_CIRCUIT_DIR};
 use crate::{Config, Field, D};
 
 use super::{
     ValidatorParticipationAggCircuit, ValidatorParticipationAggProof, PIS_AGG_ACCOUNT_ADDRESS,
-    PIS_AGG_EPOCHS_TREE_ROOT, PIS_AGG_FROM_EPOCH, PIS_AGG_PARAM_RF, PIS_AGG_PARAM_ST,
-    PIS_AGG_PR_TREE_ROOT, PIS_AGG_TO_EPOCH, PIS_AGG_WITHDRAW_MAX, PIS_AGG_WITHDRAW_UNEARNED,
+    PIS_AGG_EPOCHS_TREE_ROOT, PIS_AGG_FROM_EPOCH, PIS_AGG_PARAM_RF, PIS_AGG_PARAM_ST, PIS_AGG_PR_TREE_ROOT,
+    PIS_AGG_TO_EPOCH, PIS_AGG_WITHDRAW_MAX, PIS_AGG_WITHDRAW_UNEARNED,
 };
 
 pub use proof::ValidatorParticipationAggEndProof;
@@ -45,16 +41,10 @@ impl ValidatorParticipationAggEndCircuit {
         let participation_state_circuit =
             load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
         let participation_state_common_data = &participation_state_circuit.circuit_data().common;
-        let participation_state_verifier = participation_state_circuit
-            .circuit_data()
-            .verifier_only
-            .clone();
+        let participation_state_verifier = participation_state_circuit.circuit_data().verifier_only.clone();
 
         let participation_agg_common_data = &participation_agg_circuit.circuit_data().common;
-        let participation_agg_verifier = participation_agg_circuit
-            .circuit_data()
-            .verifier_only
-            .clone();
+        let participation_agg_verifier = participation_agg_circuit.circuit_data().verifier_only.clone();
 
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
@@ -118,8 +108,7 @@ impl Circuit for ValidatorParticipationAggEndCircuit {
 
         let common_data = &self.circuit_data.common;
         let unread_bytes = buffer.unread_bytes().to_vec();
-        let proof =
-            ProofWithPublicInputs::<Field, Config, D>::from_bytes(unread_bytes, common_data)?;
+        let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(unread_bytes, common_data)?;
 
         Ok(Self::Proof::new(proof, proof_data))
     }

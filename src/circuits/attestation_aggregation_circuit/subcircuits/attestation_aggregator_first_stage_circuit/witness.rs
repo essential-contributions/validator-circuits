@@ -59,10 +59,7 @@ pub fn generate_partial_witness(
 
     //create partial witness
     let mut pw = PartialWitness::new();
-    pw.set_target(
-        targets.block_slot,
-        Field::from_canonical_u64(data.block_slot as u64),
-    );
+    pw.set_target(targets.block_slot, Field::from_canonical_u64(data.block_slot as u64));
 
     for (t, v) in targets.validators.iter().zip(validators.iter()) {
         pw.set_target(t.stake, Field::from_canonical_u32(v.stake));
@@ -73,10 +70,7 @@ pub fn generate_partial_witness(
             },
         );
         pw.set_target_arr(&t.reveal, &v.reveal.clone().unwrap().reveal);
-        pw.set_merkle_proof_target(
-            t.reveal_proof.clone(),
-            &v.reveal.clone().unwrap().reveal_proof,
-        );
+        pw.set_merkle_proof_target(t.reveal_proof.clone(), &v.reveal.clone().unwrap().reveal_proof);
     }
 
     let participation_bits_fields = leaf_fields(validator_participation);

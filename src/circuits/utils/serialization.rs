@@ -2,18 +2,15 @@ use anyhow::anyhow;
 use plonky2::{
     field::extension::Extendable,
     gadgets::{
-        arithmetic::EqualityGenerator, arithmetic_extension::QuotientGeneratorExtension,
-        range_check::LowHighGenerator, split_base::BaseSumGenerator,
-        split_join::WireSplitGenerator,
+        arithmetic::EqualityGenerator, arithmetic_extension::QuotientGeneratorExtension, range_check::LowHighGenerator,
+        split_base::BaseSumGenerator, split_join::WireSplitGenerator,
     },
     gates::{
-        arithmetic_base::ArithmeticBaseGenerator,
-        arithmetic_extension::ArithmeticExtensionGenerator, base_sum::BaseSplitGenerator,
-        coset_interpolation::InterpolationGenerator, exponentiation::ExponentiationGenerator,
-        multiplication_extension::MulExtensionGenerator, poseidon::PoseidonGenerator,
-        poseidon_mds::PoseidonMdsGenerator, random_access::RandomAccessGenerator,
-        reducing::ReducingGenerator,
-        reducing_extension::ReducingGenerator as ReducingExtensionGenerator,
+        arithmetic_base::ArithmeticBaseGenerator, arithmetic_extension::ArithmeticExtensionGenerator,
+        base_sum::BaseSplitGenerator, coset_interpolation::InterpolationGenerator,
+        exponentiation::ExponentiationGenerator, multiplication_extension::MulExtensionGenerator,
+        poseidon::PoseidonGenerator, poseidon_mds::PoseidonMdsGenerator, random_access::RandomAccessGenerator,
+        reducing::ReducingGenerator, reducing_extension::ReducingGenerator as ReducingExtensionGenerator,
     },
     hash::hash_types::RichField,
     iop::generator::{ConstantGenerator, RandomValueGenerator},
@@ -22,9 +19,7 @@ use plonky2::{
         config::{AlgebraicHasher, GenericConfig},
     },
     recursion::dummy_circuit::DummyProofGenerator,
-    util::serialization::{
-        Buffer, DefaultGateSerializer, IoResult, Read, WitnessGeneratorSerializer, Write,
-    },
+    util::serialization::{Buffer, DefaultGateSerializer, IoResult, Read, WitnessGeneratorSerializer, Write},
 };
 use plonky2::{get_generator_tag_impl, impl_generator_serializer, read_generator_impl};
 use std::{collections::HashSet, marker::PhantomData};
@@ -82,27 +77,23 @@ pub fn serialize_circuit(circuit_data: &CircuitData<Field, Config, D>) -> anyhow
     Ok(data_bytes.unwrap())
 }
 
-pub fn deserialize_circuit(
-    bytes: &Vec<u8>,
-) -> anyhow::Result<(CircuitData<Field, Config, D>, Buffer)> {
+pub fn deserialize_circuit(bytes: &Vec<u8>) -> anyhow::Result<(CircuitData<Field, Config, D>, Buffer)> {
     let gate_serializer = DefaultGateSerializer;
     let generator_serializer = CustomGeneratorSerializer::<Config, D>::default();
 
     let mut buffer = Buffer::new(bytes);
-    let circuit_data =
-        buffer.read_circuit_data::<Field, Config, D>(&gate_serializer, &generator_serializer);
+    let circuit_data = buffer.read_circuit_data::<Field, Config, D>(&gate_serializer, &generator_serializer);
     if circuit_data.is_err() {
-        return Err(anyhow!("Failed to deserialize circuit. It may help to delete the circuit bins and have them be regenerated."));
+        return Err(anyhow!(
+            "Failed to deserialize circuit. It may help to delete the circuit bins and have them be regenerated."
+        ));
     }
 
     Ok((circuit_data.unwrap(), buffer))
 }
 
 #[inline]
-pub fn write_verifier(
-    buffer: &mut Vec<u8>,
-    verifier: &VerifierOnlyCircuitData<Config, D>,
-) -> IoResult<()> {
+pub fn write_verifier(buffer: &mut Vec<u8>, verifier: &VerifierOnlyCircuitData<Config, D>) -> IoResult<()> {
     let bytes = verifier.to_bytes()?;
     buffer.write_usize(bytes.len())?;
     buffer.write_all(&bytes)?;

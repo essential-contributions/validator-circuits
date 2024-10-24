@@ -19,8 +19,7 @@ use serde::Serialize;
 
 use crate::{
     circuits::{
-        CIRCUIT_FILENAME, CIRCUIT_OUTPUT_FOLDER, COMMON_DATA_FILENAME, PROOF_FILENAME,
-        VERIFIER_ONLY_DATA_FILENAME,
+        CIRCUIT_FILENAME, CIRCUIT_OUTPUT_FOLDER, COMMON_DATA_FILENAME, PROOF_FILENAME, VERIFIER_ONLY_DATA_FILENAME,
     },
     Config, Field, D,
 };
@@ -123,10 +122,7 @@ pub fn save_bn128_wrapper_circuit(circuit: &BN128WrapperCircuit, dir: &str) {
     }
 }
 
-pub fn save_bn128_wrapper_proof(
-    proof: &ProofWithPublicInputs<Field, PoseidonBN128GoldilocksConfig, D>,
-    dir: &str,
-) {
+pub fn save_bn128_wrapper_proof(proof: &ProofWithPublicInputs<Field, PoseidonBN128GoldilocksConfig, D>, dir: &str) {
     let proof_serialized = serde_json::to_string(proof);
     match proof_serialized {
         Ok(json) => {

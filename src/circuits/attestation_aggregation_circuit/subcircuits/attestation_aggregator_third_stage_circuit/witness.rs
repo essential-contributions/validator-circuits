@@ -10,9 +10,7 @@ use super::{AttAgg3Targets, AttestationAggregatorSecondStageProof};
 use crate::circuits::validators_state_circuit::ValidatorsStateProof;
 use crate::circuits::Proof;
 use crate::participation::empty_participation_sub_root;
-use crate::{
-    field_hash_two, Config, Field, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE, D,
-};
+use crate::{field_hash_two, Config, Field, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE, D};
 
 #[derive(Clone)]
 pub struct AttestationAggregatorThirdStageData {
@@ -57,19 +55,10 @@ pub fn generate_partial_witness(
 
     //create partial witness
     let mut pw = PartialWitness::new();
-    pw.set_target(
-        targets.block_slot,
-        Field::from_canonical_u64(data.block_slot as u64),
-    );
+    pw.set_target(targets.block_slot, Field::from_canonical_u64(data.block_slot as u64));
 
-    pw.set_verifier_data_target(
-        &targets.validators_state_verifier,
-        validators_state_verifier,
-    );
-    pw.set_proof_with_pis_target(
-        &targets.validators_state_proof,
-        data.validators_state_proof.proof(),
-    );
+    pw.set_verifier_data_target(&targets.validators_state_verifier, validators_state_verifier);
+    pw.set_proof_with_pis_target(&targets.validators_state_proof, data.validators_state_proof.proof());
 
     pw.set_verifier_data_target(&targets.atts_agg2_verifier, atts_agg2_verifier);
     for (t, v) in targets.atts_agg2_data.iter().zip(data.agg2_data.clone()) {
@@ -102,9 +91,7 @@ pub struct AttestationAggregatorThirdStageProofData {
     pub attestations_stake: u64,
 }
 
-pub fn generate_proof_data(
-    data: &AttestationAggregatorThirdStageData,
-) -> AttestationAggregatorThirdStageProofData {
+pub fn generate_proof_data(data: &AttestationAggregatorThirdStageData) -> AttestationAggregatorThirdStageProofData {
     let mut attestations_stake = 0;
     let mut participation_count = 0;
     for agg2_data in &data.agg2_data {
@@ -114,8 +101,7 @@ pub fn generate_proof_data(
         }
     }
 
-    let empty_participation_sub_root =
-        empty_participation_sub_root(AGGREGATION_STAGE2_SUB_TREE_HEIGHT);
+    let empty_participation_sub_root = empty_participation_sub_root(AGGREGATION_STAGE2_SUB_TREE_HEIGHT);
     let mut nodes: Vec<[Field; 4]> = data
         .agg2_data
         .iter()
@@ -125,10 +111,7 @@ pub fn generate_proof_data(
         })
         .collect();
     while nodes.len() > 1 {
-        let new_nodes = nodes
-            .chunks(2)
-            .map(|c| field_hash_two(c[0], c[1]))
-            .collect();
+        let new_nodes = nodes.chunks(2).map(|c| field_hash_two(c[0], c[1])).collect();
         nodes = new_nodes;
     }
 
@@ -143,10 +126,7 @@ pub fn generate_proof_data(
 }
 
 #[inline]
-pub fn write_proof_data(
-    buffer: &mut Vec<u8>,
-    data: &AttestationAggregatorThirdStageProofData,
-) -> IoResult<()> {
+pub fn write_proof_data(buffer: &mut Vec<u8>, data: &AttestationAggregatorThirdStageProofData) -> IoResult<()> {
     buffer.write_all(&data.validators_inputs_hash)?;
     buffer.write_usize(data.total_staked as usize)?;
     buffer.write_u32(data.block_slot)?;

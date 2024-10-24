@@ -23,8 +23,7 @@ impl ParticipationStateProof {
     pub fn inputs_hash(&self) -> [u8; 32] {
         let mut hash = [0u8; 32];
         for i in 0..8 {
-            let bytes = (self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[i]]
-                .to_canonical_u64() as u32)
+            let bytes = (self.proof.public_inputs[PIS_PARTICIPATION_STATE_INPUTS_HASH[i]].to_canonical_u64() as u32)
                 .to_be_bytes();
             hash[(i * 4)..((i * 4) + 4)].copy_from_slice(&bytes);
         }

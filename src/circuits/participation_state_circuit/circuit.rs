@@ -9,20 +9,16 @@ use crate::epochs::initial_validator_epochs_tree_root;
 use crate::participation::initial_participation_rounds_tree_root;
 use crate::Hash;
 use crate::{
-    Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT,
-    VALIDATORS_TREE_HEIGHT, VALIDATOR_EPOCHS_TREE_HEIGHT,
+    Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH, PARTICIPATION_ROUNDS_TREE_HEIGHT, VALIDATORS_TREE_HEIGHT,
+    VALIDATOR_EPOCHS_TREE_HEIGHT,
 };
 
 use super::ParticipationStateCircuitTargets;
 
 const MAX_GATES: usize = 1 << 14;
 
-pub fn generate_circuit(
-    builder: &mut CircuitBuilder<Field, D>,
-) -> ParticipationStateCircuitTargets {
-    let rounds_per_epoch = builder.constant(Field::from_canonical_usize(
-        PARTICIPATION_ROUNDS_PER_STATE_EPOCH,
-    ));
+pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ParticipationStateCircuitTargets {
+    let rounds_per_epoch = builder.constant(Field::from_canonical_usize(PARTICIPATION_ROUNDS_PER_STATE_EPOCH));
 
     //Init flag
     let init_zero = builder.add_virtual_bool_target_safe();
@@ -53,8 +49,7 @@ pub fn generate_circuit(
 
     //Verify merkle proof for existing validator epoch data
     let current_val_state_inputs_hash = builder.add_virtual_targets(8);
-    let current_epoch_hash =
-        builder.hash_n_to_hash_no_pad::<Hash>(current_val_state_inputs_hash.clone());
+    let current_epoch_hash = builder.hash_n_to_hash_no_pad::<Hash>(current_val_state_inputs_hash.clone());
     let validator_epoch_proof = MerkleProofTarget {
         siblings: builder.add_virtual_hashes(VALIDATOR_EPOCHS_TREE_HEIGHT),
     };
@@ -72,11 +67,7 @@ pub fn generate_circuit(
     let current_participation_root = builder.add_virtual_hash();
     let current_participation_count = builder.add_virtual_target();
     let current_round_hash = builder.hash_n_to_hash_no_pad::<Hash>(
-        [
-            &current_participation_root.elements[..],
-            &[current_participation_count],
-        ]
-        .concat(),
+        [&current_participation_root.elements[..], &[current_participation_count]].concat(),
     );
     let participation_round_proof = MerkleProofTarget {
         siblings: builder.add_virtual_hashes(PARTICIPATION_ROUNDS_TREE_HEIGHT),
@@ -97,27 +88,11 @@ pub fn generate_circuit(
     );
 
     //Determine the new round data based on the input and current participation count
-    let input_is_less = builder.less_than(
-        participation_count,
-        current_participation_count,
-        VALIDATORS_TREE_HEIGHT,
-    );
-    let new_participation_root = builder.select_hash(
-        input_is_less,
-        current_participation_root,
-        participation_root,
-    );
-    let new_participation_count = builder.select(
-        input_is_less,
-        current_participation_count,
-        participation_count,
-    );
+    let input_is_less = builder.less_than(participation_count, current_participation_count, VALIDATORS_TREE_HEIGHT);
+    let new_participation_root = builder.select_hash(input_is_less, current_participation_root, participation_root);
+    let new_participation_count = builder.select(input_is_less, current_participation_count, participation_count);
     let new_pr_tree_root = builder.merkle_root_from_prev_proof::<Hash>(
-        [
-            &new_participation_root.elements[..],
-            &[new_participation_count],
-        ]
-        .concat(),
+        [&new_participation_root.elements[..], &[new_participation_count]].concat(),
         &round_num_bits,
         &participation_round_proof,
     );
@@ -133,10 +108,8 @@ pub fn generate_circuit(
         .iter()
         .map(|&h| builder.mul(h, init_zero.target))
         .collect();
-    let new_epochs_tree_root_or_init =
-        builder.select_hash(init_zero, new_epochs_tree_root, initial_epochs_tree_root);
-    let new_pr_tree_root_or_init =
-        builder.select_hash(init_zero, new_pr_tree_root, initial_pr_tree_root);
+    let new_epochs_tree_root_or_init = builder.select_hash(init_zero, new_epochs_tree_root, initial_epochs_tree_root);
+    let new_pr_tree_root_or_init = builder.select_hash(init_zero, new_pr_tree_root, initial_pr_tree_root);
 
     //Register all public inputs
     builder.register_public_inputs(&new_inputs_hash_or_init);
@@ -160,11 +133,7 @@ pub fn generate_circuit(
 
     //Finally verify the previous (inner) proof
     builder
-        .conditionally_verify_cyclic_proof_or_dummy::<Config>(
-            init_zero,
-            &inner_cyclic_proof_with_pis,
-            &common_data,
-        )
+        .conditionally_verify_cyclic_proof_or_dummy::<Config>(init_zero, &inner_cyclic_proof_with_pis, &common_data)
         .expect("cyclic proof verification failed");
 
     ParticipationStateCircuitTargets {

@@ -52,9 +52,8 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsSta
     //Verify private input merkle proof for validator tree
     let validator_stake = builder.add_virtual_target();
     let validator_commitment = builder.add_virtual_hash();
-    let current_validator_hash = builder.hash_n_to_hash_no_pad::<Hash>(
-        [&validator_commitment.elements[..], &[validator_stake]].concat(),
-    );
+    let current_validator_hash =
+        builder.hash_n_to_hash_no_pad::<Hash>([&validator_commitment.elements[..], &[validator_stake]].concat());
     let validator_proof = MerkleProofTarget {
         siblings: builder.add_virtual_hashes(VALIDATORS_TREE_HEIGHT),
     };
@@ -121,11 +120,7 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsSta
         let validator_index_eq_input = builder.is_equal(validator_index, index);
         let to_acc_eq_input = builder.is_equal_many(&to_account, &account);
         let from_acc_index_eq_input = builder.is_equal(from_acc_index, index);
-        let terms = [
-            validator_index_eq_input,
-            to_acc_eq_input,
-            from_acc_index_eq_input,
-        ];
+        let terms = [validator_index_eq_input, to_acc_eq_input, from_acc_index_eq_input];
         builder.assert_true_if(is_stake_operation, &terms);
 
         //Determine if the stake operation is valid
@@ -146,38 +141,23 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsSta
         //Compute the theoretically updated values
         let stake_delta = builder.sub(stake, validator_stake);
         let updated_total_staked = builder.add(current_total_staked, stake_delta);
-        let updated_total_validators =
-            builder.add(current_total_validators, from_acc_is_null.target);
+        let updated_total_validators = builder.add(current_total_validators, from_acc_is_null.target);
         let updated_validator_stake = stake;
         let updated_validator_commitment = commitment;
         let updated_from_acc_index = null;
         let updated_to_acc_index = index;
 
         //Set the final values if applicable
-        new_total_staked =
-            builder.select(is_valid_stake_op, updated_total_staked, new_total_staked);
-        new_total_validators = builder.select(
-            is_valid_stake_op,
-            updated_total_validators,
-            new_total_validators,
-        );
-        new_validator_stake = builder.select(
-            is_valid_stake_op,
-            updated_validator_stake,
-            new_validator_stake,
-        );
+        new_total_staked = builder.select(is_valid_stake_op, updated_total_staked, new_total_staked);
+        new_total_validators = builder.select(is_valid_stake_op, updated_total_validators, new_total_validators);
+        new_validator_stake = builder.select(is_valid_stake_op, updated_validator_stake, new_validator_stake);
         new_validator_commitment = builder.select_hash(
             is_valid_stake_op,
             updated_validator_commitment,
             new_validator_commitment,
         );
-        new_from_acc_index = builder.select(
-            is_valid_stake_op,
-            updated_from_acc_index,
-            new_from_acc_index,
-        );
-        new_to_acc_index =
-            builder.select(is_valid_stake_op, updated_to_acc_index, new_to_acc_index);
+        new_from_acc_index = builder.select(is_valid_stake_op, updated_from_acc_index, new_from_acc_index);
+        new_to_acc_index = builder.select(is_valid_stake_op, updated_to_acc_index, new_to_acc_index);
     }
 
     //Process for unstake operation (stake amount is zero)
@@ -196,8 +176,7 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsSta
 
         //Determine if the unstake operation is valid
         let from_acc_index_is_not_null = builder.not(from_acc_index_is_null);
-        let is_valid_unstake_op =
-            builder.and_many(&[is_unstake_operation, from_acc_index_is_not_null]);
+        let is_valid_unstake_op = builder.and_many(&[is_unstake_operation, from_acc_index_is_not_null]);
 
         //Compute the theoretically updated values
         let updated_total_staked = builder.sub(current_total_staked, validator_stake);
@@ -210,39 +189,21 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsSta
         let updated_to_acc_index = validator_index;
 
         //Set the final values if applicable
-        new_total_staked =
-            builder.select(is_valid_unstake_op, updated_total_staked, new_total_staked);
-        new_total_validators = builder.select(
-            is_valid_unstake_op,
-            updated_total_validators,
-            new_total_validators,
-        );
-        new_validator_stake = builder.select(
-            is_valid_unstake_op,
-            updated_validator_stake,
-            new_validator_stake,
-        );
+        new_total_staked = builder.select(is_valid_unstake_op, updated_total_staked, new_total_staked);
+        new_total_validators = builder.select(is_valid_unstake_op, updated_total_validators, new_total_validators);
+        new_validator_stake = builder.select(is_valid_unstake_op, updated_validator_stake, new_validator_stake);
         new_validator_commitment = builder.select_hash(
             is_valid_unstake_op,
             updated_validator_commitment,
             new_validator_commitment,
         );
-        new_from_acc_index = builder.select(
-            is_valid_unstake_op,
-            updated_from_acc_index,
-            new_from_acc_index,
-        );
-        new_to_acc_index =
-            builder.select(is_valid_unstake_op, updated_to_acc_index, new_to_acc_index);
+        new_from_acc_index = builder.select(is_valid_unstake_op, updated_from_acc_index, new_from_acc_index);
+        new_to_acc_index = builder.select(is_valid_unstake_op, updated_to_acc_index, new_to_acc_index);
     }
 
     //Compute the new tree roots
     let new_validators_tree_root = builder.merkle_root_from_prev_proof::<Hash>(
-        [
-            &new_validator_commitment.elements[..],
-            &[new_validator_stake],
-        ]
-        .concat(),
+        [&new_validator_commitment.elements[..], &[new_validator_stake]].concat(),
         &validator_index_bits,
         &validator_proof,
     );
@@ -268,16 +229,10 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsSta
         .collect();
     let new_total_staked_or_init = builder.mul(new_total_staked, init_zero.target);
     let new_total_validators_or_init = builder.mul(new_total_validators, init_zero.target);
-    let new_validators_tree_root_or_init = builder.select_hash(
-        init_zero,
-        new_validators_tree_root,
-        initial_validators_tree_root,
-    );
-    let new_accounts_tree_root_or_init = builder.select_hash(
-        init_zero,
-        new_accounts_tree_root,
-        initial_accounts_tree_root,
-    );
+    let new_validators_tree_root_or_init =
+        builder.select_hash(init_zero, new_validators_tree_root, initial_validators_tree_root);
+    let new_accounts_tree_root_or_init =
+        builder.select_hash(init_zero, new_accounts_tree_root, initial_accounts_tree_root);
 
     //Register all public inputs
     builder.register_public_inputs(&new_inputs_hash_or_init);
@@ -295,28 +250,19 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsSta
     let inner_proof_inputs_hash = inner_cyclic_pis[0..8].to_vec();
     let inner_proof_total_staked = inner_cyclic_pis[8];
     let inner_proof_total_validators = inner_cyclic_pis[9];
-    let inner_proof_validators_tree_root =
-        HashOutTarget::try_from(&inner_cyclic_pis[10..14]).unwrap();
-    let inner_proof_accounts_tree_root =
-        HashOutTarget::try_from(&inner_cyclic_pis[14..18]).unwrap();
+    let inner_proof_validators_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[10..14]).unwrap();
+    let inner_proof_accounts_tree_root = HashOutTarget::try_from(&inner_cyclic_pis[14..18]).unwrap();
 
     //Connect the current inputs with proof public inputs
     builder.connect_many(&current_inputs_hash, &inner_proof_inputs_hash);
     builder.connect(current_total_staked, inner_proof_total_staked);
     builder.connect(current_total_validators, inner_proof_total_validators);
-    builder.connect_hashes(
-        current_validators_tree_root,
-        inner_proof_validators_tree_root,
-    );
+    builder.connect_hashes(current_validators_tree_root, inner_proof_validators_tree_root);
     builder.connect_hashes(current_accounts_tree_root, inner_proof_accounts_tree_root);
 
     //Finally verify the previous (inner) proof
     builder
-        .conditionally_verify_cyclic_proof_or_dummy::<Config>(
-            init_zero,
-            &inner_cyclic_proof_with_pis,
-            &common_data,
-        )
+        .conditionally_verify_cyclic_proof_or_dummy::<Config>(init_zero, &inner_cyclic_proof_with_pis, &common_data)
         .expect("cyclic proof verification failed");
 
     ValidatorsStateCircuitTargets {
@@ -342,14 +288,8 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> ValidatorsSta
     }
 }
 
-fn is_account_null(
-    builder: &mut CircuitBuilder<Field, D>,
-    account: &[Target],
-    validator_index: Target,
-) -> BoolTarget {
-    let shift_amount = builder.constant(Field::from_canonical_usize(
-        1 << (32 - VALIDATORS_TREE_HEIGHT),
-    ));
+fn is_account_null(builder: &mut CircuitBuilder<Field, D>, account: &[Target], validator_index: Target) -> BoolTarget {
+    let shift_amount = builder.constant(Field::from_canonical_usize(1 << (32 - VALIDATORS_TREE_HEIGHT)));
     let validator_index_shifted = builder.mul(validator_index, shift_amount);
     let null_account = [
         validator_index_shifted,

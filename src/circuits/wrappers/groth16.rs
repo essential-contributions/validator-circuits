@@ -12,10 +12,7 @@ use std::{
 
 use crate::circuits::CIRCUIT_OUTPUT_FOLDER;
 
-use super::{
-    bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists,
-    BN128_WRAPPER_OUTPUT_FOLDER,
-};
+use super::{bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, BN128_WRAPPER_OUTPUT_FOLDER};
 
 pub const GROTH16_WRAPPER_OUTPUT_FOLDER: &str = "groth16";
 const WRAPPER_GO_PROJECT_PATH: &str = "./groth16-wrapper";
@@ -49,10 +46,7 @@ pub fn create_groth16_wrapper_circuit(dir: &str) {
                     log::info!("Successfully created groth16 wrapper circuit [/{}]", dir);
                 }
                 Ok(output) => {
-                    log::error!(
-                        "Running Go binary failed: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    );
+                    log::error!("Running Go binary failed: {}", String::from_utf8_lossy(&output.stderr));
                 }
                 Err(e) => {
                     log::error!("Failed to run Go binary: {}", e);
@@ -198,18 +192,14 @@ fn proof_data_from_json(json_str: String) -> [[u8; 32]; 13] {
 
     //get json elements
     let v: Value = serde_json::from_str(&json_str).expect("JSON was not well-formatted");
-    let proof_array = v["proof"]
-        .as_array()
-        .expect("Expected an array for 'proof'");
+    let proof_array = v["proof"].as_array().expect("Expected an array for 'proof'");
     let commitments_array = v["commitments"]
         .as_array()
         .expect("Expected an array for 'commitments'");
     let commitments_pok_array = v["commitmentPok"]
         .as_array()
         .expect("Expected an array for 'commitmentPok'");
-    let input_array = v["input"]
-        .as_array()
-        .expect("Expected an array for 'input'");
+    let input_array = v["input"].as_array().expect("Expected an array for 'input'");
 
     //add proof data
     for (i, data) in proof_array.iter().enumerate() {
@@ -246,8 +236,7 @@ fn hex_string_to_u8_array(hex_str: String) -> [u8; 32] {
 
     let mut bytes = [0u8; 32];
     for i in 0..32 {
-        bytes[i] =
-            u8::from_str_radix(&hex_str[(i * 2)..((i + 1) * 2)], 16).expect("Invalid hex string");
+        bytes[i] = u8::from_str_radix(&hex_str[(i * 2)..((i + 1) * 2)], 16).expect("Invalid hex string");
     }
 
     bytes

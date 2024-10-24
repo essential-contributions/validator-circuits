@@ -5,8 +5,8 @@ use validator_circuits::circuits::validators_state_circuit::ValidatorsStateCircu
 use validator_circuits::{
     accounts::{initial_accounts_tree, null_account_address, Account, AccountsTree},
     circuits::wrappers::{
-        bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit,
-        save_bn128_wrapper_proof, BN128WrapperCircuit,
+        bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof,
+        BN128WrapperCircuit,
     },
     circuits::wrappers::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists},
     circuits::{
@@ -15,9 +15,7 @@ use validator_circuits::{
         participation_state_circuit::{
             ParticipationStateCircuit, ParticipationStateCircuitData, ParticipationStateProof,
         },
-        validator_participation_circuit::{
-            ValidatorParticipationCircuit, ValidatorParticipationCircuitData,
-        },
+        validator_participation_circuit::{ValidatorParticipationCircuit, ValidatorParticipationCircuitData},
         validators_state_circuit::ValidatorsStateProof,
         Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR,
         VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
@@ -25,8 +23,7 @@ use validator_circuits::{
     commitment::{example_commitment_proof, example_commitment_root},
     epochs::{initial_validator_epochs_tree, ValidatorEpochsTree},
     participation::{
-        initial_participation_rounds_tree, ParticipationRound, ParticipationRoundsTree,
-        PARTICIPATION_BITS_BYTE_SIZE,
+        initial_participation_rounds_tree, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE,
     },
     validators::{initial_validators_tree, Validator, ValidatorCommitmentReveal, ValidatorsTree},
     Field, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH,
@@ -50,29 +47,24 @@ pub fn create_example_proofs() {
         || !groth16_wrapper_circuit_data_exists(ATTESTATION_AGGREGATION_CIRCUIT_DIR)
     {
         log::error!("Cannot generate full wrapped proof until circuits are built.");
-        log::error!(
-            "Please run the build util and try again. [cargo run --release --bin cbuild -- --full]"
-        );
+        log::error!("Please run the build util and try again. [cargo run --release --bin cbuild -- --full]");
         panic!();
     }
 
     //generate the circuits
     println!("Loading Circuits... ");
     let start = Instant::now();
-    let validators_state_circuit =
-        load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+    let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
     let participation_state_circuit =
         load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
-    let attestation_agg_circuit = load_or_create_circuit::<AttestationAggregationCircuit>(
-        ATTESTATION_AGGREGATION_CIRCUIT_DIR,
-    );
+    let attestation_agg_circuit =
+        load_or_create_circuit::<AttestationAggregationCircuit>(ATTESTATION_AGGREGATION_CIRCUIT_DIR);
     let attestation_agg_bn128_wrapper = load_or_create_bn128_wrapper_circuit(
         attestation_agg_circuit.circuit_data(),
         ATTESTATION_AGGREGATION_CIRCUIT_DIR,
     );
-    let validator_participation_circuit = load_or_create_circuit::<ValidatorParticipationCircuit>(
-        VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
-    );
+    let validator_participation_circuit =
+        load_or_create_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
     let validator_participation_bn128_wrapper = load_or_create_bn128_wrapper_circuit(
         validator_participation_circuit.circuit_data(),
         VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
@@ -93,10 +85,8 @@ pub fn create_example_proofs() {
     //build initial proofs
     println!("Building State Tracking Structures...");
     let start = Instant::now();
-    let validators_proof =
-        load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
-    let participation_proof =
-        load_or_create_init_proof::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
+    let validators_proof = load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+    let participation_proof = load_or_create_init_proof::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -296,10 +286,7 @@ pub fn create_example_proofs() {
     );
     println!();
 
-    println!(
-        "validators_inputs_hash: 0x{})",
-        to_hex(&validators_proof.inputs_hash())
-    );
+    println!("validators_inputs_hash: 0x{})", to_hex(&validators_proof.inputs_hash()));
     println!(
         "participation_inputs_hash: 0x{})",
         to_hex(&participation_proof.inputs_hash())
@@ -341,8 +328,8 @@ fn action_stake(
     let same_account = from_account == to_account;
     let to_acc_index_is_null = accounts_tree.account(to_account).validator_index.is_none();
     let from_acc_is_null = from_account == null_account;
-    let validators_at_max = previous_proof.is_some()
-        && previous_proof.unwrap().total_validators() == (MAX_VALIDATORS as u32);
+    let validators_at_max =
+        previous_proof.is_some() && previous_proof.unwrap().total_validators() == (MAX_VALIDATORS as u32);
     if stake_increase
         && (same_account || from_acc_is_null || validators_at_max)
         && (same_account || to_acc_index_is_null)
@@ -371,10 +358,7 @@ fn action_unstake(
     accounts_tree: &mut AccountsTree,
 ) -> ValidatorsStateProof {
     let from_account = account_address(account);
-    let index = accounts_tree
-        .account(from_account)
-        .validator_index
-        .unwrap_or(0);
+    let index = accounts_tree.account(from_account).validator_index.unwrap_or(0);
     let to_account = null_account_address(index);
     println!("Computing Unstake Action...");
     let data = compile_data_for_validators_state_circuit(
@@ -391,10 +375,7 @@ fn action_unstake(
     let proof = validators_state_circuit.generate_proof(&data).unwrap();
 
     //update tress only if this is a valid unstake action
-    let from_acc_index_is_not_null = accounts_tree
-        .account(from_account)
-        .validator_index
-        .is_some();
+    let from_acc_index_is_not_null = accounts_tree.account(from_account).validator_index.is_some();
     if from_acc_index_is_not_null {
         validators_tree.set_validator(
             index,
@@ -448,8 +429,7 @@ fn action_fast_finality(
         .unwrap();
     println!("(wrapping to groth16...)");
     save_bn128_wrapper_proof(&bn128_proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR);
-    let groth16_proof =
-        generate_groth16_wrapper_proof(ATTESTATION_AGGREGATION_CIRCUIT_DIR).unwrap();
+    let groth16_proof = generate_groth16_wrapper_proof(ATTESTATION_AGGREGATION_CIRCUIT_DIR).unwrap();
 
     //print the proof
     for i in 0..13 {
@@ -500,12 +480,7 @@ fn action_fast_finality(
     for validator_index in validator_indexes {
         participation_bits[validator_index / 8] += 0x80 >> (validator_index % 8);
     }
-    validator_epochs_tree.update_epoch(
-        epoch_num,
-        &validators_state_proof,
-        &validators_tree,
-        &accounts_tree,
-    );
+    validator_epochs_tree.update_epoch(epoch_num, &validators_state_proof, &validators_tree, &accounts_tree);
     participation_rounds_tree.update_round(round.clone(), Some(participation_bits));
 
     participation_proof
@@ -538,15 +513,11 @@ fn prove_validator_participation(
         .unwrap();
     println!("(wrapping to bn128...)");
     let bn128_proof = validator_participation_bn128_wrapper
-        .generate_proof(
-            validator_participation_circuit.circuit_data(),
-            proof.proof(),
-        )
+        .generate_proof(validator_participation_circuit.circuit_data(), proof.proof())
         .unwrap();
     println!("(wrapping to groth16...)");
     save_bn128_wrapper_proof(&bn128_proof, VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
-    let groth16_proof =
-        generate_groth16_wrapper_proof(VALIDATOR_PARTICIPATION_CIRCUIT_DIR).unwrap();
+    let groth16_proof = generate_groth16_wrapper_proof(VALIDATOR_PARTICIPATION_CIRCUIT_DIR).unwrap();
 
     //print final proof
     for i in 0..13 {
@@ -571,8 +542,7 @@ fn account_address(address: &str) -> [u8; 20] {
 
     let mut bytes = [0u8; 20];
     for i in 0..20 {
-        bytes[i] =
-            u8::from_str_radix(&hex_str[(i * 2)..((i + 1) * 2)], 16).expect("Invalid hex string");
+        bytes[i] = u8::from_str_radix(&hex_str[(i * 2)..((i + 1) * 2)], 16).expect("Invalid hex string");
     }
     bytes
 }

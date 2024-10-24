@@ -7,18 +7,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::Field;
 use crate::{
-    field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE,
-    AGGREGATION_STAGE2_SUB_TREE_HEIGHT, AGGREGATION_STAGE3_SIZE,
-    AGGREGATION_STAGE3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_TREE_HEIGHT,
+    field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE2_SIZE, AGGREGATION_STAGE2_SUB_TREE_HEIGHT,
+    AGGREGATION_STAGE3_SIZE, AGGREGATION_STAGE3_SUB_TREE_HEIGHT, PARTICIPATION_ROUNDS_TREE_HEIGHT,
 };
 
 pub const PARTICIPATION_TREE_SIZE: usize = AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE;
-pub const PARTICIPATION_TREE_HEIGHT: usize =
-    AGGREGATION_STAGE2_SUB_TREE_HEIGHT + AGGREGATION_STAGE3_SUB_TREE_HEIGHT;
+pub const PARTICIPATION_TREE_HEIGHT: usize = AGGREGATION_STAGE2_SUB_TREE_HEIGHT + AGGREGATION_STAGE3_SUB_TREE_HEIGHT;
 
 pub const PARTICIPANTS_PER_FIELD: usize = 62;
-pub const PARTICIPATION_FIELDS_PER_LEAF: usize =
-    div_ceil(AGGREGATION_STAGE1_SIZE, PARTICIPANTS_PER_FIELD);
+pub const PARTICIPATION_FIELDS_PER_LEAF: usize = div_ceil(AGGREGATION_STAGE1_SIZE, PARTICIPANTS_PER_FIELD);
 pub const PARTICIPATION_BITS_BYTE_SIZE: usize =
     (AGGREGATION_STAGE1_SIZE * AGGREGATION_STAGE2_SIZE * AGGREGATION_STAGE3_SIZE) / 8;
 
@@ -59,11 +56,9 @@ impl ParticipationRoundsTree {
     }
 
     pub fn root(&self) -> [Field; 4] {
-        let (mut intermediary_nodes, mut default_node) =
-            self.compute_first_level_intermediary_nodes();
+        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
         for _ in 0..PARTICIPATION_ROUNDS_TREE_HEIGHT {
-            (intermediary_nodes, default_node) =
-                Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
+            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         match intermediary_nodes.get(0) {
@@ -78,8 +73,7 @@ impl ParticipationRoundsTree {
 
     pub fn merkle_proof(&self, num: usize) -> Vec<[Field; 4]> {
         //compute initial intermediary nodes
-        let (mut intermediary_nodes, mut default_node) =
-            self.compute_first_level_intermediary_nodes();
+        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
 
         //build the merkle proof for each level in the tree
         let mut proof: Vec<[Field; 4]> = Vec::new();
@@ -95,18 +89,13 @@ impl ParticipationRoundsTree {
             idx = idx >> 1;
 
             //compute the next level intermediary nodes
-            (intermediary_nodes, default_node) =
-                Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
+            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         proof
     }
 
-    pub fn verify_merkle_proof(
-        &self,
-        round: ParticipationRound,
-        proof: &[[Field; 4]],
-    ) -> Result<bool> {
+    pub fn verify_merkle_proof(&self, round: ParticipationRound, proof: &[[Field; 4]]) -> Result<bool> {
         if proof.len() != PARTICIPATION_ROUNDS_TREE_HEIGHT {
             return Err(anyhow!("Invalid proof length."));
         }
@@ -290,10 +279,7 @@ pub struct ParticipationMerkleData {
     pub proof: Vec<[Field; 4]>,
 }
 
-pub fn participation_merkle_data(
-    participation_bits: &Vec<u8>,
-    validator_index: usize,
-) -> ParticipationMerkleData {
+pub fn participation_merkle_data(participation_bits: &Vec<u8>, validator_index: usize) -> ParticipationMerkleData {
     let participation_root_index = validator_index / AGGREGATION_STAGE1_SIZE;
     let mut leaf_fields = Vec::new();
 
@@ -309,10 +295,7 @@ pub fn participation_merkle_data(
     for h in (0..PARTICIPATION_TREE_HEIGHT).rev() {
         let start = nodes.len() - (1 << (h + 1));
         for i in 0..(1 << h) {
-            nodes.push(field_hash_two(
-                nodes[start + (i * 2)],
-                nodes[start + (i * 2) + 1],
-            ));
+            nodes.push(field_hash_two(nodes[start + (i * 2)], nodes[start + (i * 2) + 1]));
         }
     }
     let root = *nodes.last().unwrap();

@@ -28,10 +28,7 @@ pub fn verify_go() -> bool {
 }
 
 pub fn go_build(project_path: &str) -> bool {
-    match Command::new("go")
-        .args(&["build", "-C", project_path])
-        .output()
-    {
+    match Command::new("go").args(&["build", "-C", project_path]).output() {
         Ok(output) if output.status.success() => {
             log::info!("Go built successfully [{}]", project_path);
             true

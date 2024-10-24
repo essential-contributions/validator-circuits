@@ -15,10 +15,7 @@ pub struct ValidatorParticipationAggEndProof {
 }
 
 impl ValidatorParticipationAggEndProof {
-    pub fn new(
-        proof: ProofWithPublicInputs<Field, Config, D>,
-        data: ValidatorParticipationAggEndProofData,
-    ) -> Self {
+    pub fn new(proof: ProofWithPublicInputs<Field, Config, D>, data: ValidatorParticipationAggEndProofData) -> Self {
         ValidatorParticipationAggEndProof { proof, data }
     }
 

@@ -8,9 +8,7 @@ use plonky2::recursion::dummy_circuit::cyclic_base_proof;
 
 use crate::circuits::extensions::PartialWitnessExtended;
 use crate::epochs::{initial_validator_epochs_tree, initial_validator_epochs_tree_root};
-use crate::participation::{
-    initial_participation_rounds_tree, initial_participation_rounds_tree_root,
-};
+use crate::participation::{initial_participation_rounds_tree, initial_participation_rounds_tree_root};
 use crate::{Config, Field, D, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
 use super::proof::ParticipationStateProof;
@@ -43,17 +41,11 @@ pub fn generate_partial_witness(
         targets.epoch_num,
         Field::from_canonical_usize(data.round_num / PARTICIPATION_ROUNDS_PER_STATE_EPOCH),
     );
-    data.val_state_inputs_hash
-        .chunks(4)
-        .enumerate()
-        .for_each(|(i, c)| {
-            let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
-            pw.set_target(targets.val_state_inputs_hash[i], value);
-        });
-    pw.set_target(
-        targets.round_num,
-        Field::from_canonical_usize(data.round_num),
-    );
+    data.val_state_inputs_hash.chunks(4).enumerate().for_each(|(i, c)| {
+        let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
+        pw.set_target(targets.val_state_inputs_hash[i], value);
+    });
+    pw.set_target(targets.round_num, Field::from_canonical_usize(data.round_num));
     pw.set_hash_target(
         targets.participation_root,
         HashOut::<Field> {
@@ -72,10 +64,7 @@ pub fn generate_partial_witness(
             let value = Field::from_canonical_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]]));
             pw.set_target(targets.current_val_state_inputs_hash[i], value);
         });
-    pw.set_merkle_proof_target(
-        targets.validator_epoch_proof.clone(),
-        &data.validator_epoch_proof,
-    );
+    pw.set_merkle_proof_target(targets.validator_epoch_proof.clone(), &data.validator_epoch_proof);
     pw.set_hash_target(
         targets.current_participation_root,
         HashOut::<Field> {
@@ -129,9 +118,7 @@ pub fn generate_initial_data() -> ParticipationStateCircuitData {
     }
 }
 
-fn initial_proof(
-    circuit_data: &CircuitData<Field, Config, D>,
-) -> ProofWithPublicInputs<Field, Config, D> {
+fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPublicInputs<Field, Config, D> {
     let initial_inputs_hash = [Field::ZERO; 8];
     let initial_validator_epochs_tree_root = initial_validator_epochs_tree_root();
     let initial_participation_rounds_tree_root = initial_participation_rounds_tree_root();

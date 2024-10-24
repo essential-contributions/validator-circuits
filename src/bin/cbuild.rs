@@ -3,22 +3,21 @@ use env_logger::{Builder, Env};
 use jemallocator::Jemalloc;
 use validator_circuits::{
     circuits::wrappers::{
-        bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists,
-        bn128_wrapper_clear_data_and_proof, load_or_create_bn128_wrapper_circuit,
-        save_bn128_wrapper_proof,
+        bn128_wrapper_circuit_data_exists, bn128_wrapper_circuit_proof_exists, bn128_wrapper_clear_data_and_proof,
+        load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof,
     },
     circuits::wrappers::{
-        create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists,
-        groth16_wrapper_circuit_proof_exists, groth16_wrapper_clear_data_and_proof,
+        create_groth16_wrapper_circuit, groth16_wrapper_circuit_data_exists, groth16_wrapper_circuit_proof_exists,
+        groth16_wrapper_clear_data_and_proof,
     },
     circuits::{
-        attestation_aggregation_circuit::AttestationAggregationCircuit, circuit_data_exists,
-        circuit_init_proof_exists, clear_data_and_proof, load_or_create_circuit,
-        load_or_create_init_proof, participation_state_circuit::ParticipationStateCircuit,
+        attestation_aggregation_circuit::AttestationAggregationCircuit, circuit_data_exists, circuit_init_proof_exists,
+        clear_data_and_proof, load_or_create_circuit, load_or_create_init_proof,
+        participation_state_circuit::ParticipationStateCircuit,
         validator_participation_circuit::ValidatorParticipationCircuit,
         validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, Serializeable,
-        ATTESTATION_AGGREGATION_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR,
-        VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
+        ATTESTATION_AGGREGATION_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR,
+        VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
     },
 };
 
@@ -26,11 +25,7 @@ use validator_circuits::{
 static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
-#[command(
-    version,
-    about,
-    long_about = "Builds the circuits related to validator activities"
-)]
+#[command(version, about, long_about = "Builds the circuits related to validator activities")]
 struct Args {
     #[arg(
         short,
@@ -62,16 +57,8 @@ fn main() {
     match args.circuit {
         Some(circuit_name) => {
             if circuit_name.eq("state") {
-                build_circuit::<ValidatorsStateCircuit>(
-                    VALIDATORS_STATE_CIRCUIT_DIR,
-                    args.full,
-                    args.clear,
-                );
-                build_circuit::<ParticipationStateCircuit>(
-                    PARTICIPATION_STATE_CIRCUIT_DIR,
-                    args.full,
-                    args.clear,
-                );
+                build_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR, args.full, args.clear);
+                build_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR, args.full, args.clear);
             } else if circuit_name.eq("attestations") {
                 build_circuit::<AttestationAggregationCircuit>(
                     ATTESTATION_AGGREGATION_CIRCUIT_DIR,
@@ -89,26 +76,10 @@ fn main() {
             }
         }
         None => {
-            build_circuit::<ValidatorsStateCircuit>(
-                VALIDATORS_STATE_CIRCUIT_DIR,
-                args.full,
-                args.clear,
-            );
-            build_circuit::<ParticipationStateCircuit>(
-                PARTICIPATION_STATE_CIRCUIT_DIR,
-                args.full,
-                args.clear,
-            );
-            build_circuit::<AttestationAggregationCircuit>(
-                ATTESTATION_AGGREGATION_CIRCUIT_DIR,
-                args.full,
-                args.clear,
-            );
-            build_circuit::<ValidatorParticipationCircuit>(
-                VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
-                args.full,
-                args.clear,
-            );
+            build_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR, args.full, args.clear);
+            build_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR, args.full, args.clear);
+            build_circuit::<AttestationAggregationCircuit>(ATTESTATION_AGGREGATION_CIRCUIT_DIR, args.full, args.clear);
+            build_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR, args.full, args.clear);
         }
     }
 }
@@ -157,18 +128,14 @@ where
             if no_bn128_wrapper_data {
                 log::info!("Building bn128 wrapper circuit [/{}]", dir);
             } else {
-                log::info!(
-                    "Loading bn128 wrapper circuit for example proof generation [/{}]",
-                    dir
-                );
+                log::info!("Loading bn128 wrapper circuit for example proof generation [/{}]", dir);
             }
-            let bn128_wrapper_circuit =
-                load_or_create_bn128_wrapper_circuit(circuit.circuit_data(), dir);
+            let bn128_wrapper_circuit = load_or_create_bn128_wrapper_circuit(circuit.circuit_data(), dir);
             if no_bn128_wrapper_proof {
                 log::info!("Generating bn128 wrapper example proof [/{}]", dir);
                 let example_proof = circuit.wrappable_example_proof().unwrap();
-                let bn128_wrapper_proof = bn128_wrapper_circuit
-                    .generate_proof(circuit.circuit_data(), &example_proof.proof());
+                let bn128_wrapper_proof =
+                    bn128_wrapper_circuit.generate_proof(circuit.circuit_data(), &example_proof.proof());
                 save_bn128_wrapper_proof(&bn128_wrapper_proof.unwrap(), dir);
             }
         }
@@ -177,10 +144,7 @@ where
     //groth16 wrapper
     if no_groth16_wrapper_data || no_groth16_wrapper_proof {
         if no_groth16_wrapper_data {
-            log::info!(
-                "Building groth16 wrapper circuit [/{}] (this can take a while...)",
-                dir
-            );
+            log::info!("Building groth16 wrapper circuit [/{}] (this can take a while...)", dir);
             create_groth16_wrapper_circuit(dir);
         }
     }

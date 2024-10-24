@@ -26,10 +26,7 @@ pub struct ParticipationStateCircuitTargets {
 }
 
 #[inline]
-pub fn write_targets(
-    buffer: &mut Vec<u8>,
-    targets: &ParticipationStateCircuitTargets,
-) -> IoResult<()> {
+pub fn write_targets(buffer: &mut Vec<u8>, targets: &ParticipationStateCircuitTargets) -> IoResult<()> {
     buffer.write_target(targets.epoch_num)?;
     buffer.write_target_vec(&targets.val_state_inputs_hash)?;
     buffer.write_target(targets.round_num)?;

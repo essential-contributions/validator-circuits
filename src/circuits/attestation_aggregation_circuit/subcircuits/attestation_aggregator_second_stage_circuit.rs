@@ -14,13 +14,10 @@ use plonky2::plonk::config::GenericConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
 
 use super::{
-    AttestationAggregatorFirstStageCircuit, AttestationAggregatorFirstStageProof,
-    PIS_AGG1_ATTESTATIONS_STAKE, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_PARTICIPATION_COUNT,
-    PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_VALIDATORS_SUB_ROOT,
+    AttestationAggregatorFirstStageCircuit, AttestationAggregatorFirstStageProof, PIS_AGG1_ATTESTATIONS_STAKE,
+    PIS_AGG1_BLOCK_SLOT, PIS_AGG1_PARTICIPATION_COUNT, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_VALIDATORS_SUB_ROOT,
 };
-use crate::circuits::serialization::{
-    deserialize_circuit, read_verifier, serialize_circuit, write_verifier,
-};
+use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
 use crate::circuits::{Circuit, Proof, Serializeable};
 use crate::{Config, Field, D};
 
@@ -42,14 +39,9 @@ pub struct AttestationAggregatorSecondStageCircuit {
 }
 
 impl AttestationAggregatorSecondStageCircuit {
-    pub fn from_subcircuits(
-        atts_agg_first_stage_circuit: &AttestationAggregatorFirstStageCircuit,
-    ) -> Self {
+    pub fn from_subcircuits(atts_agg_first_stage_circuit: &AttestationAggregatorFirstStageCircuit) -> Self {
         let atts_agg1_common_data = &atts_agg_first_stage_circuit.circuit_data().common;
-        let atts_agg1_verifier = atts_agg_first_stage_circuit
-            .circuit_data()
-            .verifier_only
-            .clone();
+        let atts_agg1_verifier = atts_agg_first_stage_circuit.circuit_data().verifier_only.clone();
 
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);

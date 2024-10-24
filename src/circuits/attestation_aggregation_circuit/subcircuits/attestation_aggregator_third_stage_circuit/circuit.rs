@@ -3,13 +3,12 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CommonCircuitData, VerifierCircuitTarget};
 
 use super::{
-    AttAgg3Agg2Targets, AttAgg3Targets, PIS_AGG2_ATTESTATIONS_STAKE, PIS_AGG2_BLOCK_SLOT,
-    PIS_AGG2_PARTICIPATION_COUNT, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_VALIDATORS_SUB_ROOT,
+    AttAgg3Agg2Targets, AttAgg3Targets, PIS_AGG2_ATTESTATIONS_STAKE, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_PARTICIPATION_COUNT,
+    PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_VALIDATORS_SUB_ROOT,
 };
 use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::circuits::validators_state_circuit::{
-    PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED,
-    PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT,
+    PIS_VALIDATORS_STATE_INPUTS_HASH, PIS_VALIDATORS_STATE_TOTAL_STAKED, PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT,
 };
 use crate::participation::empty_participation_sub_root;
 use crate::{
@@ -32,15 +31,13 @@ pub fn generate_circuit(
 
     // Circuit target
     let atts_agg2_verifier = VerifierCircuitTarget {
-        constants_sigmas_cap: builder
-            .add_virtual_cap(atts_agg2_common_data.config.fri_config.cap_height),
+        constants_sigmas_cap: builder.add_virtual_cap(atts_agg2_common_data.config.fri_config.cap_height),
         circuit_digest: builder.add_virtual_hash(),
     };
 
     //Verify the validators state proof
     let validators_state_verifier = VerifierCircuitTarget {
-        constants_sigmas_cap: builder
-            .add_virtual_cap(val_state_common_data.config.fri_config.cap_height),
+        constants_sigmas_cap: builder.add_virtual_cap(val_state_common_data.config.fri_config.cap_height),
         circuit_digest: builder.add_virtual_hash(),
     };
     let validators_state_proof = builder.add_virtual_proof_with_pis(val_state_common_data);
@@ -65,8 +62,7 @@ pub fn generate_circuit(
         validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT[2]],
         validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_VALIDATORS_TREE_ROOT[3]],
     ];
-    let validator_state_total_staked =
-        validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_TOTAL_STAKED];
+    let validator_state_total_staked = validators_state_proof.public_inputs[PIS_VALIDATORS_STATE_TOTAL_STAKED];
 
     // Verify each agg2 data
     let mut validator_nodes: Vec<HashOutTarget> = Vec::new();
@@ -88,11 +84,7 @@ pub fn generate_circuit(
                 proof_target.public_inputs[PIS_AGG2_VALIDATORS_SUB_ROOT[3]],
             ],
         };
-        validator_nodes.push(builder.select_hash(
-            has_participation,
-            proof_validators_sub_root,
-            validators_sub_root,
-        ));
+        validator_nodes.push(builder.select_hash(has_participation, proof_validators_sub_root, validators_sub_root));
 
         // Determine applicable participation node
         let proof_participation_sub_root = HashOutTarget {

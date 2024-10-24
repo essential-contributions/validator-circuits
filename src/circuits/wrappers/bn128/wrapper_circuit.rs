@@ -23,17 +23,11 @@ struct WrapperCircuitTargets {
 impl BN128WrapperCircuit {
     pub fn new(inner_circuit: &CircuitData<Field, Config, D>) -> Self {
         let config = CircuitConfig::standard_recursion_config();
-        let mut builder =
-            CircuitBuilder::<<PoseidonBN128GoldilocksConfig as GenericConfig<D>>::F, D>::new(
-                config,
-            );
+        let mut builder = CircuitBuilder::<<PoseidonBN128GoldilocksConfig as GenericConfig<D>>::F, D>::new(config);
         let targets = generate_circuit(&mut builder, inner_circuit);
         let circuit_data = builder.build::<PoseidonBN128GoldilocksConfig>();
 
-        Self {
-            circuit_data,
-            targets,
-        }
+        Self { circuit_data, targets }
     }
 
     pub fn generate_proof(
@@ -46,10 +40,7 @@ impl BN128WrapperCircuit {
         Ok(proof)
     }
 
-    pub fn verify_proof(
-        &self,
-        proof: &ProofWithPublicInputs<Field, PoseidonBN128GoldilocksConfig, D>,
-    ) -> Result<()> {
+    pub fn verify_proof(&self, proof: &ProofWithPublicInputs<Field, PoseidonBN128GoldilocksConfig, D>) -> Result<()> {
         self.circuit_data.verify(proof.clone())
     }
 
@@ -83,8 +74,7 @@ fn generate_circuit(
     inner_circuit: &CircuitData<Field, Config, D>,
 ) -> WrapperCircuitTargets {
     let inner_circuit_proof_target = builder.add_virtual_proof_with_pis(&inner_circuit.common);
-    let inner_circuit_verifier_target =
-        builder.constant_verifier_data(&inner_circuit.verifier_only);
+    let inner_circuit_verifier_target = builder.constant_verifier_data(&inner_circuit.verifier_only);
     builder.verify_proof::<Config>(
         &inner_circuit_proof_target,
         &inner_circuit_verifier_target,

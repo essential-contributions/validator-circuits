@@ -15,13 +15,10 @@ use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::Buffer;
 
 use super::{
-    AttestationAggregatorSecondStageCircuit, AttestationAggregatorSecondStageProof,
-    PIS_AGG2_ATTESTATIONS_STAKE, PIS_AGG2_BLOCK_SLOT, PIS_AGG2_PARTICIPATION_COUNT,
-    PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_VALIDATORS_SUB_ROOT,
+    AttestationAggregatorSecondStageCircuit, AttestationAggregatorSecondStageProof, PIS_AGG2_ATTESTATIONS_STAKE,
+    PIS_AGG2_BLOCK_SLOT, PIS_AGG2_PARTICIPATION_COUNT, PIS_AGG2_PARTICIPATION_SUB_ROOT, PIS_AGG2_VALIDATORS_SUB_ROOT,
 };
-use crate::circuits::serialization::{
-    deserialize_circuit, read_verifier, serialize_circuit, write_verifier,
-};
+use crate::circuits::serialization::{deserialize_circuit, read_verifier, serialize_circuit, write_verifier};
 use crate::circuits::validators_state_circuit::ValidatorsStateCircuit;
 use crate::circuits::{load_or_create_circuit, VALIDATORS_STATE_CIRCUIT_DIR};
 use crate::circuits::{Circuit, Proof, Serializeable};
@@ -40,30 +37,17 @@ pub struct AttestationAggregatorThirdStageCircuit {
 }
 
 impl AttestationAggregatorThirdStageCircuit {
-    pub fn from_subcircuits(
-        atts_agg_second_stage_circuit: &AttestationAggregatorSecondStageCircuit,
-    ) -> Self {
-        let validators_state_circuit =
-            load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+    pub fn from_subcircuits(atts_agg_second_stage_circuit: &AttestationAggregatorSecondStageCircuit) -> Self {
+        let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
         let validators_state_common_data = &validators_state_circuit.circuit_data().common;
-        let validators_state_verifier = validators_state_circuit
-            .circuit_data()
-            .verifier_only
-            .clone();
+        let validators_state_verifier = validators_state_circuit.circuit_data().verifier_only.clone();
 
         let atts_agg2_common_data = &atts_agg_second_stage_circuit.circuit_data().common;
-        let atts_agg2_verifier = atts_agg_second_stage_circuit
-            .circuit_data()
-            .verifier_only
-            .clone();
+        let atts_agg2_verifier = atts_agg_second_stage_circuit.circuit_data().verifier_only.clone();
 
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<<Config as GenericConfig<D>>::F, D>::new(config);
-        let targets = generate_circuit(
-            &mut builder,
-            atts_agg2_common_data,
-            validators_state_common_data,
-        );
+        let targets = generate_circuit(&mut builder, atts_agg2_common_data, validators_state_common_data);
         let circuit_data = builder.build::<Config>();
 
         Self {
@@ -119,8 +103,7 @@ impl Circuit for AttestationAggregatorThirdStageCircuit {
 
         let common_data = &self.circuit_data.common;
         let unread_bytes = buffer.unread_bytes().to_vec();
-        let proof =
-            ProofWithPublicInputs::<Field, Config, D>::from_bytes(unread_bytes, common_data)?;
+        let proof = ProofWithPublicInputs::<Field, Config, D>::from_bytes(unread_bytes, common_data)?;
 
         Ok(Self::Proof::new(proof, proof_data))
     }

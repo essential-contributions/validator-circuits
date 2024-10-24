@@ -4,9 +4,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::Field;
-use crate::{
-    field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT,
-};
+use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
 
 //TODO: support from_bytes, to_bytes and save/load (see commitment)
 //TODO: implement multi-threading for manual reveal verification
@@ -45,8 +43,7 @@ impl ValidatorsTree {
 
     pub fn from_validators(validators: &[Validator]) -> Self {
         let num_nodes = (1 << (VALIDATORS_TREE_HEIGHT + 1)) - 1;
-        let nodes: Vec<[Field; 4]> =
-            vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
+        let nodes: Vec<[Field; 4]> = vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
         let mut validator_set = Self {
             validators: validators.to_vec(),
             nodes,
@@ -79,9 +76,7 @@ impl ValidatorsTree {
 
     pub fn verify_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<bool> {
         if reveals.len() == 0 {
-            return Err(anyhow!(
-                "At least one reveal must be provided for the batch"
-            ));
+            return Err(anyhow!("At least one reveal must be provided for the batch"));
         }
         if reveals.len() > AGGREGATION_STAGE1_SIZE {
             return Err(anyhow!(
@@ -124,12 +119,7 @@ impl ValidatorsTree {
         nodes
     }
 
-    pub fn verify_merkle_proof(
-        &self,
-        validator: Validator,
-        index: usize,
-        proof: &[[Field; 4]],
-    ) -> Result<bool> {
+    pub fn verify_merkle_proof(&self, validator: Validator, index: usize, proof: &[[Field; 4]]) -> Result<bool> {
         if proof.len() != VALIDATORS_TREE_HEIGHT {
             return Err(anyhow!("Invalid proof length."));
         }

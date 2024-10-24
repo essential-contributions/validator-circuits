@@ -9,14 +9,10 @@ use rand::Rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bytes_to_fields, field_hash, field_hash_two, fields_to_bytes, Field,
-    VALIDATOR_COMMITMENT_TREE_HEIGHT,
-};
+use crate::{bytes_to_fields, field_hash, field_hash_two, fields_to_bytes, Field, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 
 const COMMITMENT_COMPUTED_TREE_HEIGHT: usize = 14;
-const COMMITMENT_MEMORY_TREE_HEIGHT: usize =
-    VALIDATOR_COMMITMENT_TREE_HEIGHT - COMMITMENT_COMPUTED_TREE_HEIGHT;
+const COMMITMENT_MEMORY_TREE_HEIGHT: usize = VALIDATOR_COMMITMENT_TREE_HEIGHT - COMMITMENT_COMPUTED_TREE_HEIGHT;
 
 const COMMITMENT_OUTPUT_FOLDER: &str = "data";
 const COMMITMENT_OUTPUT_FILE: &str = "secret.bin";
@@ -91,10 +87,7 @@ impl Commitment {
         let num_nodes = (1 << (COMMITMENT_MEMORY_TREE_HEIGHT + 1)) - 1;
         let mut bytes: Vec<u8> = vec![0; 32 + (32 * num_nodes)];
 
-        self.seed
-            .iter()
-            .enumerate()
-            .for_each(|(i, b)| bytes[i] = *b);
+        self.seed.iter().enumerate().for_each(|(i, b)| bytes[i] = *b);
         self.nodes.iter().enumerate().for_each(|(i, n)| {
             fields_to_bytes(n).iter().enumerate().for_each(|(j, b)| {
                 bytes[32 + i * 32 + j] = *b;
@@ -146,10 +139,7 @@ impl Commitment {
             proof_index = proof_index + 1;
         }
 
-        CommitmentReveal {
-            reveal: secret,
-            proof,
-        }
+        CommitmentReveal { reveal: secret, proof }
     }
 }
 

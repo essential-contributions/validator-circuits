@@ -3,8 +3,8 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{CommonCircuitData, VerifierCircuitTarget};
 
 use super::{
-    AttAgg2Agg1Targets, AttAgg2Targets, PIS_AGG1_ATTESTATIONS_STAKE, PIS_AGG1_BLOCK_SLOT,
-    PIS_AGG1_PARTICIPATION_COUNT, PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_VALIDATORS_SUB_ROOT,
+    AttAgg2Agg1Targets, AttAgg2Targets, PIS_AGG1_ATTESTATIONS_STAKE, PIS_AGG1_BLOCK_SLOT, PIS_AGG1_PARTICIPATION_COUNT,
+    PIS_AGG1_PARTICIPATION_SUB_ROOT, PIS_AGG1_VALIDATORS_SUB_ROOT,
 };
 use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::participation::empty_participation_sub_root;
@@ -24,8 +24,7 @@ pub fn generate_circuit(
 
     // Circuit target
     let atts_agg1_verifier = VerifierCircuitTarget {
-        constants_sigmas_cap: builder
-            .add_virtual_cap(atts_agg1_common_data.config.fri_config.cap_height),
+        constants_sigmas_cap: builder.add_virtual_cap(atts_agg1_common_data.config.fri_config.cap_height),
         circuit_digest: builder.add_virtual_hash(),
     };
 
@@ -49,11 +48,7 @@ pub fn generate_circuit(
                 proof_target.public_inputs[PIS_AGG1_VALIDATORS_SUB_ROOT[3]],
             ],
         };
-        validator_nodes.push(builder.select_hash(
-            has_participation,
-            proof_validators_sub_root,
-            validators_sub_root,
-        ));
+        validator_nodes.push(builder.select_hash(has_participation, proof_validators_sub_root, validators_sub_root));
 
         // Determine applicable participation node
         let proof_participation_sub_root = HashOutTarget {

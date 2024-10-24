@@ -4,16 +4,14 @@ use plonky2::field::types::PrimeField64;
 use sha2::{Digest, Sha256};
 use validator_circuits::{
     circuits::wrappers::{
-        bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit,
-        save_bn128_wrapper_proof,
+        bn128_wrapper_circuit_data_exists, load_or_create_bn128_wrapper_circuit, save_bn128_wrapper_proof,
     },
     circuits::wrappers::{generate_groth16_wrapper_proof, groth16_wrapper_circuit_data_exists},
     circuits::{
         load_or_create_circuit,
         participation_state_circuit::ParticipationStateCircuit,
         validator_participation_circuit::{
-            ValidatorParticipationCircuit, ValidatorParticipationCircuitData,
-            ValidatorParticipationProof,
+            ValidatorParticipationCircuit, ValidatorParticipationCircuitData, ValidatorParticipationProof,
         },
         validators_state_circuit::ValidatorsStateCircuit,
         Circuit, Proof, PARTICIPATION_STATE_CIRCUIT_DIR, VALIDATORS_STATE_CIRCUIT_DIR,
@@ -41,13 +39,11 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     //generate the circuits
     println!("Building Validator Participation Circuit...");
     let start = Instant::now();
-    let validators_state_circuit =
-        load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+    let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
     let participation_state_circuit =
         load_or_create_circuit::<ParticipationStateCircuit>(PARTICIPATION_STATE_CIRCUIT_DIR);
-    let validator_participation_circuit = load_or_create_circuit::<ValidatorParticipationCircuit>(
-        VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
-    );
+    let validator_participation_circuit =
+        load_or_create_circuit::<ValidatorParticipationCircuit>(VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -70,16 +66,15 @@ pub fn benchmark_validator_prove_participation(full: bool) {
     //build proof for participation state
     println!("Building Participation State Data...");
     let start = Instant::now();
-    let (validator_epochs_tree, participation_rounds_tree, participation_state_proof) =
-        build_participation_state(
-            &participation_state_circuit,
-            &validators_state_proof,
-            &validators_tree,
-            &accounts_tree,
-            &validator_indexes[0..2],
-            &[32, 48, 67, 100],
-            PARTICIPATION_STATE_OUTPUT_FILE,
-        );
+    let (validator_epochs_tree, participation_rounds_tree, participation_state_proof) = build_participation_state(
+        &participation_state_circuit,
+        &validators_state_proof,
+        &validators_tree,
+        &accounts_tree,
+        &validator_indexes[0..2],
+        &[32, 48, 67, 100],
+        PARTICIPATION_STATE_OUTPUT_FILE,
+    );
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -209,18 +204,13 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         //wrap proof to bn128
         println!("Building BN128 Wrapper Circuit... ");
         let start = Instant::now();
-        let bn128_wrapper = load_or_create_bn128_wrapper_circuit(
-            inner_circuit,
-            VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
-        );
+        let bn128_wrapper = load_or_create_bn128_wrapper_circuit(inner_circuit, VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
         println!("(finished in {:?})", start.elapsed());
         println!();
 
         println!("Generating BN128 Wrapper Proof...");
         let start = Instant::now();
-        let bn128_proof = bn128_wrapper
-            .generate_proof(inner_circuit, inner_proof)
-            .unwrap();
+        let bn128_proof = bn128_wrapper.generate_proof(inner_circuit, inner_proof).unwrap();
         println!("(finished in {:?})", start.elapsed());
         assert!(
             bn128_wrapper.verify_proof(&bn128_proof).is_ok(),
@@ -232,8 +222,7 @@ pub fn benchmark_validator_prove_participation(full: bool) {
         println!("Generating Groth16 Wrapper Proof...");
         let start = Instant::now();
         save_bn128_wrapper_proof(&bn128_proof, VALIDATOR_PARTICIPATION_CIRCUIT_DIR);
-        let groth16_proof =
-            generate_groth16_wrapper_proof(VALIDATOR_PARTICIPATION_CIRCUIT_DIR).unwrap();
+        let groth16_proof = generate_groth16_wrapper_proof(VALIDATOR_PARTICIPATION_CIRCUIT_DIR).unwrap();
         println!("Proved with Groth16 wrapper!");
         println!("(finished in {:?})", start.elapsed());
         println!();
@@ -265,9 +254,7 @@ fn to_hex(bytes: &[u8]) -> String {
 fn verify_public_inputs_hash(proof: &ValidatorParticipationProof) -> bool {
     let mut public_inputs_hash = [0u8; 32];
     for i in 0..4 {
-        let bytes = proof.public_inputs_hash()[i]
-            .to_canonical_u64()
-            .to_be_bytes();
+        let bytes = proof.public_inputs_hash()[i].to_canonical_u64().to_be_bytes();
         public_inputs_hash[(i * 8)..((i * 8) + 8)].copy_from_slice(&bytes);
     }
 

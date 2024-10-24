@@ -39,17 +39,13 @@ pub struct ValidatorEpochsTree {
 
 impl ValidatorEpochsTree {
     pub fn new() -> Self {
-        Self {
-            epochs: HashMap::new(),
-        }
+        Self { epochs: HashMap::new() }
     }
 
     pub fn root(&self) -> [Field; 4] {
-        let (mut intermediary_nodes, mut default_node) =
-            self.compute_first_level_intermediary_nodes();
+        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
         for _ in 0..VALIDATOR_EPOCHS_TREE_HEIGHT {
-            (intermediary_nodes, default_node) =
-                Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
+            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         match intermediary_nodes.get(0) {
@@ -64,8 +60,7 @@ impl ValidatorEpochsTree {
 
     pub fn merkle_proof(&self, num: usize) -> Vec<[Field; 4]> {
         //compute initial intermediary nodes
-        let (mut intermediary_nodes, mut default_node) =
-            self.compute_first_level_intermediary_nodes();
+        let (mut intermediary_nodes, mut default_node) = self.compute_first_level_intermediary_nodes();
 
         //build the merkle proof for each level in the tree
         let mut proof: Vec<[Field; 4]> = Vec::new();
@@ -81,8 +76,7 @@ impl ValidatorEpochsTree {
             idx = idx >> 1;
 
             //compute the next level intermediary nodes
-            (intermediary_nodes, default_node) =
-                Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
+            (intermediary_nodes, default_node) = Self::compute_intermediary_nodes(&intermediary_nodes, default_node);
         }
 
         proof
@@ -134,9 +128,7 @@ impl ValidatorEpochsTree {
     pub fn epoch_validators_state_proof(&self, num: usize) -> ValidatorsStateProof {
         match self.epochs.get(&num) {
             Some(epoch) => epoch.validators_state_proof.clone(),
-            None => {
-                load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR)
-            }
+            None => load_or_create_init_proof::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR),
         }
     }
 

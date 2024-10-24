@@ -11,9 +11,7 @@ use crate::circuits::validators_state_circuit::ValidatorsStateProof;
 use crate::circuits::Proof;
 use crate::participation::participation_merkle_data;
 use crate::validators::empty_validators_tree_proof;
-use crate::{
-    Config, Field, AGGREGATION_STAGE1_SIZE, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH,
-};
+use crate::{Config, Field, AGGREGATION_STAGE1_SIZE, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
 use super::{ValidatorParticipationAggCircuitTargets, ValidatorParticipationAggProof};
 
@@ -80,28 +78,16 @@ pub fn generate_partial_witness(
     let mut pw = PartialWitness::new();
 
     //validators state proof
-    pw.set_verifier_data_target(
-        &targets.validators_state_verifier,
-        validators_state_verifier,
-    );
-    pw.set_proof_with_pis_target(
-        &targets.validators_state_proof,
-        data.validators_state_proof.proof(),
-    );
-    pw.set_merkle_proof_target(
-        targets.validator_epochs_proof.clone(),
-        &data.validator_epochs_proof,
-    );
+    pw.set_verifier_data_target(&targets.validators_state_verifier, validators_state_verifier);
+    pw.set_proof_with_pis_target(&targets.validators_state_proof, data.validators_state_proof.proof());
+    pw.set_merkle_proof_target(targets.validator_epochs_proof.clone(), &data.validator_epochs_proof);
 
     //account validator index
     match &data.validator {
         Some(validator) => {
             let validator_field_index = validator.index / AGGREGATION_STAGE1_SIZE;
             let validator_bit_index = validator.index % AGGREGATION_STAGE1_SIZE;
-            pw.set_target(
-                targets.validator_index,
-                Field::from_canonical_usize(validator.index),
-            );
+            pw.set_target(targets.validator_index, Field::from_canonical_usize(validator.index));
             pw.set_target(
                 targets.validator_field_index,
                 Field::from_canonical_usize(validator_field_index),
@@ -110,10 +96,7 @@ pub fn generate_partial_witness(
                 targets.validator_bit_index,
                 Field::from_canonical_usize(validator_bit_index),
             );
-            pw.set_target(
-                targets.validator_stake,
-                Field::from_canonical_u32(validator.stake),
-            );
+            pw.set_target(targets.validator_stake, Field::from_canonical_u32(validator.stake));
             pw.set_hash_target(
                 targets.validator_commitment,
                 HashOut::<Field> {
@@ -134,26 +117,17 @@ pub fn generate_partial_witness(
                     elements: [Field::ZERO; 4],
                 },
             );
-            pw.set_merkle_proof_target(
-                targets.validator_stake_proof.clone(),
-                &empty_validators_tree_proof(),
-            );
+            pw.set_merkle_proof_target(targets.validator_stake_proof.clone(), &empty_validators_tree_proof());
         }
     }
-    pw.set_merkle_proof_target(
-        targets.account_validator_proof.clone(),
-        &data.account_validator_proof,
-    );
+    pw.set_merkle_proof_target(targets.account_validator_proof.clone(), &data.account_validator_proof);
 
     //participation round issuance
     let (rf, st) = match &data.previous_data {
-        ValidatorPartAggPrevData::Start(start_data) => {
-            (start_data.param_rf as u64, start_data.param_st as u64)
+        ValidatorPartAggPrevData::Start(start_data) => (start_data.param_rf as u64, start_data.param_st as u64),
+        ValidatorPartAggPrevData::Continue(previous_proof) => {
+            (previous_proof.param_rf() as u64, previous_proof.param_st() as u64)
         }
-        ValidatorPartAggPrevData::Continue(previous_proof) => (
-            previous_proof.param_rf() as u64,
-            previous_proof.param_st() as u64,
-        ),
     };
     let validator_stake = match &data.validator {
         Some(validator) => validator.stake as u64,
@@ -170,10 +144,7 @@ pub fn generate_partial_witness(
     }
     pw.set_target(targets.gamma, Field::from_canonical_u64(gamma));
     pw.set_target(targets.lambda, Field::from_canonical_u64(lambda));
-    pw.set_target(
-        targets.round_issuance,
-        Field::from_canonical_u64(round_issuance),
-    );
+    pw.set_target(targets.round_issuance, Field::from_canonical_u64(round_issuance));
 
     //participation rounds targets
     for (t, d) in targets
@@ -187,46 +158,27 @@ pub fn generate_partial_witness(
                 elements: d.participation_root,
             },
         );
-        pw.set_target(
-            t.participation_count,
-            Field::from_canonical_u32(d.participation_count),
-        );
-        pw.set_merkle_proof_target(
-            t.participation_round_proof.clone(),
-            &d.participation_round_proof,
-        );
+        pw.set_target(t.participation_count, Field::from_canonical_u32(d.participation_count));
+        pw.set_merkle_proof_target(t.participation_round_proof.clone(), &d.participation_round_proof);
 
         if validator_index.is_some() && d.participation_bits.is_some() {
             let validator_index = validator_index.unwrap();
             let participation_bits = d.participation_bits.unwrap();
-            let participation_merkle_data =
-                participation_merkle_data(&participation_bits, validator_index);
+            let participation_merkle_data = participation_merkle_data(&participation_bits, validator_index);
             if participation_merkle_data.root != d.participation_root {
                 return Err(anyhow!(
                     "Root caluclated from participation bits is different from given root"
                 ));
             }
             pw.set_bool_target(t.skip_participation, false);
-            pw.set_target_arr(
-                &t.participation_bits_fields,
-                &participation_merkle_data.leaf_fields,
-            );
-            pw.set_merkle_proof_target(
-                t.participation_proof.clone(),
-                &participation_merkle_data.proof,
-            );
+            pw.set_target_arr(&t.participation_bits_fields, &participation_merkle_data.leaf_fields);
+            pw.set_merkle_proof_target(t.participation_proof.clone(), &participation_merkle_data.proof);
         } else {
             //fill in with empty participation data
             let participation_merkle_data = participation_merkle_data(&vec![], 0);
             pw.set_bool_target(t.skip_participation, true);
-            pw.set_target_arr(
-                &t.participation_bits_fields,
-                &participation_merkle_data.leaf_fields,
-            );
-            pw.set_merkle_proof_target(
-                t.participation_proof.clone(),
-                &participation_merkle_data.proof,
-            );
+            pw.set_target_arr(&t.participation_bits_fields, &participation_merkle_data.leaf_fields);
+            pw.set_merkle_proof_target(t.participation_proof.clone(), &participation_merkle_data.proof);
         }
     }
 
@@ -245,22 +197,10 @@ pub fn generate_partial_witness(
                     elements: start_data.pr_tree_root,
                 },
             );
-            pw.set_target_arr(
-                &targets.init_account_address,
-                &account_to_fields(start_data.account),
-            );
-            pw.set_target(
-                targets.init_epoch,
-                Field::from_canonical_u32(start_data.epoch),
-            );
-            pw.set_target(
-                targets.init_param_rf,
-                Field::from_canonical_u32(start_data.param_rf),
-            );
-            pw.set_target(
-                targets.init_param_st,
-                Field::from_canonical_u32(start_data.param_st),
-            );
+            pw.set_target_arr(&targets.init_account_address, &account_to_fields(start_data.account));
+            pw.set_target(targets.init_epoch, Field::from_canonical_u32(start_data.epoch));
+            pw.set_target(targets.init_param_rf, Field::from_canonical_u32(start_data.param_rf));
+            pw.set_target(targets.init_param_st, Field::from_canonical_u32(start_data.param_st));
 
             //create starter proof initial state (no previous proof)
             let base_proof = initial_proof(circuit_data, start_data);

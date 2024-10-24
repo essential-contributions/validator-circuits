@@ -3,16 +3,13 @@ use std::time::Instant;
 use plonky2::field::types::{Field as Plonky2_Field, PrimeField64};
 use sha2::{Digest, Sha256};
 use validator_circuits::accounts::AccountsTree;
-use validator_circuits::circuits::validators_state_circuit::{
-    ValidatorsStateCircuit, ValidatorsStateProof,
-};
+use validator_circuits::circuits::validators_state_circuit::{ValidatorsStateCircuit, ValidatorsStateProof};
 use validator_circuits::validators::ValidatorsTree;
 use validator_circuits::{
     accounts::{initial_accounts_tree, null_account_address, Account},
     circuits::{
-        load_or_create_circuit, load_or_create_init_proof,
-        validators_state_circuit::ValidatorsStateCircuitData, Circuit,
-        VALIDATORS_STATE_CIRCUIT_DIR,
+        load_or_create_circuit, load_or_create_init_proof, validators_state_circuit::ValidatorsStateCircuitData,
+        Circuit, VALIDATORS_STATE_CIRCUIT_DIR,
     },
     validators::{initial_validators_tree, Validator},
     Field,
@@ -22,14 +19,15 @@ use crate::actions::compile_data_for_validators_state_circuit;
 
 pub fn benchmark_prove_validators_state(full: bool) {
     if full {
-        log::warn!("Skipping wrapped proof generation as state is an internal proof only (used recursively in other proofs).");
+        log::warn!(
+            "Skipping wrapped proof generation as state is an internal proof only (used recursively in other proofs)."
+        );
     }
 
     //generate the circuits
     println!("Building Validators State Circuit... ");
     let start = Instant::now();
-    let validators_state_circuit =
-        load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
+    let validators_state_circuit = load_or_create_circuit::<ValidatorsStateCircuit>(VALIDATORS_STATE_CIRCUIT_DIR);
     println!("(finished in {:?})", start.elapsed());
     println!();
 
@@ -418,10 +416,7 @@ fn assert_state(
     accounts_tree: &AccountsTree,
     inputs_hash: [u8; 32],
 ) {
-    assert!(
-        circuit.verify_proof(proof).is_ok(),
-        "Proof failed verification."
-    );
+    assert!(circuit.verify_proof(proof).is_ok(), "Proof failed verification.");
     assert_eq!(
         proof.total_staked(),
         total_staked,
@@ -442,11 +437,7 @@ fn assert_state(
         accounts_tree.root(),
         "Unexpected accounts tree root."
     );
-    assert_eq!(
-        proof.inputs_hash(),
-        inputs_hash,
-        "Unexpected inputs hash from proof."
-    );
+    assert_eq!(proof.inputs_hash(), inputs_hash, "Unexpected inputs hash from proof.");
 }
 
 fn print_proof(proof: &ValidatorsStateProof) {

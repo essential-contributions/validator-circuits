@@ -25,20 +25,11 @@ pub fn generate_partial_witness(
     let mut pw = PartialWitness::new();
 
     //participation agg proof
-    pw.set_verifier_data_target(
-        &targets.participation_agg_verifier,
-        participation_agg_verifier,
-    );
-    pw.set_proof_with_pis_target(
-        &targets.participation_agg_proof,
-        data.participation_agg_proof.proof(),
-    );
+    pw.set_verifier_data_target(&targets.participation_agg_verifier, participation_agg_verifier);
+    pw.set_proof_with_pis_target(&targets.participation_agg_proof, data.participation_agg_proof.proof());
 
     //participation state proof
-    pw.set_verifier_data_target(
-        &targets.participation_state_verifier,
-        participation_state_verifier,
-    );
+    pw.set_verifier_data_target(&targets.participation_state_verifier, participation_state_verifier);
     pw.set_proof_with_pis_target(
         &targets.participation_state_proof,
         data.participation_state_proof.proof(),
@@ -59,9 +50,7 @@ pub struct ValidatorParticipationAggEndProofData {
     pub param_st: u32,
 }
 
-pub fn generate_proof_data(
-    data: &ValidatorParticipationAggEndCircuitData,
-) -> ValidatorParticipationAggEndProofData {
+pub fn generate_proof_data(data: &ValidatorParticipationAggEndCircuitData) -> ValidatorParticipationAggEndProofData {
     ValidatorParticipationAggEndProofData {
         participation_inputs_hash: data.participation_state_proof.inputs_hash(),
         account_address: data.participation_agg_proof.account_address(),
@@ -75,10 +64,7 @@ pub fn generate_proof_data(
 }
 
 #[inline]
-pub fn write_proof_data(
-    buffer: &mut Vec<u8>,
-    data: &ValidatorParticipationAggEndProofData,
-) -> IoResult<()> {
+pub fn write_proof_data(buffer: &mut Vec<u8>, data: &ValidatorParticipationAggEndProofData) -> IoResult<()> {
     buffer.write_all(&data.participation_inputs_hash)?;
     buffer.write_all(&data.account_address)?;
     buffer.write_u32(data.from_epoch)?;

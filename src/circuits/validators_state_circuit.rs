@@ -34,10 +34,7 @@ pub struct ValidatorsStateCircuit {
 }
 
 impl ValidatorsStateCircuit {
-    pub fn generate_proof(
-        &self,
-        data: &ValidatorsStateCircuitData,
-    ) -> Result<ValidatorsStateProof> {
+    pub fn generate_proof(&self, data: &ValidatorsStateCircuitData) -> Result<ValidatorsStateProof> {
         let pw = generate_partial_witness(&self.circuit_data, &self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ValidatorsStateProof::new(proof))
@@ -53,10 +50,7 @@ impl Circuit for ValidatorsStateCircuit {
         let targets = generate_circuit(&mut builder);
         let circuit_data = builder.build::<Config>();
 
-        Self {
-            circuit_data,
-            targets,
-        }
+        Self { circuit_data, targets }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {

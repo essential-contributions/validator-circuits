@@ -147,12 +147,8 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
             let x_bit_and_prev_comp = self.and(x_bits[i], previous_bit_comparison);
             let x_bit_and_not_y_bit = self.and(x_bits[i], not_y_bit);
             let prev_comp_and_not_y_bit = self.and(previous_bit_comparison, not_y_bit);
-            let x_bit_and_prev_comp_or_x_bit_and_not_y_bit =
-                self.or(x_bit_and_prev_comp, x_bit_and_not_y_bit);
-            previous_bit_comparison = self.or(
-                x_bit_and_prev_comp_or_x_bit_and_not_y_bit,
-                prev_comp_and_not_y_bit,
-            );
+            let x_bit_and_prev_comp_or_x_bit_and_not_y_bit = self.or(x_bit_and_prev_comp, x_bit_and_not_y_bit);
+            previous_bit_comparison = self.or(x_bit_and_prev_comp_or_x_bit_and_not_y_bit, prev_comp_and_not_y_bit);
         }
         previous_bit_comparison
     }
@@ -169,12 +165,8 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
             let y_bit_and_prev_comp = self.and(y_bits[i], previous_bit_comparison);
             let y_bit_and_not_x_bit = self.and(y_bits[i], not_x_bit);
             let prev_comp_and_not_x_bit = self.and(previous_bit_comparison, not_x_bit);
-            let y_bit_and_prev_comp_or_y_bit_and_not_x_bit =
-                self.or(y_bit_and_prev_comp, y_bit_and_not_x_bit);
-            previous_bit_comparison = self.or(
-                y_bit_and_prev_comp_or_y_bit_and_not_x_bit,
-                prev_comp_and_not_x_bit,
-            );
+            let y_bit_and_prev_comp_or_y_bit_and_not_x_bit = self.or(y_bit_and_prev_comp, y_bit_and_not_x_bit);
+            previous_bit_comparison = self.or(y_bit_and_prev_comp_or_y_bit_and_not_x_bit, prev_comp_and_not_x_bit);
         }
         previous_bit_comparison
     }
@@ -218,10 +210,7 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
 
     fn select_many(&mut self, b: BoolTarget, x: &[Target], y: &[Target]) -> Vec<Target> {
         debug_assert_eq!(x.len(), y.len(), "lengths do not match for select many");
-        x.iter()
-            .zip(y)
-            .map(|(x, y)| self.select(b, *x, *y))
-            .collect()
+        x.iter().zip(y).map(|(x, y)| self.select(b, *x, *y)).collect()
     }
 
     fn connect_many(&mut self, x: &[Target], y: &[Target]) {
@@ -298,11 +287,7 @@ impl CircuitBuilderExtended for CircuitBuilder<Field, D> {
         let mut state2: HashOutTarget = self.hash_or_noop::<H>(new_leaf_data2);
         for i in 0..len {
             let bit = leaf_index_bits2[i];
-            let sibling = self.select_hash(
-                proof_siblings_have_same_parent[i],
-                trace1[i],
-                proof2.siblings[i],
-            );
+            let sibling = self.select_hash(proof_siblings_have_same_parent[i], trace1[i], proof2.siblings[i]);
 
             let perm_inputs_a = [&state2.elements[..], &sibling.elements[..]].concat();
             let perm_inputs_b = [&sibling.elements[..], &state2.elements[..]].concat();

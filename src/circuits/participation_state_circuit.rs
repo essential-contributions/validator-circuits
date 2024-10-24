@@ -32,10 +32,7 @@ pub struct ParticipationStateCircuit {
 }
 
 impl ParticipationStateCircuit {
-    pub fn generate_proof(
-        &self,
-        data: &ParticipationStateCircuitData,
-    ) -> Result<ParticipationStateProof> {
+    pub fn generate_proof(&self, data: &ParticipationStateCircuitData) -> Result<ParticipationStateProof> {
         let pw = generate_partial_witness(&self.circuit_data, &self.targets, data)?;
         let proof = self.circuit_data.prove(pw)?;
         Ok(ParticipationStateProof::new(proof))
@@ -51,10 +48,7 @@ impl Circuit for ParticipationStateCircuit {
         let targets = generate_circuit(&mut builder);
         let circuit_data = builder.build::<Config>();
 
-        Self {
-            circuit_data,
-            targets,
-        }
+        Self { circuit_data, targets }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {

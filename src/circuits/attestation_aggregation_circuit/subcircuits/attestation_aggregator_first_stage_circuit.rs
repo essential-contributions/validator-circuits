@@ -53,10 +53,7 @@ impl Circuit for AttestationAggregatorFirstStageCircuit {
         let targets = generate_circuit(&mut builder);
         let circuit_data = builder.build::<Config>();
 
-        Self {
-            circuit_data,
-            targets,
-        }
+        Self { circuit_data, targets }
     }
 
     fn verify_proof(&self, proof: &Self::Proof) -> Result<()> {
@@ -109,9 +106,6 @@ impl Serializeable for AttestationAggregatorFirstStageCircuit {
             Ok(targets) => Ok(targets),
             Err(_) => Err(anyhow!("Failed to deserialize circuit targets")),
         }?;
-        Ok(Self {
-            circuit_data,
-            targets,
-        })
+        Ok(Self { circuit_data, targets })
     }
 }

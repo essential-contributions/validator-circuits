@@ -30,10 +30,7 @@ pub struct ValidatorsStateCircuitTargets {
 }
 
 #[inline]
-pub fn write_targets(
-    buffer: &mut Vec<u8>,
-    targets: &ValidatorsStateCircuitTargets,
-) -> IoResult<()> {
+pub fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorsStateCircuitTargets) -> IoResult<()> {
     buffer.write_target(targets.index)?;
     buffer.write_target(targets.stake)?;
     buffer.write_target_hash(&targets.commitment)?;

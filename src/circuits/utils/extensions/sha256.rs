@@ -12,20 +12,17 @@ const H256_256: [u32; 8] = [
 ];
 
 const K: [u32; 64] = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98,
+    0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8,
+    0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
+    0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+    0xc67178f2,
 ];
 
-pub fn build_sha256_hash(
-    builder: &mut CircuitBuilder<Field, D>,
-    inputs: Vec<Target>,
-) -> Vec<Target> {
+pub fn build_sha256_hash(builder: &mut CircuitBuilder<Field, D>, inputs: Vec<Target>) -> Vec<Target> {
     let mut state = [
         builder.constant(Field::from_canonical_u32(H256_256[0])),
         builder.constant(Field::from_canonical_u32(H256_256[1])),
@@ -63,8 +60,7 @@ pub fn build_sha256_hash(
             sha256_transform(builder, &mut state, &buffer);
 
             // Process the length by itself
-            let w = generate_w(bit_len as u64, false)
-                .map(|w| builder.constant(Field::from_canonical_u32(w)));
+            let w = generate_w(bit_len as u64, false).map(|w| builder.constant(Field::from_canonical_u32(w)));
             sha256_compress(builder, &mut state, &w);
         } else {
             // Process the remainder and the bit length in a single pass
@@ -85,8 +81,7 @@ pub fn build_sha256_hash(
     } else {
         // Process the bit length with a more optimized method,
         // since we know the full buffer at circuit build time
-        let w = generate_w(bit_len as u64, true)
-            .map(|w| builder.constant(Field::from_canonical_u32(w)));
+        let w = generate_w(bit_len as u64, true).map(|w| builder.constant(Field::from_canonical_u32(w)));
         sha256_compress(builder, &mut state, &w);
     }
 
@@ -94,11 +89,7 @@ pub fn build_sha256_hash(
     state.to_vec()
 }
 
-fn sha256_transform(
-    builder: &mut CircuitBuilder<Field, D>,
-    state: &mut [Target],
-    block: &[Target],
-) {
+fn sha256_transform(builder: &mut CircuitBuilder<Field, D>, state: &mut [Target], block: &[Target]) {
     let mut w: Vec<Target> = Vec::new();
     for i in 0..16 {
         w.push(block[i]);
@@ -168,13 +159,7 @@ fn sha256_compress(builder: &mut CircuitBuilder<Field, D>, state: &mut [Target],
 }
 
 // (a rrot r1) xor (a rrot r2) xor (a rsh s3)
-fn sigma(
-    builder: &mut CircuitBuilder<Field, D>,
-    a_bits: Vec<BoolTarget>,
-    r1: u8,
-    r2: u8,
-    s3: u8,
-) -> Target {
+fn sigma(builder: &mut CircuitBuilder<Field, D>, a_bits: Vec<BoolTarget>, r1: u8, r2: u8, s3: u8) -> Target {
     let mut s_bits: Vec<BoolTarget> = Vec::new();
     for i in 0..32 {
         let r1_bit = a_bits[(i + (r1 as usize)) % 32];
@@ -242,10 +227,7 @@ fn maj(builder: &mut CircuitBuilder<Field, D>, a: Target, b: Target, c: Target) 
     builder.le_sum(maj_bits.clone().into_iter())
 }
 
-fn wrapping_add<T>(
-    builder: &mut CircuitBuilder<Field, D>,
-    terms: impl IntoIterator<Item = T>,
-) -> Target
+fn wrapping_add<T>(builder: &mut CircuitBuilder<Field, D>, terms: impl IntoIterator<Item = T>) -> Target
 where
     T: Borrow<Target>,
 {
@@ -271,10 +253,7 @@ fn generate_w(bit_len: u64, include_byte_flag: bool) -> [u32; 64] {
     for i in 16..64 {
         let s0 = rotate_right(w[i - 15], 7) ^ rotate_right(w[i - 15], 18) ^ (w[i - 15] >> 3);
         let s1 = rotate_right(w[i - 2], 17) ^ rotate_right(w[i - 2], 19) ^ (w[i - 2] >> 10);
-        w[i] = w[i - 16]
-            .wrapping_add(s0)
-            .wrapping_add(w[i - 7])
-            .wrapping_add(s1);
+        w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
     }
     w
 }

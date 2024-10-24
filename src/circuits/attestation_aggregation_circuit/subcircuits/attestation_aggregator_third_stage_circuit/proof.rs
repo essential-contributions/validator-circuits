@@ -14,10 +14,7 @@ pub struct AttestationAggregatorThirdStageProof {
 }
 
 impl AttestationAggregatorThirdStageProof {
-    pub fn new(
-        proof: ProofWithPublicInputs<Field, Config, D>,
-        data: AttestationAggregatorThirdStageProofData,
-    ) -> Self {
+    pub fn new(proof: ProofWithPublicInputs<Field, Config, D>, data: AttestationAggregatorThirdStageProofData) -> Self {
         AttestationAggregatorThirdStageProof { proof, data }
     }
 

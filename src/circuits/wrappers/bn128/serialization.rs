@@ -3,13 +3,11 @@ use plonky2::{
     field::extension::Extendable,
     gadgets::{arithmetic_extension::QuotientGeneratorExtension, split_join::WireSplitGenerator},
     gates::{
-        arithmetic_base::ArithmeticBaseGenerator,
-        arithmetic_extension::ArithmeticExtensionGenerator, base_sum::BaseSplitGenerator,
-        coset_interpolation::InterpolationGenerator, exponentiation::ExponentiationGenerator,
-        multiplication_extension::MulExtensionGenerator, poseidon::PoseidonGenerator,
-        poseidon_mds::PoseidonMdsGenerator, random_access::RandomAccessGenerator,
-        reducing::ReducingGenerator,
-        reducing_extension::ReducingGenerator as ReducingExtensionGenerator,
+        arithmetic_base::ArithmeticBaseGenerator, arithmetic_extension::ArithmeticExtensionGenerator,
+        base_sum::BaseSplitGenerator, coset_interpolation::InterpolationGenerator,
+        exponentiation::ExponentiationGenerator, multiplication_extension::MulExtensionGenerator,
+        poseidon::PoseidonGenerator, poseidon_mds::PoseidonMdsGenerator, random_access::RandomAccessGenerator,
+        reducing::ReducingGenerator, reducing_extension::ReducingGenerator as ReducingExtensionGenerator,
     },
     hash::hash_types::RichField,
     iop::generator::{ConstantGenerator, RandomValueGenerator},
@@ -82,12 +80,12 @@ pub fn deserialize_circuit(
     let generator_serializer = CustomGeneratorSerializer::<Config, D>::default();
 
     let mut buffer = Buffer::new(bytes);
-    let circuit_data = buffer.read_circuit_data::<Field, PoseidonBN128GoldilocksConfig, D>(
-        &gate_serializer,
-        &generator_serializer,
-    );
+    let circuit_data =
+        buffer.read_circuit_data::<Field, PoseidonBN128GoldilocksConfig, D>(&gate_serializer, &generator_serializer);
     if circuit_data.is_err() {
-        return Err(anyhow!("Failed to deserialize circuit. It may help to delete the circuit bins and have them be regenerated."));
+        return Err(anyhow!(
+            "Failed to deserialize circuit. It may help to delete the circuit bins and have them be regenerated."
+        ));
     }
 
     Ok((circuit_data.unwrap(), buffer))

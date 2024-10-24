@@ -49,10 +49,7 @@ pub fn generate_partial_witness(
 
     //create partial witness
     let mut pw = PartialWitness::new();
-    pw.set_target(
-        targets.block_slot,
-        Field::from_canonical_u64(data.block_slot as u64),
-    );
+    pw.set_target(targets.block_slot, Field::from_canonical_u64(data.block_slot as u64));
     pw.set_verifier_data_target(&targets.atts_agg1_verifier, &atts_agg1_verifier);
 
     for (t, v) in targets.atts_agg1_data.iter().zip(data.agg1_data.clone()) {

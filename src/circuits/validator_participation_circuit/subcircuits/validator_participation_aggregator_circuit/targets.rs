@@ -48,10 +48,7 @@ pub struct ValidatorParticipationRoundTargets {
 }
 
 #[inline]
-pub fn write_targets(
-    buffer: &mut Vec<u8>,
-    targets: &ValidatorParticipationAggCircuitTargets,
-) -> IoResult<()> {
+pub fn write_targets(buffer: &mut Vec<u8>, targets: &ValidatorParticipationAggCircuitTargets) -> IoResult<()> {
     buffer.write_target_hash(&targets.init_val_epochs_tree_root)?;
     buffer.write_target_hash(&targets.init_pr_tree_root)?;
     buffer.write_target_vec(&targets.init_account_address)?;

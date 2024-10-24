@@ -57,10 +57,7 @@ pub fn generate_partial_witness(
         targets.validator_index,
         Field::from_canonical_usize(data.validator_index),
     );
-    pw.set_target(
-        targets.validator_stake,
-        Field::from_canonical_u32(data.validator_stake),
-    );
+    pw.set_target(targets.validator_stake, Field::from_canonical_u32(data.validator_stake));
     pw.set_hash_target(
         targets.validator_commitment,
         HashOut::<Field> {
@@ -124,9 +121,7 @@ pub fn generate_initial_data() -> ValidatorsStateCircuitData {
     }
 }
 
-fn initial_proof(
-    circuit_data: &CircuitData<Field, Config, D>,
-) -> ProofWithPublicInputs<Field, Config, D> {
+fn initial_proof(circuit_data: &CircuitData<Field, Config, D>) -> ProofWithPublicInputs<Field, Config, D> {
     let initial_inputs_hash = [Field::ZERO; 8];
     let initial_total_staked = Field::ZERO;
     let initial_total_validators = Field::ZERO;

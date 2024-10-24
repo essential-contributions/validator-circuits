@@ -92,10 +92,7 @@ pub fn load_or_create_init_proof<C>(dir: &str) -> C::Proof
 where
     C: Circuit + Serializeable,
 {
-    assert!(
-        C::is_cyclical(),
-        "Circuit is not cyclical (no initial proof)."
-    );
+    assert!(C::is_cyclical(), "Circuit is not cyclical (no initial proof).");
     let circuit = load_or_create_circuit::<C>(dir);
     if circuit_init_proof_exists(dir) {
         match load_proof(&circuit, &[CIRCUIT_OUTPUT_FOLDER, dir], INIT_PROOF_FILENAME) {
@@ -110,14 +107,7 @@ where
         }
     }
     let proof = circuit.cyclical_init_proof().unwrap();
-    if save_proof(
-        &circuit,
-        &proof,
-        &[CIRCUIT_OUTPUT_FOLDER, dir],
-        INIT_PROOF_FILENAME,
-    )
-    .is_err()
-    {
+    if save_proof(&circuit, &proof, &[CIRCUIT_OUTPUT_FOLDER, dir], INIT_PROOF_FILENAME).is_err() {
         log::warn!("Failed to save init proof [/{}]", dir);
     }
     proof
@@ -166,11 +156,7 @@ where
     match verifier_only_circuit_data_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            match write_file(
-                &bytes,
-                &[CIRCUIT_OUTPUT_FOLDER, dir],
-                VERIFIER_ONLY_DATA_FILENAME,
-            ) {
+            match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], VERIFIER_ONLY_DATA_FILENAME) {
                 Ok(_) => log::info!("Saved verifier only data [/{}]", dir),
                 Err(e) => {
                     log::error!("Failed to save verifier only data [/{}]", dir);
@@ -185,12 +171,7 @@ where
     }
 }
 
-pub fn save_proof<C: Circuit>(
-    circuit: &C,
-    proof: &C::Proof,
-    path: &[&str],
-    filename: &str,
-) -> Result<()> {
+pub fn save_proof<C: Circuit>(circuit: &C, proof: &C::Proof, path: &[&str], filename: &str) -> Result<()> {
     let bytes = circuit.proof_to_bytes(proof)?;
     match write_file(&bytes, path, filename) {
         Ok(_) => {

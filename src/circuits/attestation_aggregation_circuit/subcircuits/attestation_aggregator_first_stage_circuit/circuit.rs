@@ -7,10 +7,7 @@ use crate::circuits::extensions::CircuitBuilderExtended;
 use crate::commitment::empty_commitment_root;
 use crate::participation::{PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF};
 use crate::Hash;
-use crate::{
-    Field, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, D,
-    VALIDATOR_COMMITMENT_TREE_HEIGHT,
-};
+use crate::{Field, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, D, VALIDATOR_COMMITMENT_TREE_HEIGHT};
 
 use super::{AttAgg1Targets, AttAgg1ValidatorTargets};
 
@@ -28,8 +25,7 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttAgg1Target
     let mut participation_bits_fields: Vec<Target> = Vec::new();
     let mut participation_bits: Vec<BoolTarget> = Vec::new();
     for i in 0..PARTICIPATION_FIELDS_PER_LEAF {
-        let num_bits =
-            PARTICIPANTS_PER_FIELD.min(AGGREGATION_STAGE1_SIZE - (i * PARTICIPANTS_PER_FIELD));
+        let num_bits = PARTICIPANTS_PER_FIELD.min(AGGREGATION_STAGE1_SIZE - (i * PARTICIPANTS_PER_FIELD));
         let part = builder.add_virtual_target();
         let part_bits = builder.split_le(part, num_bits);
 
@@ -38,8 +34,7 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttAgg1Target
             participation_bits.push(*b);
         }
     }
-    let participation_root =
-        builder.hash_n_to_hash_no_pad::<Hash>(participation_bits_fields.clone());
+    let participation_root = builder.hash_n_to_hash_no_pad::<Hash>(participation_bits_fields.clone());
 
     // Verify each validator reveal
     for not_skip in participation_bits {
@@ -53,12 +48,7 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttAgg1Target
             siblings: builder.add_virtual_hashes(VALIDATOR_COMMITMENT_TREE_HEIGHT),
         };
         let merkle_root = builder.select_hash(not_skip, commitment_root, skip_root);
-        builder.verify_merkle_proof::<Hash>(
-            reveal_hash,
-            &block_slot_bits,
-            merkle_root,
-            &reveal_proof,
-        );
+        builder.verify_merkle_proof::<Hash>(reveal_hash, &block_slot_bits, merkle_root, &reveal_proof);
 
         // Keep running total of stake and num participants
         attestations_stake = builder.mul_add(stake, not_skip.target, attestations_stake);
@@ -75,11 +65,7 @@ pub fn generate_circuit(builder: &mut CircuitBuilder<Field, D>) -> AttAgg1Target
     // Compute the validators sub root
     let mut nodes: Vec<HashOutTarget> = Vec::new();
     for validator in validator_targets.iter() {
-        let leaf_data = [
-            validator.commitment_root.elements.to_vec(),
-            vec![validator.stake],
-        ]
-        .concat();
+        let leaf_data = [validator.commitment_root.elements.to_vec(), vec![validator.stake]].concat();
         nodes.push(builder.hash_n_to_hash_no_pad::<Hash>(leaf_data));
     }
     for h in (0..AGGREGATION_STAGE1_SUB_TREE_HEIGHT).rev() {
