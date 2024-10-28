@@ -14,7 +14,7 @@ use crate::circuits::{load_or_create_circuit, load_or_create_init_proof, VALIDAT
 use crate::commitment::example_commitment_root;
 use crate::validators::{initial_validators_tree, Validator};
 use crate::{
-    commitment::example_commitment_proof,
+    commitment::example_commitment_reveal,
     validators::{ValidatorCommitmentReveal, ValidatorsTree},
     Config, Field, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, AGGREGATION_STAGE2_SUB_TREE_HEIGHT, D,
 };
@@ -108,7 +108,7 @@ impl Circuit for AttestationAggregationCircuit {
         let reveals = validator_indexes
             .iter()
             .map(|&validator_index| {
-                let commitment_proof = example_commitment_proof(validator_index);
+                let commitment_proof = example_commitment_reveal(validator_index, block_slot);
                 ValidatorCommitmentReveal {
                     validator_index,
                     block_slot,

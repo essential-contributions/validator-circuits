@@ -13,7 +13,7 @@ use crate::circuits::validators_state_circuit::{
 use crate::participation::{
     empty_participation_root, PARTICIPANTS_PER_FIELD, PARTICIPATION_FIELDS_PER_LEAF, PARTICIPATION_TREE_HEIGHT,
 };
-use crate::validators::empty_validators_tree_root;
+use crate::validators::initial_validators_tree_root;
 use crate::Hash;
 use crate::{
     Config, Field, ACCOUNTS_TREE_HEIGHT, AGGREGATION_STAGE1_SIZE, AGGREGATION_STAGE1_SUB_TREE_HEIGHT, D,
@@ -387,7 +387,7 @@ fn build_empty_participation_root(builder: &mut CircuitBuilder<Field, D>) -> Has
 }
 
 fn build_empty_stake_root(builder: &mut CircuitBuilder<Field, D>) -> HashOutTarget {
-    let root = empty_validators_tree_root();
+    let root = initial_validators_tree_root();
     HashOutTarget {
         elements: root.map(|f| builder.constant(f)),
     }

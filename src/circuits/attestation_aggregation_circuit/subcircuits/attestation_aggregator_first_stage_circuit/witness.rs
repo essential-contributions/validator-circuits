@@ -4,7 +4,7 @@ use plonky2::hash::hash_types::HashOut;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 
 use crate::circuits::extensions::PartialWitnessExtended;
-use crate::commitment::empty_commitment;
+use crate::commitment::empty_commitment_reveal;
 use crate::participation::leaf_fields;
 use crate::{Field, AGGREGATION_STAGE1_SIZE};
 
@@ -41,7 +41,7 @@ pub fn generate_partial_witness(
     }
 
     //identify non-participating validators to skip (null reveal)
-    let empty_commit = empty_commitment();
+    let empty_commit = empty_commitment_reveal();
     let mut validators = data.validators.clone();
     let mut validator_participation: Vec<bool> = Vec::new();
     for validator in validators.iter_mut() {

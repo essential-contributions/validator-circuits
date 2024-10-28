@@ -13,7 +13,7 @@ use validator_circuits::{
         validators_state_circuit::ValidatorsStateCircuit, Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR,
         VALIDATORS_STATE_CIRCUIT_DIR,
     },
-    commitment::example_commitment_proof,
+    commitment::example_commitment_reveal,
     participation::participation_root,
     validators::ValidatorCommitmentReveal,
     Field, MAX_VALIDATORS,
@@ -65,7 +65,7 @@ pub fn benchmark_prove_attestation_aggregation(full: bool) {
     let reveals = validator_indexes
         .iter()
         .map(|&validator_index| {
-            let commitment_proof = example_commitment_proof(validator_index);
+            let commitment_proof = example_commitment_reveal(validator_index, block_slot);
             ValidatorCommitmentReveal {
                 validator_index,
                 block_slot,

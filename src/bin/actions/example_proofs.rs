@@ -20,7 +20,7 @@ use validator_circuits::{
         Circuit, Proof, ATTESTATION_AGGREGATION_CIRCUIT_DIR, PARTICIPATION_STATE_CIRCUIT_DIR,
         VALIDATORS_STATE_CIRCUIT_DIR, VALIDATOR_PARTICIPATION_CIRCUIT_DIR,
     },
-    commitment::{example_commitment_proof, example_commitment_root},
+    commitment::{example_commitment_reveal, example_commitment_root},
     epochs::{initial_validator_epochs_tree, ValidatorEpochsTree},
     participation::{
         initial_participation_rounds_tree, ParticipationRound, ParticipationRoundsTree, PARTICIPATION_BITS_BYTE_SIZE,
@@ -410,7 +410,7 @@ fn action_fast_finality(
     let reveals = validator_indexes
         .iter()
         .map(|&validator_index| {
-            let commitment_proof = example_commitment_proof(validator_index);
+            let commitment_proof = example_commitment_reveal(validator_index, block_slot);
             ValidatorCommitmentReveal {
                 validator_index,
                 block_slot,

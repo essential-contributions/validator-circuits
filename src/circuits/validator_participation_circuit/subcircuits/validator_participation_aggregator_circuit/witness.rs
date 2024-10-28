@@ -10,7 +10,7 @@ use crate::circuits::extensions::PartialWitnessExtended;
 use crate::circuits::validators_state_circuit::ValidatorsStateProof;
 use crate::circuits::Proof;
 use crate::participation::participation_merkle_data;
-use crate::validators::empty_validators_tree_proof;
+use crate::validators::initial_validators_tree_proof;
 use crate::{Config, Field, AGGREGATION_STAGE1_SIZE, D, MAX_VALIDATORS, PARTICIPATION_ROUNDS_PER_STATE_EPOCH};
 
 use super::{ValidatorParticipationAggCircuitTargets, ValidatorParticipationAggProof};
@@ -117,7 +117,7 @@ pub fn generate_partial_witness(
                     elements: [Field::ZERO; 4],
                 },
             );
-            pw.set_merkle_proof_target(targets.validator_stake_proof.clone(), &empty_validators_tree_proof());
+            pw.set_merkle_proof_target(targets.validator_stake_proof.clone(), &initial_validators_tree_proof());
         }
     }
     pw.set_merkle_proof_target(targets.account_validator_proof.clone(), &data.account_validator_proof);
