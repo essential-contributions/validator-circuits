@@ -8,13 +8,8 @@ pub mod wrappers;
 use anyhow::{anyhow, Result};
 use plonky2::plonk::{circuit_data::CircuitData, proof::ProofWithPublicInputs};
 use std::str;
-use std::{
-    fs::{self, create_dir_all, File},
-    io::{self, BufReader, Read, Write},
-    path::PathBuf,
-};
 
-use crate::{Config, Field, D};
+use crate::{delete_file, file_exists, load_from_file, save_to_file, Config, Field, D};
 use utils::*;
 
 pub const CIRCUIT_OUTPUT_FOLDER: &str = "circuits";
@@ -62,7 +57,7 @@ where
     C: Circuit + Serializeable,
 {
     if circuit_data_exists(dir) {
-        let bytes = read_file(&[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME);
+        let bytes = load_from_file(&[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME);
         match bytes {
             Ok(bytes) => {
                 let circuit = C::from_bytes(&bytes);
@@ -119,7 +114,7 @@ where
 {
     let circuit_bytes = circuit.to_bytes();
     match circuit_bytes {
-        Ok(bytes) => match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME) {
+        Ok(bytes) => match save_to_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME) {
             Ok(_) => log::info!("Saved raw circuit binary [/{}]", dir),
             Err(e) => {
                 log::error!("Failed to save circuit [/{}]", dir);
@@ -138,7 +133,7 @@ where
     match common_circuit_data_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], COMMON_DATA_FILENAME) {
+            match save_to_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], COMMON_DATA_FILENAME) {
                 Ok(_) => log::info!("Saved common data [/{}]", dir),
                 Err(e) => {
                     log::error!("Failed to save common data [/{}]", dir);
@@ -156,7 +151,7 @@ where
     match verifier_only_circuit_data_serialized {
         Ok(json) => {
             let bytes = json.as_bytes().to_vec();
-            match write_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], VERIFIER_ONLY_DATA_FILENAME) {
+            match save_to_file(&bytes, &[CIRCUIT_OUTPUT_FOLDER, dir], VERIFIER_ONLY_DATA_FILENAME) {
                 Ok(_) => log::info!("Saved verifier only data [/{}]", dir),
                 Err(e) => {
                     log::error!("Failed to save verifier only data [/{}]", dir);
@@ -173,7 +168,7 @@ where
 
 pub fn save_proof<C: Circuit>(circuit: &C, proof: &C::Proof, path: &[&str], filename: &str) -> Result<()> {
     let bytes = circuit.proof_to_bytes(proof)?;
-    match write_file(&bytes, path, filename) {
+    match save_to_file(&bytes, path, filename) {
         Ok(_) => {
             log::info!("Saved proof [/{}/{}]", path.join("/"), filename);
             Ok(())
@@ -183,7 +178,7 @@ pub fn save_proof<C: Circuit>(circuit: &C, proof: &C::Proof, path: &[&str], file
 }
 
 pub fn load_proof<C: Circuit>(circuit: &C, path: &[&str], filename: &str) -> Result<C::Proof> {
-    match read_file(path, filename) {
+    match load_from_file(path, filename) {
         Ok(bytes) => {
             let proof = circuit.proof_from_bytes(bytes)?;
             Ok(proof)
@@ -193,72 +188,18 @@ pub fn load_proof<C: Circuit>(circuit: &C, path: &[&str], filename: &str) -> Res
 }
 
 pub fn circuit_data_exists(dir: &str) -> bool {
-    file_exists(dir, CIRCUIT_FILENAME)
-        && file_exists(dir, COMMON_DATA_FILENAME)
-        && file_exists(dir, VERIFIER_ONLY_DATA_FILENAME)
+    file_exists(&[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME)
+        && file_exists(&[CIRCUIT_OUTPUT_FOLDER, dir], COMMON_DATA_FILENAME)
+        && file_exists(&[CIRCUIT_OUTPUT_FOLDER, dir], VERIFIER_ONLY_DATA_FILENAME)
 }
 
 pub fn circuit_init_proof_exists(dir: &str) -> bool {
-    file_exists(dir, INIT_PROOF_FILENAME)
+    file_exists(&[CIRCUIT_OUTPUT_FOLDER, dir], INIT_PROOF_FILENAME)
 }
 
 pub fn clear_data_and_proof(dir: &str) {
-    delete_file(dir, CIRCUIT_FILENAME);
-    delete_file(dir, COMMON_DATA_FILENAME);
-    delete_file(dir, VERIFIER_ONLY_DATA_FILENAME);
-    delete_file(dir, INIT_PROOF_FILENAME);
-}
-
-#[inline]
-fn write_file(bytes: &[u8], path: &[&str], filename: &str) -> io::Result<()> {
-    let mut path_buf = PathBuf::new();
-    for &p in path {
-        path_buf.push(p);
-    }
-    path_buf.push(filename);
-
-    if let Some(parent) = path_buf.parent() {
-        create_dir_all(parent)?;
-    }
-
-    let mut file = File::create(&path_buf)?;
-    file.write_all(&bytes)?;
-    file.flush()?;
-
-    Ok(())
-}
-
-#[inline]
-fn read_file(path: &[&str], filename: &str) -> io::Result<Vec<u8>> {
-    let mut path_buf = PathBuf::new();
-    for &p in path {
-        path_buf.push(p);
-    }
-    path_buf.push(filename);
-
-    let file = File::open(&path_buf)?;
-    let mut reader = BufReader::with_capacity(134217728, file);
-    let mut buffer: Vec<u8> = Vec::new();
-    reader.read_to_end(&mut buffer)?;
-
-    Ok(buffer)
-}
-
-#[inline]
-fn file_exists(dir: &str, filename: &str) -> bool {
-    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
-    path.push(dir);
-    path.push(filename);
-    path.exists()
-}
-
-#[inline]
-fn delete_file(dir: &str, filename: &str) {
-    let mut path = PathBuf::from(CIRCUIT_OUTPUT_FOLDER);
-    path.push(dir);
-    path.push(filename);
-    match fs::remove_file(path.clone()) {
-        Ok(_) => log::info!("File '{}' deleted.", path.display()),
-        Err(e) => log::error!("Failed to delete file '{}': {}", path.display(), e),
-    }
+    delete_file(&[CIRCUIT_OUTPUT_FOLDER, dir], CIRCUIT_FILENAME);
+    delete_file(&[CIRCUIT_OUTPUT_FOLDER, dir], COMMON_DATA_FILENAME);
+    delete_file(&[CIRCUIT_OUTPUT_FOLDER, dir], VERIFIER_ONLY_DATA_FILENAME);
+    delete_file(&[CIRCUIT_OUTPUT_FOLDER, dir], INIT_PROOF_FILENAME);
 }

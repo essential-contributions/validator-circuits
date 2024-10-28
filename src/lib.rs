@@ -5,6 +5,11 @@ pub mod epochs;
 pub mod participation;
 pub mod validators;
 
+use std::fs::{self, create_dir_all, File};
+use std::io::{BufReader, Read, Write};
+use std::path::PathBuf;
+
+use anyhow::Result;
 use plonky2::field::types::Field as Plonky2_Field;
 use plonky2::hash::hash_types::HashOut;
 use plonky2::plonk::config::Hasher as Plonky2_Hasher;
@@ -76,6 +81,64 @@ pub fn fields_to_bytes(fields: &[Field; 4]) -> [u8; 32] {
     });
 
     bytes
+}
+
+#[inline]
+pub fn save_to_file(bytes: &[u8], path: &[&str], filename: &str) -> Result<()> {
+    let mut path_buf = PathBuf::new();
+    for &p in path {
+        path_buf.push(p);
+    }
+    path_buf.push(filename);
+
+    if let Some(parent) = path_buf.parent() {
+        create_dir_all(parent)?;
+    }
+
+    let mut file = File::create(&path_buf)?;
+    file.write_all(&bytes)?;
+    file.flush()?;
+
+    Ok(())
+}
+
+#[inline]
+pub fn load_from_file(path: &[&str], filename: &str) -> Result<Vec<u8>> {
+    let mut path_buf = PathBuf::new();
+    for &p in path {
+        path_buf.push(p);
+    }
+    path_buf.push(filename);
+
+    let file = File::open(&path_buf)?;
+    let mut reader = BufReader::with_capacity(32 * 1024, file);
+    let mut bytes: Vec<u8> = Vec::new();
+    reader.read_to_end(&mut bytes)?;
+
+    Ok(bytes)
+}
+
+#[inline]
+pub fn file_exists(path: &[&str], filename: &str) -> bool {
+    let mut path_buf = PathBuf::new();
+    for &p in path {
+        path_buf.push(p);
+    }
+    path_buf.push(filename);
+    path_buf.exists()
+}
+
+#[inline]
+pub fn delete_file(path: &[&str], filename: &str) {
+    let mut path_buf = PathBuf::new();
+    for &p in path {
+        path_buf.push(p);
+    }
+    path_buf.push(filename);
+    match fs::remove_file(path_buf.clone()) {
+        Ok(_) => log::info!("File '{}' deleted.", path_buf.display()),
+        Err(e) => log::error!("Failed to delete file '{}': {}", path_buf.display(), e),
+    }
 }
 
 const fn sqrt_usize(x: usize) -> usize {
