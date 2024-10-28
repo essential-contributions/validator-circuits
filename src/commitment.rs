@@ -1,7 +1,3 @@
-use std::fs::{create_dir_all, File};
-use std::io::{BufReader, Read, Write};
-use std::path::PathBuf;
-
 use anyhow::{anyhow, Result};
 use blake3::Hasher as Blake3_Hasher;
 use plonky2::field::types::Field as Plonky2_Field;
@@ -9,10 +5,14 @@ use rand::Rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{bytes_to_fields, field_hash, field_hash_two, fields_to_bytes, Field, VALIDATOR_COMMITMENT_TREE_HEIGHT};
+use crate::{
+    bytes_to_fields, field_hash, field_hash_two, fields_to_bytes, load_from_file, save_to_file, Field,
+    VALIDATOR_COMMITMENT_TREE_HEIGHT,
+};
 
 const COMMITMENT_COMPUTED_TREE_HEIGHT: usize = 14;
 const COMMITMENT_MEMORY_TREE_HEIGHT: usize = VALIDATOR_COMMITMENT_TREE_HEIGHT - COMMITMENT_COMPUTED_TREE_HEIGHT;
+const COMMITMENT_EXAMPLE_SECRETS_HEIGHT: usize = 3;
 
 const COMMITMENT_OUTPUT_FOLDER: &str = "data";
 const COMMITMENT_OUTPUT_FILE: &str = "secret.bin";
@@ -218,30 +218,87 @@ fn blake3_hash(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+fn example_seed(validator_index: usize) -> [u8; 32] {
+    let index_bytes = validator_index.to_be_bytes();
+    let salt_bytes = [97, 12, 105, 227, 86, 22, 119, 199];
+
+    let mut seed = [0u8; 32];
+    seed[0..8].copy_from_slice(&index_bytes);
+    seed[8..16].copy_from_slice(&index_bytes);
+    seed[16..24].copy_from_slice(&index_bytes);
+    seed[24..32].copy_from_slice(&salt_bytes);
+    seed
+}
+
+fn example_commitment(validator_index: usize, reveal_index: usize) -> ([Field; 4], CommitmentReveal) {
+    let seed = example_seed(validator_index);
+    let num_example_secrets = 1 << COMMITMENT_EXAMPLE_SECRETS_HEIGHT;
+
+    //compute the default nodes (the ones that are all based on the same leaf value)
+    let mut default_nodes: Vec<[Field; 4]> = vec![];
+    let mut node = field_hash(&computed_secret(seed, num_example_secrets));
+    default_nodes.push(node);
+    for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT - 1 {
+        node = field_hash_two(node, node);
+        default_nodes.push(node);
+    }
+
+    //compute the nodes based on the number of distinct secrets being included
+    let mut computed_nodes: Vec<Vec<[Field; 4]>> = vec![vec![]];
+    for i in 0..num_example_secrets {
+        let node = field_hash(&computed_secret(seed, i));
+        computed_nodes[0].push(node);
+    }
+    for i in 0..COMMITMENT_EXAMPLE_SECRETS_HEIGHT {
+        let child_nodes = computed_nodes.last().unwrap();
+        let num_parent_nodes = 1 << (COMMITMENT_EXAMPLE_SECRETS_HEIGHT - i - 1);
+        let parent_nodes = (0..num_parent_nodes)
+            .into_iter()
+            .map(|j| field_hash_two(child_nodes[j * 2], child_nodes[j * 2 + 1]))
+            .collect::<Vec<[Field; 4]>>();
+        computed_nodes.push(parent_nodes);
+    }
+    for i in COMMITMENT_EXAMPLE_SECRETS_HEIGHT..VALIDATOR_COMMITMENT_TREE_HEIGHT {
+        let computed = computed_nodes.last().unwrap()[0];
+        let default = default_nodes[i];
+        let parent = field_hash_two(computed, default);
+        computed_nodes.push(vec![parent]);
+    }
+
+    //compute the root and the reveal
+    let root = computed_nodes.last().unwrap()[0];
+    let reveal = if reveal_index < num_example_secrets {
+        computed_secret(seed, reveal_index)
+    } else {
+        computed_secret(seed, num_example_secrets)
+    };
+    let mut proof: Vec<[Field; 4]> = vec![];
+    let mut idx = reveal_index % (1 << VALIDATOR_COMMITMENT_TREE_HEIGHT);
+    for i in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
+        let j = if (idx & 1) == 0 { idx + 1 } else { idx - 1 };
+        if j < computed_nodes[i].len() {
+            proof.push(computed_nodes[i][j]);
+        } else {
+            proof.push(default_nodes[i]);
+        }
+        idx = idx / 2;
+    }
+
+    (root, CommitmentReveal { reveal, proof })
+}
+
 // Creates an example commitment root
 pub fn example_commitment_root(validator_index: usize) -> [Field; 4] {
-    let secret = generate_secret_from_seed(validator_index);
-    let mut node = field_hash(&secret);
-    for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
-        node = field_hash_two(node, node);
-    }
-    node
+    example_commitment(validator_index, 0).0
 }
 
 // Creates an example commitment proof (same for every index)
-pub fn example_commitment_proof(validator_index: usize) -> CommitmentReveal {
-    let reveal = generate_secret_from_seed(validator_index);
-    let mut node = field_hash(&reveal);
-    let mut proof: Vec<[Field; 4]> = vec![];
-    for _ in 0..VALIDATOR_COMMITMENT_TREE_HEIGHT {
-        proof.push(node);
-        node = field_hash_two(node, node);
-    }
-    CommitmentReveal { reveal, proof }
+pub fn example_commitment_reveal(validator_index: usize, reveal_index: usize) -> CommitmentReveal {
+    example_commitment(validator_index, reveal_index).1
 }
 
 // Generates an empty commitment proof
-pub fn empty_commitment() -> CommitmentReveal {
+pub fn empty_commitment_reveal() -> CommitmentReveal {
     let reveal = [
         Field::from_canonical_usize(0),
         Field::from_canonical_usize(0),
@@ -273,40 +330,37 @@ pub fn empty_commitment_root() -> [Field; 4] {
     node
 }
 
-fn generate_secret_from_seed(seed: usize) -> [Field; 4] {
-    [
-        Field::from_canonical_usize(seed + 10),
-        Field::from_canonical_usize(seed + 11),
-        Field::from_canonical_usize(seed + 12),
-        Field::from_canonical_usize(seed + 13),
-    ]
-}
-
-pub fn save_commitment(commitment: &Commitment) -> Result<()> {
-    let bytes = commitment.to_bytes()?;
-
-    let mut path = PathBuf::from(COMMITMENT_OUTPUT_FOLDER);
-    path.push(COMMITMENT_OUTPUT_FILE);
-
-    if let Some(parent) = path.parent() {
-        create_dir_all(parent)?;
+// Verifies a commitment reveal
+pub fn verify_commitment_reveal(commitment_root: [Field; 4], reveal: &CommitmentReveal, index: usize) -> Result<()> {
+    if reveal.proof.len() != VALIDATOR_COMMITMENT_TREE_HEIGHT {
+        return Err(anyhow!("Invalid proof length."));
     }
 
-    let mut file = File::create(&path)?;
-    file.write_all(&bytes)?;
-    file.flush()?;
+    let mut idx = index;
+    let mut hash = field_hash(&reveal.reveal);
+    for sibling in reveal.proof.iter() {
+        if (idx & 1) == 0 {
+            hash = field_hash_two(hash, *sibling);
+        } else {
+            hash = field_hash_two(*sibling, hash);
+        }
+        idx = idx >> 1;
+    }
+    if hash != commitment_root {
+        return Err(anyhow!("Invalid proof."));
+    }
 
     Ok(())
 }
 
+// Saves a commitment to a file
+pub fn save_commitment(commitment: &Commitment) -> Result<()> {
+    let bytes = commitment.to_bytes()?;
+    save_to_file(&bytes, &[COMMITMENT_OUTPUT_FOLDER], COMMITMENT_OUTPUT_FILE)
+}
+
+// Loads a commitment from a file
 pub fn load_commitment() -> Result<Commitment> {
-    let mut path = PathBuf::from(COMMITMENT_OUTPUT_FOLDER);
-    path.push(COMMITMENT_OUTPUT_FILE);
-
-    let file = File::open(&path)?;
-    let mut reader = BufReader::with_capacity(32 * 1024, file);
-    let mut bytes: Vec<u8> = Vec::new();
-    reader.read_to_end(&mut bytes)?;
-
+    let bytes = load_from_file(&[COMMITMENT_OUTPUT_FOLDER], COMMITMENT_OUTPUT_FILE)?;
     Ok(Commitment::from_bytes(&bytes)?)
 }

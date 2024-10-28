@@ -3,11 +3,11 @@ use plonky2::field::types::Field as Plonky2_Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::Field;
-use crate::{field_hash, field_hash_two, AGGREGATION_STAGE1_SIZE, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT};
-
-//TODO: support from_bytes, to_bytes and save/load (see commitment)
-//TODO: implement multi-threading for manual reveal verification
+use crate::commitment::{verify_commitment_reveal, CommitmentReveal};
+use crate::{
+    bytes_to_fields, field_hash, field_hash_two, load_from_file, save_to_file, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT,
+};
+use crate::{fields_to_bytes, Field};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Validator {
@@ -31,26 +31,66 @@ pub struct ValidatorsTree {
 
 impl ValidatorsTree {
     pub fn new() -> Self {
-        let mut validators: Vec<Validator> = Vec::new();
-        for _ in 0..MAX_VALIDATORS {
+        Self::from_validators(&[])
+    }
+
+    pub fn from_validators(validators: &[Validator]) -> Self {
+        let mut validators = validators.to_vec();
+        for _ in validators.len()..MAX_VALIDATORS {
             validators.push(Validator {
                 commitment_root: [Field::ZERO; 4],
                 stake: 0,
             });
         }
-        Self::from_validators(&validators)
-    }
 
-    pub fn from_validators(validators: &[Validator]) -> Self {
         let num_nodes = (1 << (VALIDATORS_TREE_HEIGHT + 1)) - 1;
         let nodes: Vec<[Field; 4]> = vec![[Field::ZERO, Field::ZERO, Field::ZERO, Field::ZERO]; num_nodes];
-        let mut validator_set = Self {
-            validators: validators.to_vec(),
-            nodes,
-        };
+        let mut validator_set = Self { validators, nodes };
         validator_set.fill_nodes();
 
         validator_set
+    }
+
+    pub fn from_bytes(bytes: &Vec<u8>) -> Result<Self> {
+        let num_validators = MAX_VALIDATORS;
+        let num_validators_bytes = (32 + 4) * num_validators;
+        if bytes.len() != num_validators_bytes {
+            return Err(anyhow!("Invalid bytes"));
+        }
+
+        let mut validators = Vec::new();
+        for i in 0..MAX_VALIDATORS {
+            let j = i * (32 + 4);
+            let commitment_root = bytes_to_fields(&bytes[j..(j + 32)]);
+            let mut stake = [0u8; 4];
+            stake
+                .iter_mut()
+                .enumerate()
+                .for_each(|(j, b)| *b = bytes[(i * (20 + 4)) + 20 + j]);
+            validators.push(Validator {
+                commitment_root,
+                stake: u32::from_be_bytes(stake),
+            });
+        }
+
+        Ok(Self::from_validators(&validators))
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let num_validators_bytes = (32 + 4) * MAX_VALIDATORS;
+        let mut bytes: Vec<u8> = vec![0; num_validators_bytes];
+
+        self.validators.iter().enumerate().for_each(|(i, v)| {
+            let cr = fields_to_bytes(&v.commitment_root);
+            cr.iter().enumerate().for_each(|(j, b)| {
+                bytes[i * (32 + 4) + j] = *b;
+            });
+            v.stake.to_be_bytes().iter().enumerate().for_each(|(j, b)| {
+                bytes[(i * (32 + 4)) + 32 + j] = *b;
+            });
+        });
+
+        Ok(bytes)
     }
 
     pub fn root(&self) -> [Field; 4] {
@@ -74,27 +114,36 @@ impl ValidatorsTree {
         self.validators.clone()
     }
 
-    pub fn verify_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<bool> {
-        if reveals.len() == 0 {
-            return Err(anyhow!("At least one reveal must be provided for the batch"));
-        }
-        if reveals.len() > AGGREGATION_STAGE1_SIZE {
-            return Err(anyhow!(
-                "Only {} reveals can be proven per batch",
-                AGGREGATION_STAGE1_SIZE
-            ));
-        }
+    pub fn verify_attestations(&self, reveals: Vec<ValidatorCommitmentReveal>) -> Result<()> {
+        if reveals.len() > 0 {
+            //verify all are for the same slot
+            let block_slot = reveals[0].block_slot;
+            for reveal in reveals.iter() {
+                if reveal.block_slot != block_slot {
+                    return Err(anyhow!("All reveals do not have the same block_slot"));
+                }
+            }
 
-        //verify all are for the same slot
-        let block_slot = reveals[0].block_slot;
-        for reveal in reveals.iter() {
-            if reveal.block_slot != block_slot {
-                return Err(anyhow!("All reveals do not have the same block_slot"));
+            //check each reveal in parallel
+            let results: Vec<bool> = reveals
+                .par_iter()
+                .map(|reveal| {
+                    let validator = self.validator(reveal.validator_index);
+                    let commitment_reveal = CommitmentReveal {
+                        reveal: reveal.reveal,
+                        proof: reveal.proof.clone(),
+                    };
+                    verify_commitment_reveal(validator.commitment_root, &commitment_reveal, reveal.block_slot).is_ok()
+                })
+                .collect();
+            for i in 0..results.len() {
+                if !results[i] {
+                    return Err(anyhow!("Invalid proof for reveal {}", i));
+                }
             }
         }
 
-        //TODO: check each commitment in parallel
-        todo!();
+        Ok(())
     }
 
     pub fn set_validator(&mut self, index: usize, validator: Validator) {
@@ -119,7 +168,7 @@ impl ValidatorsTree {
         nodes
     }
 
-    pub fn verify_merkle_proof(&self, validator: Validator, index: usize, proof: &[[Field; 4]]) -> Result<bool> {
+    pub fn verify_merkle_proof(&self, validator: Validator, index: usize, proof: &[[Field; 4]]) -> Result<()> {
         if proof.len() != VALIDATORS_TREE_HEIGHT {
             return Err(anyhow!("Invalid proof length."));
         }
@@ -138,7 +187,7 @@ impl ValidatorsTree {
         if hash != self.root() {
             return Err(anyhow!("Invalid proof"));
         }
-        Ok(true)
+        Ok(())
     }
 
     fn fill_nodes(&mut self) {
@@ -175,15 +224,14 @@ impl ValidatorsTree {
     }
 }
 
+// Generate the initial validators tree
 pub fn initial_validators_tree() -> ValidatorsTree {
     ValidatorsTree::new()
 }
 
+// Generate the initial validators tree root
 pub fn initial_validators_tree_root() -> [Field; 4] {
-    initial_validators_tree().root()
-}
-
-pub fn empty_validators_tree_root() -> [Field; 4] {
+    //equivalent to initial_validators_tree().root()
     let mut node = field_hash(&[Field::ZERO; 5]);
     for _ in 0..VALIDATORS_TREE_HEIGHT {
         node = field_hash_two(node.clone(), node.clone());
@@ -191,7 +239,9 @@ pub fn empty_validators_tree_root() -> [Field; 4] {
     node
 }
 
-pub fn empty_validators_tree_proof() -> Vec<[Field; 4]> {
+// Generate a proof for any of the validators in the initial validators tree
+pub fn initial_validators_tree_proof() -> Vec<[Field; 4]> {
+    //equivalent to initial_validators_tree().merkle_proof(0)
     let mut proof = Vec::new();
     let mut node = field_hash(&[Field::ZERO; 5]);
     for _ in 0..VALIDATORS_TREE_HEIGHT {
@@ -199,4 +249,16 @@ pub fn empty_validators_tree_proof() -> Vec<[Field; 4]> {
         node = field_hash_two(node.clone(), node.clone());
     }
     proof
+}
+
+// Saves all validator data to a file
+pub fn save_validators(validators_tree: &ValidatorsTree, path: &[&str], filename: &str) -> Result<()> {
+    let bytes = validators_tree.to_bytes()?;
+    save_to_file(&bytes, path, filename)
+}
+
+// Loads all validator data from a file
+pub fn load_validators(path: &[&str], filename: &str) -> Result<ValidatorsTree> {
+    let bytes = load_from_file(path, filename)?;
+    Ok(ValidatorsTree::from_bytes(&bytes)?)
 }

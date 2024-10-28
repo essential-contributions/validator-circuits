@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs::{create_dir_all, File},
-    io::{BufReader, Read, Write},
-    path::PathBuf,
-};
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{anyhow, Result};
 use plonky2::field::types::{Field as Plonky2_Field, Field64};
@@ -11,7 +6,8 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytes_to_fields, field_hash_two, fields_to_bytes, Field, CACHE_DATA_DIR, MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT,
+    bytes_to_fields, field_hash_two, fields_to_bytes, load_from_file, save_to_file, Field, CACHE_DATA_DIR,
+    MAX_VALIDATORS, VALIDATORS_TREE_HEIGHT,
 };
 
 const SPARSE_ACCOUNTS_TREE_HEIGHT: usize = 160;
@@ -41,27 +37,44 @@ pub struct AccountsTree {
 
 impl AccountsTree {
     pub fn new() -> Self {
-        Self::from_accounts(&Self::default_accounts())
+        Self::from_accounts(&[])
     }
 
     pub fn from_accounts(accounts: &[Account]) -> Self {
+        let mut validator_indexes = HashSet::new();
         let mut accounts_map = HashMap::new();
         for account in accounts {
             if account.validator_index.is_some() {
+                let validator_index = account.validator_index.unwrap();
+                if validator_indexes.contains(&validator_index) {
+                    log::warn!("Duplicate account validator index found. Ignoring account.");
+                }
+                if accounts_map.contains_key(&account.address) {
+                    log::warn!("Duplicate account address found. Ignoring account.");
+                } else {
+                    accounts_map.insert(
+                        account.address,
+                        AccountData {
+                            address: account.address,
+                            validator_index,
+                        },
+                    );
+                    validator_indexes.insert(validator_index);
+                }
+            }
+        }
+        for i in 0..MAX_VALIDATORS {
+            if !validator_indexes.contains(&i) {
+                let null_address = null_account_address(i);
                 accounts_map.insert(
-                    account.address,
+                    null_address,
                     AccountData {
-                        address: account.address,
-                        validator_index: account.validator_index.unwrap(),
+                        address: null_address,
+                        validator_index: i,
                     },
                 );
             }
         }
-        assert_eq!(
-            accounts_map.len(),
-            MAX_VALIDATORS,
-            "An account for every validator index is required when calling from_accounts."
-        );
 
         //create the tree
         let num_nodes = (1 << (SPARSE_ACCOUNTS_MEMORY_TREE_HEIGHT + 1)) - 1;
@@ -130,17 +143,13 @@ impl AccountsTree {
         let mut bytes: Vec<u8> = vec![0; num_accounts_bytes + num_nodes_bytes];
 
         self.accounts.iter().enumerate().for_each(|(i, (_, a))| {
-            a.address
-                .iter()
-                .enumerate()
-                .for_each(|(j, b)| bytes[(i * (20 + 4)) + j] = *b);
-            (a.validator_index as u32)
-                .to_be_bytes()
-                .iter()
-                .enumerate()
-                .for_each(|(j, b)| {
-                    bytes[(i * (20 + 4)) + 20 + j] = *b;
-                });
+            let ad = a.address;
+            ad.iter().enumerate().for_each(|(j, b)| bytes[(i * (20 + 4)) + j] = *b);
+
+            let vi = a.validator_index as u32;
+            vi.to_be_bytes().iter().enumerate().for_each(|(j, b)| {
+                bytes[(i * (20 + 4)) + 20 + j] = *b;
+            });
         });
         self.nodes.iter().enumerate().for_each(|(i, n)| {
             fields_to_bytes(n).iter().enumerate().for_each(|(j, b)| {
@@ -450,6 +459,7 @@ impl AccountsTree {
     }
 }
 
+// Generate the initial accounts tree (cached to disk for faster loading)
 pub fn initial_accounts_tree() -> AccountsTree {
     match load_accounts(&CACHE_DATA_DIR, INITIAL_ACCOUNTS_OUTPUT_FILE) {
         Ok(tree) => {
@@ -484,10 +494,12 @@ pub fn initial_accounts_tree() -> AccountsTree {
     }
 }
 
+// Generate the initial accounts tree root (cached to disk for faster loading)
 pub fn initial_accounts_tree_root() -> [Field; 4] {
     initial_accounts_tree().root()
 }
 
+// Generate the account address which represents a null account for a given validator index
 pub fn null_account_address(validator_index: usize) -> [u8; 20] {
     let validator_index_bytes = ((validator_index as u32) << (32 - VALIDATORS_TREE_HEIGHT)).to_be_bytes();
     let mut address = [0u8; 20];
@@ -560,37 +572,14 @@ fn address_shr(mut addr: [u8; 20], shift: usize) -> [u8; 20] {
     addr
 }
 
+// Saves all account data to a file
 pub fn save_accounts(accounts_tree: &AccountsTree, path: &[&str], filename: &str) -> Result<()> {
     let bytes = accounts_tree.to_bytes()?;
-
-    let mut path_buf = PathBuf::new();
-    for &p in path {
-        path_buf.push(p);
-    }
-    path_buf.push(filename);
-
-    if let Some(parent) = path_buf.parent() {
-        create_dir_all(parent)?;
-    }
-
-    let mut file = File::create(&path_buf)?;
-    file.write_all(&bytes)?;
-    file.flush()?;
-
-    Ok(())
+    save_to_file(&bytes, path, filename)
 }
 
+// Loads all account data from a file
 pub fn load_accounts(path: &[&str], filename: &str) -> Result<AccountsTree> {
-    let mut path_buf = PathBuf::new();
-    for &p in path {
-        path_buf.push(p);
-    }
-    path_buf.push(filename);
-
-    let file = File::open(&path_buf)?;
-    let mut reader = BufReader::with_capacity(32 * 1024, file);
-    let mut bytes: Vec<u8> = Vec::new();
-    reader.read_to_end(&mut bytes)?;
-
+    let bytes = load_from_file(path, filename)?;
     Ok(AccountsTree::from_bytes(&bytes)?)
 }
